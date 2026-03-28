@@ -53,11 +53,14 @@ function require_superadmin(): void
 function login_user(array $row): void
 {
     session_regenerate_id(true);
-    $_SESSION['user_id'] = (int) $row['id'];
-    $_SESSION['loginname'] = $row['loginname'];
-    $_SESSION['full_name'] = $row['FullName'];
-    $_SESSION['branch_id'] = $row['BranchId'] !== null ? (int) $row['BranchId'] : null;
-    $_SESSION['role_id'] = (int) $row['RoleId'];
+    $_SESSION['user_id'] = (int) ($row['id'] ?? 0);
+    $_SESSION['loginname'] = (string) ($row['loginname'] ?? '');
+    $full = $row['full_name'] ?? $row['FullName'] ?? '';
+    $_SESSION['full_name'] = (string) $full;
+    $branch = $row['branch_id'] ?? $row['BranchId'] ?? null;
+    $_SESSION['branch_id'] = $branch !== null && $branch !== '' ? (int) $branch : null;
+    $role = $row['role_id'] ?? $row['RoleId'] ?? 0;
+    $_SESSION['role_id'] = (int) $role;
 }
 
 function logout_user(): void

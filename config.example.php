@@ -12,5 +12,6 @@ return [
     'app' => [
         'name' => 'AllureOne',
         'session_name' => 'ALLUREONESESSID',
+        'debug' => false,
     ],
 ];

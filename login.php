@@ -26,21 +26,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ) {
             $error = 'Login name and password must be at most 20 characters.';
         } else {
-            $pdo = db();
-            $stmt = $pdo->prepare(
-                'SELECT id, loginname, password, FullName, BranchId, RoleId, isactive
-                 FROM allureone_users
-                 WHERE loginname = :u AND isactive = 1
-                 LIMIT 1'
-            );
-            $stmt->execute(['u' => $loginname]);
-            $row = $stmt->fetch();
-            if ($row === false || !password_verify($password, $row['password'])) {
-                $error = 'Invalid login name or password.';
-            } else {
-                login_user($row);
-                header('Location: dashboard.php');
-                exit;
+            try {
+                $pdo = db();
+                $stmt = $pdo->prepare(
+                    'SELECT id, loginname, password,
+                            FullName AS full_name,
+                            BranchId AS branch_id,
+                            RoleId AS role_id,
+                            isactive
+                     FROM allureone_users
+                     WHERE loginname = :u AND isactive = 1
+                     LIMIT 1'
+                );
+                $stmt->execute(['u' => $loginname]);
+                $row = $stmt->fetch();
+                if ($row === false) {
+                    $error = 'Invalid login name or password.';
+                } else {
+                    $hash = (string) ($row['password'] ?? '');
+                    if ($hash === '' || !password_verify($password, $hash)) {
+                        $error = 'Invalid login name or password.';
+                    } else {
+                        login_user($row);
+                        header('Location: dashboard.php');
+                        exit;
+                    }
+                }
+            } catch (PDOException $e) {
+                error_log('AllureOne login PDO: ' . $e->getMessage());
+                $cfg = require __DIR__ . '/config.php';
+                $error = !empty($cfg['app']['debug'])
+                    ? ('Database error: ' . $e->getMessage())
+                    : 'Sign-in is unavailable. Check the database connection and that tables exist (run install.php).';
+            } catch (Throwable $e) {
+                error_log('AllureOne login: ' . $e->getMessage());
+                $cfg = require __DIR__ . '/config.php';
+                $error = !empty($cfg['app']['debug'])
+                    ? $e->getMessage()
+                    : 'An error occurred. Please try again.';
             }
         }
     }

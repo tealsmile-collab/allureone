@@ -1,7 +1,13 @@
--- AllureOne schema (MySQL 5.7+ / 8+)
--- Prefer: open install.php in the browser, or import full_install.sql (schema + seeds + admin user).
+-- AllureOne: full schema + seed (run once in phpMyAdmin / MySQL client on your database)
+-- Password for user "admin" is: Allure@011225 (bcrypt below; compatible with PHP password_verify)
 
 SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS allureone_giftcard;
+DROP TABLE IF EXISTS allureone_users;
+DROP TABLE IF EXISTS allureone_branch;
+DROP TABLE IF EXISTS allureone_roles;
+DROP TABLE IF EXISTS allureone_keys;
 
 CREATE TABLE IF NOT EXISTS allureone_roles (
   id INT NOT NULL,
@@ -66,6 +72,8 @@ CREATE TABLE IF NOT EXISTS allureone_keys (
   UNIQUE KEY uq_allureone_keys_name (key_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+SET FOREIGN_KEY_CHECKS = 1;
+
 INSERT INTO allureone_roles (id, RoleName, isActive) VALUES
   (1, 'Superadmin', 1),
   (2, 'admin', 1),
@@ -90,5 +98,14 @@ ON DUPLICATE KEY UPDATE
   vendor_id = VALUES(vendor_id),
   isActive = VALUES(isActive);
 
--- Default admin password must be created via install.php (uses password_hash) or insert your own bcrypt hash.
--- Example: password Allure@011225 → run install.php once to create user `admin`.
+-- admin / Allure@011225 (bcrypt)
+INSERT INTO allureone_users (loginname, password, FullName, BranchId, RoleId, isactive)
+VALUES (
+  'admin',
+  '$2b$10$/RZtUv7per4PsvWd7dP/VuZyEUxKRDijbEHAJ2JetVQykpuXyywFq',
+  'Administrator',
+  3782,
+  1,
+  1
+)
+ON DUPLICATE KEY UPDATE loginname = loginname;

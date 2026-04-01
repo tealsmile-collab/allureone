@@ -11,6 +11,7 @@ if (current_user() !== null) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
     $token = $_POST['_csrf'] ?? '';
     if (!csrf_validate($token)) {
         $error = 'Invalid session. Please refresh and try again.';
@@ -48,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = 'Invalid login name or password.';
                     } else {
                         login_user($row);
+                        dingg_ensure_pos_token_after_login();
                         header('Location: dashboard.php');
                         exit;
                     }
@@ -82,7 +84,9 @@ $appName = $config['app']['name'];
 </head>
 <body class="login-page">
     <div class="login-card">
-        <h1><?= htmlspecialchars($appName, ENT_QUOTES, 'UTF-8') ?></h1>
+        <h1 class="login-heading">
+            <img src="assets/images/allure-logo.png" alt="<?= htmlspecialchars($appName, ENT_QUOTES, 'UTF-8') ?>" class="login-logo" loading="eager" decoding="async">
+        </h1>
         <p class="sub">Sign in to continue</p>
         <?php if ($error !== ''): ?>
             <div class="alert alert--error" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>

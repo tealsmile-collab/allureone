@@ -3,6 +3,10 @@ declare(strict_types=1);
 
 $config = require __DIR__ . '/config.php';
 
+// Keep PHP error logs in the project for easier app-level debugging.
+ini_set('log_errors', '1');
+ini_set('error_log', __DIR__ . '/php_errors.log');
+
 if (session_status() === PHP_SESSION_NONE) {
     session_name($config['app']['session_name']);
     session_set_cookie_params([
@@ -23,3 +27,4 @@ if (!headers_sent()) {
 
 require_once __DIR__ . '/includes/database.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/dingg.php';

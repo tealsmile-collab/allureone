@@ -1,2 +1,5 @@
 # Local secrets — copy config.example.php to config.php
 /config.php
+
+# PHP error log (local / may contain sensitive data)
+/php_errors.log

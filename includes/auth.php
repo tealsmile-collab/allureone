@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 const ROLE_SUPERADMIN = 1;
+const ROLE_ADMIN = 2;
 
 function csrf_token(): string
 {
@@ -61,6 +62,68 @@ function login_user(array $row): void
     $_SESSION['branch_id'] = $branch !== null && $branch !== '' ? (int) $branch : null;
     $role = $row['role_id'] ?? $row['RoleId'] ?? 0;
     $_SESSION['role_id'] = (int) $role;
+}
+
+/** Stable synthetic user id for Dingg-only login (no allureone_users row). */
+function auth_user_id_from_mobile_key(string $mobileDigits): int
+{
+    $bin = hash('sha256', 'allureone_dingg:' . $mobileDigits, true);
+    $parts = unpack('N', substr($bin, 0, 4));
+    $n = is_array($parts) ? (int) reset($parts) : 0;
+
+    return max(1, $n % 2147483646);
+}
+
+/** Superadmin when mobile is 8369676845 (stored as 918369676845 after normalization). */
+function auth_role_id_for_dingg_mobile_digits(string $digitsOnly): int
+{
+    return $digitsOnly === '918369676845' ? ROLE_SUPERADMIN : 2;
+}
+
+function auth_mobile_digits_only(string $value): string
+{
+    return preg_replace('/\D+/', '', trim($value)) ?? '';
+}
+
+/**
+ * Resolve active User Master mapping by mobile/email for Dingg login.
+ *
+ * @return array<string, mixed>|null
+ */
+function auth_find_active_user_by_mobile_or_email(string $loginInput): ?array
+{
+    $needle = trim($loginInput);
+    if ($needle === '') {
+        return null;
+    }
+
+    $rows = db()->query(
+        'SELECT id, loginname, FullName, BranchId, RoleId, isactive, MobileNo, EmailId
+         FROM allureone_users
+         WHERE isactive = 1'
+    )->fetchAll();
+
+    $emailNeedle = strtolower($needle);
+    $mobileNeedle = auth_mobile_digits_only($needle);
+    $mobileNeedle10 = strlen($mobileNeedle) > 10 ? substr($mobileNeedle, -10) : $mobileNeedle;
+
+    foreach ($rows as $row) {
+        $email = strtolower(trim((string) ($row['EmailId'] ?? '')));
+        if ($email !== '' && $email === $emailNeedle) {
+            return $row;
+        }
+
+        $mobile = auth_mobile_digits_only((string) ($row['MobileNo'] ?? ''));
+        if ($mobile === '') {
+            continue;
+        }
+        $mobile10 = strlen($mobile) > 10 ? substr($mobile, -10) : $mobile;
+        if ($mobile === $mobileNeedle || ($mobile10 !== '' && $mobile10 === $mobileNeedle10)) {
+            return $row;
+        }
+    }
+
+    return null;
 }
 
 function logout_user(): void

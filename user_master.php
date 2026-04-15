@@ -37,7 +37,7 @@ $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $editRow = null;
 if ($editId > 0) {
     $es = $pdo->prepare(
-        'SELECT id, loginname, FullName, BranchId, RoleId, isactive FROM allureone_users WHERE id = :id LIMIT 1'
+        'SELECT id, loginname, FullName, MobileNo, EmailId, BranchId, RoleId, isactive FROM allureone_users WHERE id = :id LIMIT 1'
     );
     $es->execute(['id' => $editId]);
     $editRow = $es->fetch();
@@ -57,6 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $loginname = isset($_POST['loginname']) ? trim((string) $_POST['loginname']) : '';
         $password = isset($_POST['password']) ? (string) $_POST['password'] : '';
         $fullName = isset($_POST['full_name']) ? trim((string) $_POST['full_name']) : '';
+        $mobileNo = isset($_POST['mobile_no']) ? trim((string) $_POST['mobile_no']) : '';
+        $emailId = isset($_POST['email_id']) ? trim((string) $_POST['email_id']) : '';
         $branchId = isset($_POST['branch_id']) ? (int) $_POST['branch_id'] : 0;
         $roleId = isset($_POST['role_id']) ? (int) $_POST['role_id'] : 0;
         $len = function_exists('mb_strlen') ? 'mb_strlen' : 'strlen';
@@ -70,14 +72,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($loginname === '' || $fullName === '') {
                 $message = 'Login name and full name are required.';
                 $messageType = 'error';
-            } elseif ($branchId < 1) {
-                $message = 'Please select a branch.';
-                $messageType = 'error';
             } elseif ($len($loginname) > 20) {
                 $message = 'Login name must be at most 20 characters.';
                 $messageType = 'error';
             } elseif ($password !== '' && $len($password) > 20) {
                 $message = 'Password must be at most 20 characters.';
+                $messageType = 'error';
+            } elseif ($mobileNo !== '' && $len($mobileNo) > 20) {
+                $message = 'Mobile number must be at most 20 characters.';
+                $messageType = 'error';
+            } elseif ($emailId !== '' && $len($emailId) > 255) {
+                $message = 'Email ID must be at most 255 characters.';
                 $messageType = 'error';
             } elseif ($roleId < 1) {
                 $message = 'Please select a role.';
@@ -98,13 +103,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messageType = 'error';
                     } else {
                         $branchForDb = null;
-                        $bchk = $pdo->prepare('SELECT COUNT(*) FROM allureone_branch WHERE id = :id');
-                        $bchk->execute(['id' => $branchId]);
-                        if ((int) $bchk->fetchColumn() === 0) {
-                            $message = 'Invalid branch.';
-                            $messageType = 'error';
-                        } else {
-                            $branchForDb = $branchId;
+                        if ($branchId > 0) {
+                            $bchk = $pdo->prepare('SELECT COUNT(*) FROM allureone_branch WHERE id = :id');
+                            $bchk->execute(['id' => $branchId]);
+                            if ((int) $bchk->fetchColumn() === 0) {
+                                $message = 'Invalid branch.';
+                                $messageType = 'error';
+                            } else {
+                                $branchForDb = $branchId;
+                            }
                         }
                         if ($message === '') {
                             $roleChk = $pdo->prepare('SELECT COUNT(*) FROM allureone_roles WHERE id = :id');
@@ -118,12 +125,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         $hash = password_hash($password, PASSWORD_DEFAULT);
                                         $upd = $pdo->prepare(
                                             'UPDATE allureone_users SET loginname = :l, password = :p, FullName = :f,
-                                             BranchId = :b, RoleId = :r, isactive = :a WHERE id = :id'
+                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a WHERE id = :id'
                                         );
                                         $upd->execute([
                                             'l' => $loginname,
                                             'p' => $hash,
                                             'f' => $fullName,
+                                            'm' => $mobileNo !== '' ? $mobileNo : null,
+                                            'e' => $emailId !== '' ? $emailId : null,
                                             'b' => $branchForDb,
                                             'r' => $roleId,
                                             'a' => $isActive,
@@ -132,11 +141,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     } else {
                                         $upd = $pdo->prepare(
                                             'UPDATE allureone_users SET loginname = :l, FullName = :f,
-                                             BranchId = :b, RoleId = :r, isactive = :a WHERE id = :id'
+                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a WHERE id = :id'
                                         );
                                         $upd->execute([
                                             'l' => $loginname,
                                             'f' => $fullName,
+                                            'm' => $mobileNo !== '' ? $mobileNo : null,
+                                            'e' => $emailId !== '' ? $emailId : null,
                                             'b' => $branchForDb,
                                             'r' => $roleId,
                                             'a' => $isActive,
@@ -159,27 +170,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
             }
-        } elseif ($loginname === '' || $password === '' || $fullName === '') {
-            $message = 'Login name, password, and full name are required.';
+        } elseif ($loginname === '' || $fullName === '') {
+            $message = 'Login name and full name are required.';
             $messageType = 'error';
-        } elseif ($branchId < 1) {
-            $message = 'Please select a branch.';
-            $messageType = 'error';
-        } elseif ($len($loginname) > 20 || $len($password) > 20) {
+        } elseif ($len($loginname) > 20 || ($password !== '' && $len($password) > 20)) {
             $message = 'Login name and password must be at most 20 characters.';
+            $messageType = 'error';
+        } elseif ($mobileNo !== '' && $len($mobileNo) > 20) {
+            $message = 'Mobile number must be at most 20 characters.';
+            $messageType = 'error';
+        } elseif ($emailId !== '' && $len($emailId) > 255) {
+            $message = 'Email ID must be at most 255 characters.';
             $messageType = 'error';
         } elseif ($roleId < 1) {
             $message = 'Please select a role.';
             $messageType = 'error';
         } else {
             $branchForDb = null;
-            $bchk = $pdo->prepare('SELECT COUNT(*) FROM allureone_branch WHERE id = :id AND isActive = 1');
-            $bchk->execute(['id' => $branchId]);
-            if ((int) $bchk->fetchColumn() === 0) {
-                $message = 'Invalid branch.';
-                $messageType = 'error';
-            } else {
-                $branchForDb = $branchId;
+            if ($branchId > 0) {
+                $bchk = $pdo->prepare('SELECT COUNT(*) FROM allureone_branch WHERE id = :id AND isActive = 1');
+                $bchk->execute(['id' => $branchId]);
+                if ((int) $bchk->fetchColumn() === 0) {
+                    $message = 'Invalid branch.';
+                    $messageType = 'error';
+                } else {
+                    $branchForDb = $branchId;
+                }
             }
 
             if ($message === '') {
@@ -189,16 +205,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $message = 'Invalid role.';
                     $messageType = 'error';
                 } else {
-                    $hash = password_hash($password, PASSWORD_DEFAULT);
+                    $passwordForHash = $password !== '' ? $password : bin2hex(random_bytes(16));
+                    $hash = password_hash($passwordForHash, PASSWORD_DEFAULT);
                     try {
                         $ins = $pdo->prepare(
-                            'INSERT INTO allureone_users (loginname, password, FullName, BranchId, RoleId, isactive)
-                             VALUES (:l, :p, :f, :b, :r, 1)'
+                            'INSERT INTO allureone_users (loginname, password, FullName, MobileNo, EmailId, BranchId, RoleId, isactive)
+                             VALUES (:l, :p, :f, :m, :e, :b, :r, 1)'
                         );
                         $ins->execute([
                             'l' => $loginname,
                             'p' => $hash,
                             'f' => $fullName,
+                            'm' => $mobileNo !== '' ? $mobileNo : null,
+                            'e' => $emailId !== '' ? $emailId : null,
                             'b' => $branchForDb,
                             'r' => $roleId,
                         ]);
@@ -220,7 +239,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $list = $pdo->query(
-    'SELECT u.id, u.loginname, u.FullName, u.BranchId, u.RoleId, u.isactive,
+    'SELECT u.id, u.loginname, u.FullName, u.MobileNo, u.EmailId, u.BranchId, u.RoleId, u.isactive,
             b.business_name, b.locality, r.RoleName
      FROM allureone_users u
      LEFT JOIN allureone_branch b ON b.id = u.BranchId
@@ -261,9 +280,19 @@ require __DIR__ . '/includes/layout_start.php';
                        value="<?= e((string) ($editRow['FullName'] ?? '')) ?>">
             </div>
             <div class="form__row">
+                <label for="edit_mobile_no">Mobile number</label>
+                <input id="edit_mobile_no" name="mobile_no" type="text" maxlength="20"
+                       value="<?= e((string) ($editRow['MobileNo'] ?? '')) ?>">
+            </div>
+            <div class="form__row">
+                <label for="edit_email_id">Email ID</label>
+                <input id="edit_email_id" name="email_id" type="email" maxlength="255"
+                       value="<?= e((string) ($editRow['EmailId'] ?? '')) ?>">
+            </div>
+            <div class="form__row">
                 <label for="edit_branch_id">Branch</label>
-                <select id="edit_branch_id" name="branch_id" required>
-                    <option value="">— Select branch —</option>
+                <select id="edit_branch_id" name="branch_id">
+                    <option value="">— None —</option>
                     <?php foreach ($branchesAll as $b): ?>
                         <option value="<?= (int) $b['id'] ?>"
                             <?= ((int) ($editRow['BranchId'] ?? 0) === (int) $b['id']) ? ' selected' : '' ?>>
@@ -312,8 +341,8 @@ require __DIR__ . '/includes/layout_start.php';
                        value="<?= (!$editId && isset($_POST['loginname']) && ($_POST['_action'] ?? '') === 'create') ? e((string) $_POST['loginname']) : '' ?>">
             </div>
             <div class="form__row">
-                <label for="password">Password</label>
-                <input id="password" name="password" type="password" required maxlength="20">
+                <label for="password">Password <span class="hint">(optional)</span></label>
+                <input id="password" name="password" type="password" maxlength="20" placeholder="Optional">
             </div>
             <div class="form__row">
                 <label for="full_name">Full name</label>
@@ -321,9 +350,19 @@ require __DIR__ . '/includes/layout_start.php';
                        value="<?= (!$editId && isset($_POST['full_name']) && ($_POST['_action'] ?? '') === 'create') ? e((string) $_POST['full_name']) : '' ?>">
             </div>
             <div class="form__row">
+                <label for="mobile_no">Mobile number</label>
+                <input id="mobile_no" name="mobile_no" type="text" maxlength="20"
+                       value="<?= (!$editId && isset($_POST['mobile_no']) && ($_POST['_action'] ?? '') === 'create') ? e((string) $_POST['mobile_no']) : '' ?>">
+            </div>
+            <div class="form__row">
+                <label for="email_id">Email ID</label>
+                <input id="email_id" name="email_id" type="email" maxlength="255"
+                       value="<?= (!$editId && isset($_POST['email_id']) && ($_POST['_action'] ?? '') === 'create') ? e((string) $_POST['email_id']) : '' ?>">
+            </div>
+            <div class="form__row">
                 <label for="branch_id">Branch</label>
-                <select id="branch_id" name="branch_id" required>
-                    <option value="">— Select branch —</option>
+                <select id="branch_id" name="branch_id">
+                    <option value="">— None —</option>
                     <?php foreach ($branchesActive as $b): ?>
                         <option value="<?= (int) $b['id'] ?>"
                             <?= (!$editId && isset($_POST['branch_id']) && (int) $_POST['branch_id'] === (int) $b['id'] && ($_POST['_action'] ?? '') === 'create') ? ' selected' : '' ?>>
@@ -362,6 +401,8 @@ require __DIR__ . '/includes/layout_start.php';
                         <tr>
                             <th>Login</th>
                             <th>Full name</th>
+                            <th>Mobile</th>
+                            <th>Email</th>
                             <th>Branch</th>
                             <th>Role</th>
                             <th>Active</th>
@@ -373,6 +414,8 @@ require __DIR__ . '/includes/layout_start.php';
                             <tr>
                                 <td><?= e((string) $u['loginname']) ?></td>
                                 <td><?= e((string) $u['FullName']) ?></td>
+                                <td><?= e((string) ($u['MobileNo'] ?? '')) ?></td>
+                                <td><?= e((string) ($u['EmailId'] ?? '')) ?></td>
                                 <td>
                                     <?= e((string) ($u['business_name'] ?? '—')) ?>
                                     <?php if (($u['locality'] ?? '') !== ''): ?>

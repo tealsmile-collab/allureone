@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['run_get_all_business'
         $testUrl = (string) (($config['dingg']['get_all_business_url'] ?? 'https://api.dingg.app/api/v1/vendor/get_all_business?by_group=false'));
         $token = dingg_resolve_pos_token_for_api();
         if ($token === null || $token === '') {
-            $testError = 'No Dingg POS token. Sign in again or check allureone_keys / Dingg config.';
+            $testError = 'No Dingg token in session. Sign in through the app (token is stored in localStorage and synced to the server).';
         } else {
             $resp = dingg_http_request_authenticated('GET', $testUrl, $token, null);
             $testHttp = (int) ($resp['http'] ?? 0);

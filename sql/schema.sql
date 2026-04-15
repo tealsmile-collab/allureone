@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS allureone_users (
   loginname VARCHAR(20) NOT NULL,
   password VARCHAR(255) NOT NULL,
   FullName VARCHAR(255) NOT NULL,
+  MobileNo VARCHAR(20) NULL,
+  EmailId VARCHAR(255) NULL,
   BranchId INT NULL,
   RoleId INT NOT NULL,
   isactive TINYINT(1) NOT NULL DEFAULT 1,
@@ -58,12 +60,28 @@ CREATE TABLE IF NOT EXISTS allureone_giftcard (
   CONSTRAINT fk_allureone_gc_branch FOREIGN KEY (BranchId) REFERENCES allureone_branch (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS allureone_keys (
+CREATE TABLE IF NOT EXISTS allurepro_InvoiceCancellation (
   id INT NOT NULL AUTO_INCREMENT,
-  key_name VARCHAR(64) NOT NULL,
-  key_value LONGTEXT NULL,
+  `Invoice Number` VARCHAR(100) NOT NULL,
+  `Invoice ID` INT NOT NULL,
+  `Branch Name` VARCHAR(255) NOT NULL,
+  `Branch ID` INT NOT NULL,
+  `Invoice Date` VARCHAR(50) NOT NULL,
+  `Client Name` VARCHAR(255) NOT NULL,
+  `Invoice Amount` VARCHAR(50) NOT NULL,
+  `Invoice Status` VARCHAR(255) NOT NULL,
+  CancellationRemark VARCHAR(255) NOT NULL,
+  AdminRemark VARCHAR(255) NULL,
+  AdminID INT NULL,
+  AdminName VARCHAR(255) NULL,
+  RequestUserID INT NOT NULL,
+  RequestUserName VARCHAR(255) NOT NULL,
+  CancellationRequestDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CancelledDate DATETIME NULL,
+  CancellationStatus TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_allureone_keys_name (key_name)
+  KEY idx_invoice_cancel_status (CancellationStatus),
+  KEY idx_invoice_cancel_invoice_id (`Invoice ID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO allureone_roles (id, RoleName, isActive) VALUES

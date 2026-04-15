@@ -1,31 +1,8 @@
 <?php
 declare(strict_types=1);
 
-const DINGG_KEY_POS_TOKEN = 'posToken';
-
 /** @internal Last-resort session key if openssl_encrypt fails (same trust boundary as encrypted blob). */
 const DINGG_SESSION_TOKEN_PLAIN = 'dingg_pos_plain';
-
-/**
- * Creates allureone_keys if missing (install skipped or older DB).
- */
-function allureone_keys_ensure_table(PDO $pdo): void
-{
-    static $done = false;
-    if ($done) {
-        return;
-    }
-    $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS allureone_keys (
-          id INT NOT NULL AUTO_INCREMENT,
-          key_name VARCHAR(64) NOT NULL,
-          key_value LONGTEXT NULL,
-          PRIMARY KEY (id),
-          UNIQUE KEY uq_allureone_keys_name (key_name)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
-    );
-    $done = true;
-}
 
 function dingg_token_diag_clear(): void
 {
@@ -48,68 +25,60 @@ function dingg_token_diag_get(): string
     return (string) ($GLOBALS['__allureone_dingg_token_diag'] ?? '');
 }
 
-function allureone_key_get(PDO $pdo, string $name): ?string
+function dingg_auth_expired_user_message(): string
 {
-    allureone_keys_ensure_table($pdo);
-    $stmt = $pdo->prepare('SELECT key_value FROM allureone_keys WHERE key_name = :k LIMIT 1');
-    $stmt->execute(['k' => $name]);
-    $row = $stmt->fetch();
-    if ($row === false) {
-        return null;
-    }
-    $v = $row['key_value'] ?? null;
-    if ($v === null || $v === '') {
-        return null;
-    }
-    return (string) $v;
-}
-
-function allureone_key_set(PDO $pdo, string $name, string $value): void
-{
-    allureone_keys_ensure_table($pdo);
-    $stmt = $pdo->prepare(
-        'INSERT INTO allureone_keys (key_name, key_value) VALUES (:k, :v)
-         ON DUPLICATE KEY UPDATE key_value = VALUES(key_value)'
-    );
-    $stmt->execute(['k' => $name, 'v' => $value]);
+    return 'Your Dingg session has expired. Please log out and log in again, then try.';
 }
 
 /**
- * Reads stored Dingg POS token; tries canonical name first, then common manual-insert variants.
+ * True when Dingg rejected the bearer token (HTTP 401/403 or equivalent JSON/body).
  */
-function allureone_key_get_pos_token_from_db(PDO $pdo): ?string
+function dingg_response_looks_unauthorized(int $http, string $body): bool
 {
-    foreach ([DINGG_KEY_POS_TOKEN, 'pos_token'] as $name) {
-        $v = allureone_key_get($pdo, $name);
-        if ($v !== null && trim($v) !== '') {
-            return trim($v);
+    if ($http === 401 || $http === 403) {
+        return true;
+    }
+
+    $j = json_decode($body, true);
+    if (is_array($j)) {
+        $code = (int) ($j['code'] ?? 0);
+        if ($code === 401 || $code === 403) {
+            return true;
+        }
+        $msg = strtolower((string) ($j['message'] ?? ''));
+        if ($msg !== '' && preg_match('/unauthor|session\s*expir|token\s*expir|invalid\s*token|login\s*required|access\s*denied/i', $msg) === 1) {
+            return true;
+        }
+        if (($j['success'] ?? null) === false && $msg !== '' && str_contains($msg, 'author')) {
+            return true;
         }
     }
 
-    return null;
+    if ($http >= 400 && $http < 500 && $http !== 404) {
+        $lower = strtolower($body);
+        if (str_contains($lower, 'unauthor') || str_contains($lower, 'token expired') || str_contains($lower, 'invalid token')) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
- * Optional testing override: when dingg.posToken in config is non-empty, use it instead of DB value.
- * Callers must still invoke allureone_key_get_pos_token_from_db() when a DB read is required.
+ * Sets a one-shot session notice so the next layout can show an auth-expired message (logged-in users only).
  */
-function dingg_config_pos_token_override(): string
+function dingg_note_unauthorized_if_needed(int $http, string $body): void
 {
-    $cfg = require __DIR__ . '/../config.php';
-    $t = trim((string) (($cfg['dingg']['posToken'] ?? '')));
-
-    return $t === '' ? '' : dingg_normalize_pos_token($t);
-}
-
-/**
- * Effective POS token: config posToken overrides DB when set.
- */
-function dingg_effective_pos_token_from_db(PDO $pdo): string
-{
-    $dbPos = allureone_key_get_pos_token_from_db($pdo) ?? '';
-    $override = dingg_config_pos_token_override();
-
-    return $override !== '' ? $override : $dbPos;
+    if (!dingg_response_looks_unauthorized($http, $body)) {
+        return;
+    }
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return;
+    }
+    if (empty($_SESSION['user_id'])) {
+        return;
+    }
+    $_SESSION['dingg_auth_expired_notice'] = dingg_auth_expired_user_message();
 }
 
 function dingg_secret_key_bytes(): string
@@ -293,8 +262,13 @@ function dingg_curl_exec_once(string $url, string $method, array $headers, ?stri
     if ($method === 'POST') {
         $opts[CURLOPT_POST] = true;
         $opts[CURLOPT_POSTFIELDS] = $jsonBody ?? '';
-    } else {
+    } elseif ($method === 'GET') {
         $opts[CURLOPT_HTTPGET] = true;
+    } else {
+        $opts[CURLOPT_CUSTOMREQUEST] = $method;
+        if ($jsonBody !== null) {
+            $opts[CURLOPT_POSTFIELDS] = $jsonBody;
+        }
     }
     curl_setopt_array($ch, $opts);
     $body = curl_exec($ch);
@@ -552,84 +526,108 @@ function dingg_http_request_authenticated(string $method, string $url, string $b
         return ['http' => 0, 'body' => ''];
     }
 
-    return dingg_http_execute($method, $url, $headers, $jsonBody);
+    $resp = dingg_http_execute($method, $url, $headers, $jsonBody);
+    dingg_note_unauthorized_if_needed((int) ($resp['http'] ?? 0), (string) ($resp['body'] ?? ''));
+
+    return $resp;
 }
 
 /**
- * @return list<string>
+ * True when login name is numeric-only (use Dingg "mobile"); otherwise use "email".
  */
-function dingg_mobile_variants(string $mobile): array
+function dingg_login_username_is_all_digits(string $trimmed): bool
 {
-    $mobile = trim($mobile);
-    $out = [];
-    if ($mobile !== '') {
-        $out[] = $mobile;
-    }
-    if (preg_match('/^91(\d{10})$/', $mobile, $m)) {
-        $out[] = $m[1];
-    }
-    if (preg_match('/^(\d{10})$/', $mobile, $m)) {
-        $out[] = '91' . $m[1];
-    }
-
-    return array_values(array_unique(array_filter($out)));
+    return $trimmed !== '' && preg_match('/^\d+$/', $trimmed) === 1;
 }
 
-function dingg_fetch_token(): ?string
+/**
+ * Normalize mobile for vendor/login: 10-digit India numbers get leading 91.
+ */
+function dingg_normalize_mobile_for_login_api(string $digitsOnly): string
+{
+    if (strlen($digitsOnly) === 10) {
+        return '91' . $digitsOnly;
+    }
+
+    return $digitsOnly;
+}
+
+/**
+ * POST vendor/login with user-supplied identifier + password.
+ * All-digit username → JSON "mobile"; otherwise → JSON "email".
+ *
+ * @return array{ok:bool, error:?string, http:int, token:?string, employee_name:string}
+ */
+function dingg_vendor_login_credentials(string $emailRaw, string $password): array
 {
     $config = require __DIR__ . '/../config.php';
     $c = $config['dingg'] ?? [];
-    $url = (string) ($c['login_url'] ?? '');
+    $url = (string) ($c['login_url'] ?? 'https://api.dingg.app/api/v1/vendor/login');
     if ($url === '') {
-        dingg_token_diag_set('Dingg login_url is empty in config.');
-        return null;
+        return ['ok' => false, 'error' => 'Dingg login URL is not configured.', 'http' => 0, 'token' => null, 'employee_name' => ''];
     }
 
-    $basePayload = [
+    $login = trim($emailRaw);
+    if ($login === '') {
+        return ['ok' => false, 'error' => 'Enter a valid user name.', 'http' => 0, 'token' => null, 'employee_name' => ''];
+    }
+
+    $payload = [
         'isWeb' => (bool) ($c['isWeb'] ?? true),
-        'password' => (string) ($c['password'] ?? ''),
+        'password' => $password,
         'fcm_token' => (string) ($c['fcm_token'] ?? ''),
     ];
-
-    $mobiles = dingg_mobile_variants((string) ($c['mobile'] ?? ''));
-    if ($mobiles === []) {
-        dingg_token_diag_set('Dingg mobile is empty in config.');
-        return null;
+    if (dingg_login_username_is_all_digits($login)) {
+        $payload['mobile'] = dingg_normalize_mobile_for_login_api($login);
+    } else {
+        $payload['email'] = $login;
     }
 
-    $lastHttp = 0;
-    $httpFailures = [];
-    foreach ($mobiles as $mob) {
-        $payload = $basePayload;
-        $payload['mobile'] = $mob;
-        $resp = dingg_http_request_login('POST', $url, json_encode($payload, JSON_UNESCAPED_SLASHES));
-        $lastHttp = (int) $resp['http'];
-        if ($lastHttp < 200 || $lastHttp >= 300) {
-            error_log('Dingg login HTTP status: ' . $lastHttp . ' body: ' . substr((string) $resp['body'], 0, 500));
-            $httpFailures[] = $lastHttp;
-            continue;
-        }
+    $resp = dingg_http_request_login('POST', $url, json_encode($payload, JSON_UNESCAPED_SLASHES));
+    $http = (int) ($resp['http'] ?? 0);
+    $body = (string) ($resp['body'] ?? '');
 
-        $decoded = json_decode((string) $resp['body'], true);
-        if (!is_array($decoded)) {
-            error_log('Dingg login: response is not JSON');
-            dingg_token_diag_append('Login returned non-JSON.');
-            continue;
-        }
-        $token = dingg_extract_token_from_login_response($decoded);
-        if ($token !== null && $token !== '') {
-            return $token;
-        }
-        error_log('Dingg login: no token in JSON. Top keys: ' . implode(', ', array_keys($decoded)));
-        dingg_token_diag_append('Login OK but no token in JSON (see PHP error log for keys).');
+    if ($http < 200 || $http >= 300) {
+        $decoded = json_decode($body, true);
+        $em = is_array($decoded) ? trim((string) ($decoded['message'] ?? '')) : '';
+
+        return ['ok' => false, 'error' => $em !== '' ? $em : ('Login failed (HTTP ' . $http . ').'), 'http' => $http, 'token' => null, 'employee_name' => ''];
     }
 
-    if ($httpFailures !== []) {
-        $uniq = array_values(array_unique($httpFailures));
-        dingg_token_diag_append('Dingg login HTTP codes tried: ' . implode(', ', $uniq) . '. If 0: connection/SSL/firewall (see cURL lines above).');
+    $decoded = json_decode($body, true);
+    if (!is_array($decoded)) {
+        return ['ok' => false, 'error' => 'Invalid response from server.', 'http' => $http, 'token' => null, 'employee_name' => ''];
     }
 
-    return null;
+    if (($decoded['success'] ?? null) === false) {
+        $em = trim((string) ($decoded['message'] ?? ''));
+
+        return ['ok' => false, 'error' => $em !== '' ? $em : 'Login failed.', 'http' => $http, 'token' => null, 'employee_name' => ''];
+    }
+
+    $msg = trim((string) ($decoded['message'] ?? ''));
+    $token = dingg_extract_token_from_login_response($decoded);
+    if ($token === null || $token === '') {
+        return ['ok' => false, 'error' => $msg !== '' ? $msg : 'Login succeeded but no token was returned.', 'http' => $http, 'token' => null, 'employee_name' => ''];
+    }
+    $token = dingg_normalize_pos_token($token);
+
+    $employeeName = '';
+    $data = $decoded['data'] ?? null;
+    if (is_array($data)) {
+        $emp = $data['employee'] ?? null;
+        if (is_array($emp)) {
+            $employeeName = trim((string) ($emp['name'] ?? ''));
+        }
+    }
+
+    return [
+        'ok' => true,
+        'error' => null,
+        'http' => $http,
+        'token' => $token,
+        'employee_name' => $employeeName,
+    ];
 }
 
 /**
@@ -660,45 +658,6 @@ function dingg_extract_token_from_login_response(array $decoded, int $depth = 0)
     }
 
     return null;
-}
-
-/**
- * GET get_all_business — returns success if JSON status is "success".
- * unauthorized: HTTP 401/403 or response indicates auth failure.
- */
-function dingg_validate_pos_token_business(string $token): array
-{
-    $config = require __DIR__ . '/../config.php';
-    $url = (string) (($config['dingg']['get_all_business_url'] ?? 'https://api.dingg.app/api/v1/vendor/get_all_business?by_group=false'));
-
-    $resp = dingg_http_request_authenticated('GET', $url, $token, null);
-    $code = $resp['http'];
-    $body = (string) $resp['body'];
-
-    if ($code === 401 || $code === 403) {
-        return ['success' => false, 'unauthorized' => true];
-    }
-
-    $decoded = json_decode($body, true);
-    if (is_array($decoded)) {
-        if (($decoded['status'] ?? '') === 'success') {
-            return ['success' => true, 'unauthorized' => false];
-        }
-        if (($decoded['success'] ?? false) === true) {
-            return ['success' => true, 'unauthorized' => false];
-        }
-        $msg = strtolower((string) ($decoded['message'] ?? ''));
-        if ($msg === 'success') {
-            return ['success' => true, 'unauthorized' => false];
-        }
-    }
-
-    $lower = strtolower($body);
-    $unauth = str_contains($lower, 'unauthor')
-        || str_contains($lower, 'unauthorised')
-        || str_contains($lower, 'unauthorized');
-
-    return ['success' => false, 'unauthorized' => $unauth];
 }
 
 /**
@@ -769,6 +728,29 @@ function dingg_fetch_vendor_business_location_map(): array
     }
 
     return $map;
+}
+
+/**
+ * Same as dingg_fetch_vendor_business_location_map() but uses an explicit bearer token (no session resolve).
+ *
+ * @return array<int, array{business_name: string, locality: string}>
+ */
+function dingg_fetch_vendor_business_location_map_with_token(string $bearerToken): array
+{
+    $token = dingg_normalize_pos_token($bearerToken);
+    if ($token === '') {
+        return [];
+    }
+
+    $config = require __DIR__ . '/../config.php';
+    $url = (string) (($config['dingg']['get_all_business_url'] ?? 'https://api.dingg.app/api/v1/vendor/get_all_business?by_group=false'));
+    $resp = dingg_http_request_authenticated('GET', $url, $token, null);
+    $code = (int) ($resp['http'] ?? 0);
+    if ($code < 200 || $code >= 300) {
+        return [];
+    }
+
+    return dingg_parse_get_all_business_location_map((string) ($resp['body'] ?? ''));
 }
 
 /**
@@ -907,113 +889,19 @@ function dingg_sales_target_walk_collect(array $node, array &$rows, int $depth =
 }
 
 /**
- * Validates stored token against Dingg; on failure runs vendor login and persists a new token when possible.
- */
-function dingg_apply_stored_token_or_refresh(PDO $pdo, string $pos): void
-{
-    $pos = trim($pos);
-    if ($pos === '') {
-        return;
-    }
-
-    $check = dingg_validate_pos_token_business($pos);
-    if ($check['success']) {
-        dingg_encrypt_session_token($pos);
-        return;
-    }
-
-    $new = dingg_fetch_token();
-    if ($new !== null && $new !== '') {
-        allureone_key_set($pdo, DINGG_KEY_POS_TOKEN, $new);
-        dingg_encrypt_session_token($new);
-    } else {
-        dingg_encrypt_session_token($pos);
-    }
-}
-
-/**
- * After app login: load posToken from DB, validate or refresh Dingg token, store encrypted in session.
- *
- * @param bool $skipFetchWhenDbEmpty If true, do not call Dingg login when DB has no posToken (avoids duplicate fetch with dingg_resolve_pos_token_for_api).
- */
-function dingg_ensure_pos_token_after_login(bool $skipFetchWhenDbEmpty = false): void
-{
-    try {
-        $pdo = db();
-        $pos = dingg_effective_pos_token_from_db($pdo);
-
-        if ($pos === '') {
-            if ($skipFetchWhenDbEmpty) {
-                return;
-            }
-            $new = dingg_fetch_token();
-            if ($new !== null && $new !== '') {
-                allureone_key_set($pdo, DINGG_KEY_POS_TOKEN, $new);
-                dingg_encrypt_session_token($new);
-            }
-            return;
-        }
-
-        dingg_apply_stored_token_or_refresh($pdo, $pos);
-    } catch (Throwable $e) {
-        error_log('Dingg pos token ensure: ' . $e->getMessage());
-    }
-}
-
-/**
- * Resolves a usable Bearer token: session (decrypted), DB re-encrypt, or fresh Dingg login.
+ * Bearer token for server-side Dingg calls: from PHP session (set at login and synced from localStorage via dingg_token_sync.php).
  */
 function dingg_resolve_pos_token_for_api(): ?string
 {
     dingg_token_diag_clear();
-    dingg_ensure_pos_token_after_login(true);
     $t = dingg_get_pos_token_from_session();
     if ($t !== null && $t !== '') {
         return $t;
     }
 
-    try {
-        $pdo = db();
-        $pos = dingg_effective_pos_token_from_db($pdo);
-        if ($pos !== '') {
-            // ensure() already validated/refreshed when this row existed; retry encrypt only (e.g. openssl hiccup)
-            dingg_encrypt_session_token($pos);
-            $t = dingg_get_pos_token_from_session();
-            if ($t !== null && $t !== '') {
-                return $t;
-            }
-            dingg_token_diag_append('DB token present but session store failed (openssl?).');
-        } else {
-            dingg_token_diag_append('No pos token row in allureone_keys (need key_name posToken or pos_token, non-empty key_value).');
-        }
-    } catch (Throwable $e) {
-        error_log('Dingg resolve token from DB: ' . $e->getMessage());
-        dingg_token_diag_append('Database: ' . $e->getMessage());
-    }
-
-    $fresh = dingg_fetch_token();
-    if ($fresh !== null && $fresh !== '') {
-        try {
-            $pdo = db();
-            allureone_key_set($pdo, DINGG_KEY_POS_TOKEN, $fresh);
-        } catch (Throwable $e) {
-            error_log('Dingg resolve token save: ' . $e->getMessage());
-            dingg_token_diag_append('Could not save token to DB.');
-        }
-        dingg_encrypt_session_token($fresh);
-        $t = dingg_get_pos_token_from_session();
-
-        if ($t !== null && $t !== '') {
-            return $t;
-        }
-        dingg_token_diag_append('Fresh token from Dingg but session readback failed.');
-    }
-
-    if (dingg_token_diag_get() === '') {
-        dingg_token_diag_set(
-            'Could not obtain Dingg token. Check dingg.mobile and dingg.password in config, PHP openssl extension, and outbound HTTPS to api.dingg.app. If logs show SSL errors, try dingg.ssl_verify => false (development only).'
-        );
-    }
+    dingg_token_diag_set(
+        'No Dingg token in session. Sign in again, or ensure localStorage (allureone_dingg_bearer) is synced to the server.'
+    );
 
     return null;
 }
@@ -1027,25 +915,25 @@ function sanitize_invoice_search_term(string $raw): string
 }
 
 /**
- * GET vendor bills — term = invoice number; start/end = current date (Y-m-d).
+ * GET vendor bills with an explicit bearer token (e.g. from browser localStorage via proxy).
  *
  * @return array{ok:bool, error?:string, http:int, body:string, error_detail?:string}
  */
-function dingg_fetch_vendor_bills(string $term): array
+function dingg_fetch_vendor_bills_with_token(string $term, string $bearerToken): array
 {
     $term = sanitize_invoice_search_term($term);
     if ($term === '') {
         return ['ok' => false, 'error' => 'empty_term', 'http' => 0, 'body' => ''];
     }
 
-    $token = dingg_resolve_pos_token_for_api();
-    if ($token === null || $token === '') {
+    $token = dingg_normalize_pos_token($bearerToken);
+    if ($token === '') {
         return [
             'ok' => false,
             'error' => 'no_token',
             'http' => 0,
             'body' => '',
-            'error_detail' => dingg_token_diag_get(),
+            'error_detail' => 'Missing or empty Dingg bearer token.',
         ];
     }
 
@@ -1075,6 +963,27 @@ function dingg_fetch_vendor_bills(string $term): array
         'http' => $resp['http'],
         'body' => (string) $resp['body'],
     ];
+}
+
+/**
+ * GET vendor bills — term = invoice number; start/end = current date (Y-m-d). Uses session/DB/config token.
+ *
+ * @return array{ok:bool, error?:string, http:int, body:string, error_detail?:string}
+ */
+function dingg_fetch_vendor_bills(string $term): array
+{
+    $token = dingg_resolve_pos_token_for_api();
+    if ($token === null || $token === '') {
+        return [
+            'ok' => false,
+            'error' => 'no_token',
+            'http' => 0,
+            'body' => '',
+            'error_detail' => dingg_token_diag_get(),
+        ];
+    }
+
+    return dingg_fetch_vendor_bills_with_token($term, $token);
 }
 
 function dingg_bills_response_is_success(array $json): bool
@@ -1167,10 +1076,11 @@ function dingg_format_invoice_status_label(array $bill): string
 
 /**
  * POST cancellation for a bill. Set config dingg.cancel_bill_url (optional {id} placeholder).
+ * Pass $bearerTokenOverride when the token is only in browser localStorage (same as invoice search).
  *
  * @return array{ok:bool, error?:string, http:int, body:string}
  */
-function dingg_request_bill_cancellation(int $billId): array
+function dingg_request_bill_cancellation(int $billId, ?string $bearerTokenOverride = null, ?string $cancelReason = null): array
 {
     if ($billId <= 0) {
         return ['ok' => false, 'error' => 'invalid_id', 'http' => 0, 'body' => ''];
@@ -1183,7 +1093,13 @@ function dingg_request_bill_cancellation(int $billId): array
         return ['ok' => false, 'error' => 'not_configured', 'http' => 0, 'body' => ''];
     }
 
-    $token = dingg_resolve_pos_token_for_api();
+    $token = null;
+    if ($bearerTokenOverride !== null && trim($bearerTokenOverride) !== '') {
+        $token = dingg_normalize_pos_token($bearerTokenOverride);
+    }
+    if ($token === null || $token === '') {
+        $token = dingg_resolve_pos_token_for_api();
+    }
     if ($token === null || $token === '') {
         return ['ok' => false, 'error' => 'no_token', 'http' => 0, 'body' => ''];
     }
@@ -1192,13 +1108,68 @@ function dingg_request_bill_cancellation(int $billId): array
         ? str_replace('{id}', (string) $billId, $template)
         : $template;
 
-    $payload = json_encode(['id' => $billId], JSON_UNESCAPED_SLASHES);
+    $payloadData = ['id' => $billId];
+    $cancelReason = trim((string) ($cancelReason ?? ''));
+    if ($cancelReason !== '') {
+        $payloadData['reason'] = function_exists('mb_substr')
+            ? mb_substr($cancelReason, 0, 100)
+            : substr($cancelReason, 0, 100);
+    }
+    $payload = json_encode($payloadData, JSON_UNESCAPED_SLASHES);
     $resp = dingg_http_request_authenticated('POST', $url, $token, $payload);
 
     return [
         'ok' => true,
         'http' => $resp['http'],
         'body' => (string) $resp['body'],
+    ];
+}
+
+/**
+ * DELETE vendor bill for approval flow.
+ *
+ * @return array{ok:bool, error?:string, http:int, body:string}
+ */
+function dingg_delete_vendor_bill(int $billId, string $reason, ?string $bearerTokenOverride = null): array
+{
+    if ($billId <= 0) {
+        return ['ok' => false, 'error' => 'invalid_id', 'http' => 0, 'body' => ''];
+    }
+
+    $reason = trim($reason);
+    if ($reason === '') {
+        return ['ok' => false, 'error' => 'empty_reason', 'http' => 0, 'body' => ''];
+    }
+
+    $token = null;
+    if ($bearerTokenOverride !== null && trim($bearerTokenOverride) !== '') {
+        $token = dingg_normalize_pos_token($bearerTokenOverride);
+    }
+    if ($token === null || $token === '') {
+        $token = dingg_resolve_pos_token_for_api();
+    }
+    if ($token === null || $token === '') {
+        return ['ok' => false, 'error' => 'no_token', 'http' => 0, 'body' => ''];
+    }
+
+    $config = require __DIR__ . '/../config.php';
+    $baseUrl = trim((string) (($config['dingg']['delete_bill_url'] ?? 'https://api.dingg.app/api/v1/vendor/bill')));
+    if ($baseUrl === '') {
+        return ['ok' => false, 'error' => 'not_configured', 'http' => 0, 'body' => ''];
+    }
+
+    $url = $baseUrl . '?' . http_build_query(
+        ['bill_id' => $billId, 'reason' => $reason],
+        '',
+        '&',
+        PHP_QUERY_RFC3986
+    );
+    $resp = dingg_http_request_authenticated('DELETE', $url, $token, null);
+
+    return [
+        'ok' => true,
+        'http' => (int) ($resp['http'] ?? 0),
+        'body' => (string) ($resp['body'] ?? ''),
     ];
 }
 

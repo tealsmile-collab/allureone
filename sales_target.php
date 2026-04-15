@@ -57,7 +57,9 @@ if ($loadError === '') {
     } else {
         $apiHttp = (int) ($resp['http'] ?? 0);
         $body = (string) ($resp['body'] ?? '');
-        if ($apiHttp < 200 || $apiHttp >= 300) {
+        if (dingg_response_looks_unauthorized($apiHttp, $body)) {
+            $loadError = dingg_auth_expired_user_message();
+        } elseif ($apiHttp < 200 || $apiHttp >= 300) {
             $loadError = 'Sales target API returned HTTP ' . $apiHttp . '.';
             $snippet = trim($body);
             if (strlen($snippet) > 280) {

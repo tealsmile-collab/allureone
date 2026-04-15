@@ -24,8 +24,6 @@ return [
         'authorization_value' => 'Bearer %s',
         /** Also send posToken: <token> (some vendor endpoints expect it). Set false if redundant. */
         'send_pos_token_header' => true,
-        /** Optional: non-empty overrides DB posToken (DB row is still read). Leave empty to use DB only. */
-        'posToken' => '',
         /** When true (default), error_log full vendor/bills (invoice search) URL, HTTP code, and response body (see bootstrap error_log path). */
         'log_invoice_search' => true,
         /** POST JSON { "id": <bill id> } — use {id} in URL for path-style endpoints, or leave empty until Dingg docs confirm */
@@ -35,8 +33,6 @@ return [
         /** If true (default), failed HTTPS requests retry once with SSL verification off (fixes missing CA bundle on some hosts). */
         'ssl_insecure_retry' => true,
         'isWeb' => true,
-        'mobile' => 'your_mobile',
-        'password' => 'your_password',
         'fcm_token' => '',
         'encryption_key' => 'your_long_random_secret_for_encrypting_pos_token_in_session',
     ],

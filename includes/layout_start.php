@@ -2,6 +2,7 @@
 declare(strict_types=1);
 /** @var string $pageTitle */
 /** @var string $activeNav */
+require_once __DIR__ . '/app_client.php';
 $config = require __DIR__ . '/../config.php';
 $appName = $config['app']['name'];
 $user = current_user();
@@ -14,16 +15,35 @@ $user = current_user();
     <title><?= e($pageTitle) ?> · <?= e($appName) ?></title>
     <link rel="stylesheet" href="assets/css/app.css">
 </head>
-<body class="app">
+<body class="app" data-dingg-ls-key="<?= e(ALLUREONE_LS_DINGG_BEARER) ?>">
+    <?php
+    if (!empty($_SESSION['dingg_bearer_bootstrap'])) {
+        $bootTok = (string) $_SESSION['dingg_bearer_bootstrap'];
+        unset($_SESSION['dingg_bearer_bootstrap']);
+        ?>
+        <script>
+        (function () {
+            try {
+                localStorage.setItem(<?= json_encode(ALLUREONE_LS_DINGG_BEARER) ?>, <?= json_encode($bootTok, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
+            } catch (e) {}
+        })();
+        </script>
+        <?php
+    }
+    ?>
     <aside class="sidebar" id="appSidebar">
         <a class="sidebar__brand" href="dashboard.php"><?= e($appName) ?></a>
         <nav class="sidebar__nav">
             <a class="sidebar__link<?= ($activeNav === 'dashboard') ? ' is-active' : '' ?>" href="dashboard.php">Dashboard</a>
+            <a class="sidebar__link<?= ($activeNav === 'invoice_cancellation') ? ' is-active' : '' ?>" href="invoice_cancellation.php">Invoice Cancellation</a>
             <a class="sidebar__link<?= ($activeNav === 'gift_codes') ? ' is-active' : '' ?>" href="gift_codes.php">Gift codes</a>
             <a class="sidebar__link<?= ($activeNav === 'sales_target') ? ' is-active' : '' ?>" href="sales_target.php">Sales target</a>
             <?php if ($user && $user['role_id'] === ROLE_SUPERADMIN): ?>
                 <a class="sidebar__link<?= ($activeNav === 'branch') ? ' is-active' : '' ?>" href="branch_master.php">Branch Master</a>
                 <a class="sidebar__link<?= ($activeNav === 'user') ? ' is-active' : '' ?>" href="user_master.php">User Master</a>
+            <?php endif; ?>
+            <?php if ($user && trim((string) ($user['full_name'] ?? '')) !== ''): ?>
+                <p class="sidebar__user-line"><?= e((string) $user['full_name']) ?></p>
             <?php endif; ?>
             <a class="sidebar__link sidebar__link--logout" href="logout.php">Logout</a>
         </nav>
@@ -39,3 +59,15 @@ $user = current_user();
             <?php endif; ?>
         </header>
         <div class="main__body">
+        <?php
+        if (!empty($_SESSION['dingg_auth_expired_notice'])) {
+            $dinggAuthBanner = (string) $_SESSION['dingg_auth_expired_notice'];
+            unset($_SESSION['dingg_auth_expired_notice']);
+            ?>
+            <div class="alert alert--error" role="alert" style="margin:0 0 1rem">
+                <?= e($dinggAuthBanner) ?>
+                <a href="logout.php" class="link--underlined" style="margin-left:0.35rem">Log out</a>
+            </div>
+            <?php
+        }
+        ?>

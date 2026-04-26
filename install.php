@@ -145,6 +145,19 @@ CREATE TABLE IF NOT EXISTS allurepro_InvoiceCancellation (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL
     ,
+    'session_data' => <<<SQL
+CREATE TABLE IF NOT EXISTS allureone_session_data (
+  mobile_number VARCHAR(20) NOT NULL,
+  mobile_key VARCHAR(50) NOT NULL,
+  session_key VARCHAR(255) NOT NULL,
+  branch_id INT NULL,
+  updated_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (mobile_key),
+  KEY idx_session_mobile_number (mobile_number),
+  KEY idx_session_updated_date (updated_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL
+    ,
 ];
 
 $lastSql = '';
@@ -270,6 +283,7 @@ try {
         'allureone_users' => (int) $pdo->query('SELECT COUNT(*) FROM allureone_users')->fetchColumn(),
         'allureone_giftcard' => (int) $pdo->query('SELECT COUNT(*) FROM allureone_giftcard')->fetchColumn(),
         'allurepro_InvoiceCancellation' => (int) $pdo->query('SELECT COUNT(*) FROM allurepro_InvoiceCancellation')->fetchColumn(),
+        'allureone_session_data' => (int) $pdo->query('SELECT COUNT(*) FROM allureone_session_data')->fetchColumn(),
     ];
 } catch (PDOException $e) {
     $msg = htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');

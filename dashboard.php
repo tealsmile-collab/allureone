@@ -186,6 +186,28 @@ function allureone_mark_cancellation_approved(
     return $st->rowCount() > 0;
 }
 
+function allureone_auto_reject_cancellation_request(int $requestId, ?int $branchId = null): bool
+{
+    if ($requestId <= 0) {
+        return false;
+    }
+
+    $sql = 'UPDATE allurepro_InvoiceCancellation
+            SET CancellationStatus = 2
+            WHERE id = :id
+              AND CancellationStatus = 0';
+    $params = ['id' => $requestId];
+    if ($branchId !== null && $branchId > 0) {
+        $sql .= ' AND `Branch ID` = :branch_id';
+        $params['branch_id'] = $branchId;
+    }
+
+    $st = db()->prepare($sql);
+    $st->execute($params);
+
+    return $st->rowCount() > 0;
+}
+
 /**
  * @return array<string, mixed>|null
  */
@@ -223,13 +245,173 @@ function allureone_fetch_pending_cancellation_review_by_id(int $requestId, ?int 
     return is_array($row) ? $row : null;
 }
 
+function allureone_session_key_for_branch_id(int $branchId): string
+{
+    if ($branchId <= 0) {
+        return '';
+    }
+    try {
+        $st = db()->prepare(
+            'SELECT session_key
+             FROM allureone_session_data
+             WHERE branch_id = :branch_id
+             ORDER BY updated_date DESC
+             LIMIT 1'
+        );
+        $st->execute(['branch_id' => $branchId]);
+
+        return trim((string) ($st->fetchColumn() ?: ''));
+    } catch (PDOException $e) {
+        error_log('AllureOne branch session key lookup failed: ' . $e->getMessage());
+    }
+
+    return '';
+}
+
+/**
+ * Resolve live invoice status from Dingg using invoice search API (term=invoice number)
+ * with branch-scoped token.
+ *
+ * @param array<string, mixed> $reviewRow
+ *
+ * @return array{status_label:string,is_cancelled:bool}
+ */
+function allureone_fetch_live_invoice_status_for_review(array $reviewRow): array
+{
+    $fallback = trim((string) ($reviewRow['invoice_status'] ?? ''));
+    $invoiceId = (int) ($reviewRow['invoice_id'] ?? 0);
+    $invoiceNumber = trim((string) ($reviewRow['invoice_number'] ?? ''));
+    $branchId = (int) ($reviewRow['branch_id'] ?? 0);
+    if ($invoiceNumber === '' || $branchId <= 0) {
+        return ['status_label' => $fallback, 'is_cancelled' => false];
+    }
+
+    $token = allureone_session_key_for_branch_id($branchId);
+    if ($token === '') {
+        return ['status_label' => $fallback, 'is_cancelled' => false];
+    }
+
+    $term = sanitize_invoice_search_term($invoiceNumber);
+    if ($term === '') {
+        return ['status_label' => $fallback, 'is_cancelled' => false];
+    }
+    $url = 'https://api.dingg.app/api/v1/vendor/bills?' . http_build_query(
+        [
+            'web' => 'true',
+            'page' => '1',
+            'limit' => '1000',
+            'term' => $term,
+            'is_product_only' => '',
+        ],
+        '',
+        '&',
+        PHP_QUERY_RFC3986
+    );
+    $resp = dingg_http_request_authenticated('GET', $url, $token, null);
+    $http = (int) ($resp['http'] ?? 0);
+    $body = (string) ($resp['body'] ?? '');
+    $GLOBALS['allureone_review_invoice_api_debug'] = [
+        'url' => $url,
+        'term' => $term,
+        'http' => $http,
+        'body' => $body,
+        'invoice_id' => $invoiceId,
+        'invoice_number' => $invoiceNumber,
+        'branch_id' => $branchId,
+    ];
+    if ($http < 200 || $http >= 300 || $body === '' || dingg_response_looks_unauthorized($http, $body)) {
+        return ['status_label' => $fallback, 'is_cancelled' => false];
+    }
+
+    $json = json_decode($body, true);
+    if (!is_array($json)) {
+        return ['status_label' => $fallback, 'is_cancelled' => false];
+    }
+
+    $data = $json['data'] ?? null;
+    $bill = null;
+    if (is_array($data)) {
+        if (isset($data[0]) && is_array($data[0])) {
+            // Pick the exact row by id first, then by invoice number.
+            foreach ($data as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                if ((int) ($row['id'] ?? 0) === $invoiceId) {
+                    $bill = $row;
+                    break;
+                }
+            }
+            if (!is_array($bill)) {
+                $invoiceNoMatch = strtolower($invoiceNumber);
+                foreach ($data as $row) {
+                    if (!is_array($row)) {
+                        continue;
+                    }
+                    $candidate = strtolower(trim((string) (
+                        $row['bill_no_with_prefix']
+                        ?? $row['bill_no']
+                        ?? $row['invoice_number']
+                        ?? ''
+                    )));
+                    if ($candidate !== '' && $candidate === $invoiceNoMatch) {
+                        $bill = $row;
+                        break;
+                    }
+                }
+            }
+            // Fallback to first row only if exact id row is missing.
+            if (!is_array($bill) && is_array($data[0])) {
+                $bill = $data[0];
+            }
+        } elseif (isset($data['id']) || isset($data['payment_status']) || isset($data['status'])) {
+            $bill = $data;
+        }
+    }
+    if (!is_array($bill)) {
+        return ['status_label' => $fallback, 'is_cancelled' => false];
+    }
+
+    // Normalize status values like "false"/"0" to boolean false before formatting.
+    if (array_key_exists('status', $bill)) {
+        $rawStatus = $bill['status'];
+        if (is_string($rawStatus)) {
+            $normalized = strtolower(trim($rawStatus));
+            if ($normalized === 'false' || $normalized === '0' || $normalized === 'inactive') {
+                $bill['status'] = false;
+            } elseif ($normalized === 'true' || $normalized === '1' || $normalized === 'active') {
+                $bill['status'] = true;
+            }
+        } elseif (is_int($rawStatus)) {
+            $bill['status'] = ($rawStatus === 1);
+        }
+    }
+    $hasStatus = array_key_exists('status', $bill) && is_bool($bill['status']);
+    $paymentStatus = trim((string) ($bill['payment_status'] ?? ''));
+    $paymentStatusLabel = $paymentStatus !== '' ? ucwords(str_replace('_', ' ', strtolower($paymentStatus))) : '';
+
+    if ($hasStatus && $bill['status'] === false) {
+        return ['status_label' => 'Cancelled', 'is_cancelled' => true];
+    }
+    if ($hasStatus && $bill['status'] === true) {
+        return [
+            'status_label' => $paymentStatusLabel !== '' ? ('Active - ' . $paymentStatusLabel) : 'Active',
+            'is_cancelled' => false,
+        ];
+    }
+
+    return ['status_label' => $fallback, 'is_cancelled' => false];
+}
+
 $invoiceCancelFlash = null;
 $invoiceReviewFlash = null;
 $user = current_user();
 $userRoleId = (int) ($user['role_id'] ?? 0);
 $userBranchId = isset($user['branch_id']) && (int) $user['branch_id'] > 0 ? (int) $user['branch_id'] : null;
+$reviewScopeBranchId = $userRoleId === ROLE_ADMIN ? null : $userBranchId;
 $selectedReviewId = isset($_GET['review']) ? (int) $_GET['review'] : 0;
 $canReviewCancellations = $userRoleId === ROLE_ADMIN || $userRoleId === ROLE_SUPERADMIN;
+$canShowInvoiceCancellationRequest = $userRoleId !== ROLE_ADMIN;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['invoice_review_action']) && $canReviewCancellations) {
     if (!csrf_validate($_POST['_csrf'] ?? null)) {
@@ -251,7 +433,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['invoice_review_action
                     $adminRemark,
                     (int) ($user['id'] ?? 0),
                     trim((string) ($user['full_name'] ?? '')),
-                    $userBranchId
+                    $reviewScopeBranchId
                 );
                 $invoiceReviewFlash = $ok
                     ? ['type' => 'ok', 'text' => 'Cancellation request rejected.']
@@ -268,47 +450,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['invoice_review_action
             }
         } elseif ($reviewAction === 'approve') {
             try {
-                $reviewRow = allureone_fetch_pending_cancellation_review_by_id($reviewId, $userBranchId);
+                $reviewRow = allureone_fetch_pending_cancellation_review_by_id($reviewId, $reviewScopeBranchId);
                 if ($reviewRow === null) {
                     $invoiceReviewFlash = ['type' => 'error', 'text' => 'Request not found, already reviewed, or not in your branch scope.'];
                     $selectedReviewId = 0;
                 } else {
-                    $approveResp = dingg_delete_vendor_bill(
-                        (int) ($reviewRow['invoice_id'] ?? 0),
-                        (string) ($reviewRow['cancellation_remark'] ?? '')
-                    );
-                    if (!($approveResp['ok'] ?? false)) {
-                        $invoiceReviewFlash = ['type' => 'error', 'text' => 'Could not call cancellation API.'];
+                    $apiToken = allureone_session_key_for_branch_id((int) ($reviewRow['branch_id'] ?? 0));
+                    if ($apiToken === '') {
+                        $invoiceReviewFlash = ['type' => 'error', 'text' => 'Dingg session key not found for invoice branch.'];
                         $selectedReviewId = $reviewId;
                     } else {
-                        $http = (int) ($approveResp['http'] ?? 0);
-                        $body = (string) ($approveResp['body'] ?? '');
-                        if (dingg_response_looks_unauthorized($http, $body)) {
-                            $invoiceReviewFlash = ['type' => 'error', 'text' => dingg_auth_expired_user_message()];
+                        $approveResp = dingg_delete_vendor_bill(
+                            (int) ($reviewRow['invoice_id'] ?? 0),
+                            (string) ($reviewRow['cancellation_remark'] ?? ''),
+                            $apiToken
+                        );
+                        if (!($approveResp['ok'] ?? false)) {
+                            $invoiceReviewFlash = ['type' => 'error', 'text' => 'Could not call cancellation API.'];
                             $selectedReviewId = $reviewId;
-                        } elseif ($http >= 200 && $http < 300) {
-                            $updated = allureone_mark_cancellation_approved(
-                                $reviewId,
-                                $adminRemark,
-                                (int) ($user['id'] ?? 0),
-                                trim((string) ($user['full_name'] ?? '')),
-                                $userBranchId
-                            );
-                            if ($updated) {
-                                $invoiceReviewFlash = ['type' => 'ok', 'text' => 'Cancellation approved successfully.'];
-                                $selectedReviewId = 0;
+                        } else {
+                            $http = (int) ($approveResp['http'] ?? 0);
+                            $body = (string) ($approveResp['body'] ?? '');
+                            if (dingg_response_looks_unauthorized($http, $body)) {
+                                $invoiceReviewFlash = ['type' => 'error', 'text' => dingg_auth_expired_user_message()];
+                                $selectedReviewId = $reviewId;
+                            } elseif ($http >= 200 && $http < 300) {
+                                $updated = allureone_mark_cancellation_approved(
+                                    $reviewId,
+                                    $adminRemark,
+                                    (int) ($user['id'] ?? 0),
+                                    trim((string) ($user['full_name'] ?? '')),
+                                    $reviewScopeBranchId
+                                );
+                                if ($updated) {
+                                    $invoiceReviewFlash = ['type' => 'ok', 'text' => 'Cancellation approved successfully.'];
+                                    $selectedReviewId = 0;
+                                } else {
+                                    $invoiceReviewFlash = ['type' => 'error', 'text' => 'API succeeded but request row could not be updated.'];
+                                    $selectedReviewId = $reviewId;
+                                }
                             } else {
-                                $invoiceReviewFlash = ['type' => 'error', 'text' => 'API succeeded but request row could not be updated.'];
+                                $errMsg = 'Cancellation API failed (HTTP ' . $http . ').';
+                                $decoded = json_decode($body, true);
+                                if (is_array($decoded) && isset($decoded['message']) && trim((string) $decoded['message']) !== '') {
+                                    $errMsg .= ' ' . trim((string) $decoded['message']);
+                                }
+                                $invoiceReviewFlash = ['type' => 'error', 'text' => $errMsg];
                                 $selectedReviewId = $reviewId;
                             }
-                        } else {
-                            $errMsg = 'Cancellation API failed (HTTP ' . $http . ').';
-                            $decoded = json_decode($body, true);
-                            if (is_array($decoded) && isset($decoded['message']) && trim((string) $decoded['message']) !== '') {
-                                $errMsg .= ' ' . trim((string) $decoded['message']);
-                            }
-                            $invoiceReviewFlash = ['type' => 'error', 'text' => $errMsg];
-                            $selectedReviewId = $reviewId;
                         }
                     }
                 }
@@ -385,11 +574,28 @@ $pendingCancellationRows = [];
 $selectedReviewRow = null;
 if ($canReviewCancellations) {
     try {
-        $pendingCancellationRows = allureone_fetch_pending_cancellation_reviews($userBranchId);
+        $pendingCancellationRows = allureone_fetch_pending_cancellation_reviews($reviewScopeBranchId);
         if ($selectedReviewId > 0) {
             foreach ($pendingCancellationRows as $r) {
                 if ((int) ($r['id'] ?? 0) === $selectedReviewId) {
                     $selectedReviewRow = $r;
+                    $liveStatus = allureone_fetch_live_invoice_status_for_review($selectedReviewRow);
+                    $selectedReviewRow['invoice_status'] = (string) ($liveStatus['status_label'] ?? ($selectedReviewRow['invoice_status'] ?? ''));
+                    $selectedReviewRow['is_live_cancelled'] = !empty($liveStatus['is_cancelled']);
+                    if (!empty($selectedReviewRow['is_live_cancelled'])) {
+                        try {
+                            if (allureone_auto_reject_cancellation_request((int) ($selectedReviewRow['id'] ?? 0), $reviewScopeBranchId)) {
+                                $invoiceReviewFlash = [
+                                    'type' => 'ok',
+                                    'text' => 'Invoice is already cancelled in Dingg. Request auto-marked as Rejected.',
+                                ];
+                                $selectedReviewRow = null;
+                                $selectedReviewId = 0;
+                            }
+                        } catch (PDOException $e) {
+                            error_log('AllureOne auto reject cancellation review failed: ' . $e->getMessage());
+                        }
+                    }
                     break;
                 }
             }
@@ -616,9 +822,7 @@ require __DIR__ . '/includes/layout_start.php';
                     <table class="data">
                         <tbody>
                             <tr><th>Invoice number</th><td><?= e((string) ($selectedReviewRow['invoice_number'] ?? '')) ?></td></tr>
-                            <tr><th>Invoice ID</th><td><?= (int) ($selectedReviewRow['invoice_id'] ?? 0) ?></td></tr>
                             <tr><th>Branch</th><td><?= e((string) ($selectedReviewRow['branch_name'] ?? '')) ?></td></tr>
-                            <tr><th>Branch ID</th><td><?= (int) ($selectedReviewRow['branch_id'] ?? 0) ?></td></tr>
                             <tr><th>Invoice date</th><td><?= e((string) ($selectedReviewRow['invoice_date'] ?? '')) ?></td></tr>
                             <tr><th>Client name</th><td><?= e((string) ($selectedReviewRow['client_name'] ?? '')) ?></td></tr>
                             <tr><th>Invoice amount</th><td><?= e((string) ($selectedReviewRow['invoice_amount'] ?? '')) ?></td></tr>
@@ -628,27 +832,36 @@ require __DIR__ . '/includes/layout_start.php';
                             <tr><th>Request date</th><td><?= e(allureone_format_datetime_ist((string) ($selectedReviewRow['cancellation_request_date'] ?? ''))) ?></td></tr>
                         </tbody>
                     </table>
-                    <form method="post" action="dashboard.php" style="margin-top:0.75rem"
-                          onsubmit="return confirm(this.dataset.confirmText || 'Are you sure?');">
-                        <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
-                        <input type="hidden" name="invoice_review_id" value="<?= (int) ($selectedReviewRow['id'] ?? 0) ?>">
-                        <div class="form__row" style="margin-bottom:0.5rem">
-                            <label for="admin_remark_<?= (int) ($selectedReviewRow['id'] ?? 0) ?>">Admin Remark <span class="required-mark" aria-hidden="true">*</span></label>
-                            <textarea id="admin_remark_<?= (int) ($selectedReviewRow['id'] ?? 0) ?>" name="admin_remark" maxlength="100" rows="3"
-                                      required aria-required="true"
-                                      placeholder="Enter admin remark (required, max 100 characters)"
-                                      style="width:100%;height:80px;box-sizing:border-box;resize:vertical"></textarea>
+                    <?php if (!empty($selectedReviewRow['is_live_cancelled'])): ?>
+                        <div class="alert alert--warn" style="margin-top:0.75rem;margin-bottom:0">
+                            Invoice is already cancelled in Dingg. Approve/Reject actions are hidden.
                         </div>
-                        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
-                            <button type="submit" name="invoice_review_action" value="approve" class="btn btn--primary"
-                                    onclick="this.form.dataset.confirmText = this.getAttribute('data-confirm-text');"
-                                    data-confirm-text="Are you sure you want to approve cancellation?">Approve Cancellation</button>
-                            <button type="submit" name="invoice_review_action" value="reject" class="btn btn--danger"
-                                    onclick="this.form.dataset.confirmText = this.getAttribute('data-confirm-text');"
-                                    data-confirm-text="Are you sure you want to reject cancellation?">Reject Cancellation</button>
+                        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-top:0.75rem">
                             <a class="btn btn--ghost" href="dashboard.php#cancellation-review-list">Back to list</a>
                         </div>
-                    </form>
+                    <?php else: ?>
+                        <form method="post" action="dashboard.php" style="margin-top:0.75rem"
+                              onsubmit="return confirm(this.dataset.confirmText || 'Are you sure?');">
+                            <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="invoice_review_id" value="<?= (int) ($selectedReviewRow['id'] ?? 0) ?>">
+                            <div class="form__row" style="margin-bottom:0.5rem">
+                                <label for="admin_remark_<?= (int) ($selectedReviewRow['id'] ?? 0) ?>">Admin Remark <span class="required-mark" aria-hidden="true">*</span></label>
+                                <textarea id="admin_remark_<?= (int) ($selectedReviewRow['id'] ?? 0) ?>" name="admin_remark" maxlength="100" rows="3"
+                                          required aria-required="true"
+                                          placeholder="Enter admin remark (required, max 100 characters)"
+                                          style="width:100%;height:80px;box-sizing:border-box;resize:vertical"></textarea>
+                            </div>
+                            <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+                                <button type="submit" name="invoice_review_action" value="approve" class="btn btn--primary"
+                                        onclick="this.form.dataset.confirmText = this.getAttribute('data-confirm-text');"
+                                        data-confirm-text="Are you sure you want to approve cancellation?">Approve Cancellation</button>
+                                <button type="submit" name="invoice_review_action" value="reject" class="btn btn--danger"
+                                        onclick="this.form.dataset.confirmText = this.getAttribute('data-confirm-text');"
+                                        data-confirm-text="Are you sure you want to reject cancellation?">Reject Cancellation</button>
+                                <a class="btn btn--ghost" href="dashboard.php#cancellation-review-list">Back to list</a>
+                            </div>
+                        </form>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
         <?php endif; ?>
@@ -656,7 +869,9 @@ require __DIR__ . '/includes/layout_start.php';
 </details>
 <?php endif; ?>
 
+<?php if ($selectedItemId <= 0 && $canShowInvoiceCancellationRequest): ?>
 <?= $invoiceCancellationRequestMarkup ?>
+<?php endif; ?>
 
 <details class="card card--spaced-top" open>
     <summary class="card__head card__toggle">
@@ -683,11 +898,20 @@ require __DIR__ . '/includes/layout_start.php';
                             <tr><th>Buyer Name</th><td><?= e((string) ($giftDetail['sender_name'] ?? '')) ?></td></tr>
                             <tr><th>Buyer Phone</th><td><?= e((string) ($giftDetail['buyer_phone'] ?? '')) ?></td></tr>
                             <tr><th>Location</th><td><?= e((string) ($giftDetail['location'] ?? '')) ?></td></tr>
-                            <tr><th>Razorpay Transaction</th><td><?= e((string) ($giftDetail['transaction_id'] ?? '')) ?></td></tr>
+                            <tr><th>Razorpay Transaction</th><td>
+                                <?php $rzpTxn = trim((string) ($giftDetail['transaction_id'] ?? '')); ?>
+                                <?= e($rzpTxn) ?>
+                                <?php if ($rzpTxn !== ''): ?>
+                                    <button type="button" class="btn btn--ghost js-rzp-check-status"
+                                            data-payment-id="<?= e($rzpTxn) ?>"
+                                            style="margin-left:0.5rem;padding:0.35rem 0.7rem">Check Status</button>
+                                <?php endif; ?>
+                            </td></tr>
                             <tr><th>Amount</th><td><?= e(format_amount($giftDetail['amount'] ?? null)) ?></td></tr>
                             <tr><th>Order Date</th><td><?= e(format_purchase_date($giftDetail['post_date'] ?? null)) ?></td></tr>
                         </tbody>
                     </table>
+                    <p style="margin-top:0.75rem;margin-bottom:0"><a class="btn btn--ghost" href="dashboard.php">Back</a></p>
                 </div>
             <?php endif; ?>
         <?php elseif (count($giftRows) === 0): ?>
@@ -706,12 +930,12 @@ require __DIR__ . '/includes/layout_start.php';
                     <tbody>
                         <?php foreach ($giftRows as $gr): ?>
                             <tr>
+                                <td><?= e((string) ($gr['location'] ?? '')) ?></td>
                                 <td>
                                     <a class="link--underlined" href="dashboard.php?gift=<?= (int) ($gr['order_item_id'] ?? 0) ?>">
-                                        <?= e((string) ($gr['location'] ?? '')) ?>
+                                        <?= e((string) ($gr['sender_name'] ?? '')) ?>
                                     </a>
                                 </td>
-                                <td><?= e((string) ($gr['sender_name'] ?? '')) ?></td>
                                 <td><?= e(format_amount($gr['amount'] ?? null)) ?></td>
                                 <td><?= e(format_purchase_date($gr['post_date'] ?? null)) ?></td>
                             </tr>
@@ -722,6 +946,16 @@ require __DIR__ . '/includes/layout_start.php';
         <?php endif; ?>
     </div>
 </details>
+
+<div id="rzp-status-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:center;justify-content:center;padding:1rem">
+    <div style="background:#fff;border-radius:10px;max-width:640px;width:100%;max-height:80vh;overflow:auto;border:1px solid #d6dde6">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0.8rem 1rem;border-bottom:1px solid #d6dde6">
+            <strong>Razorpay Payment Status</strong>
+            <button type="button" id="rzp-status-close" class="btn btn--ghost" style="padding:0.3rem 0.65rem">Close</button>
+        </div>
+        <div id="rzp-status-content" style="padding:1rem"></div>
+    </div>
+</div>
 
 <script>
 (function () {
@@ -738,7 +972,6 @@ require __DIR__ . '/includes/layout_start.php';
     var out = document.getElementById('invoice-search-results');
     var statusEl = document.getElementById('invoice-search-status');
     var termEl = el;
-    if (!form || !out) return;
 
     function escapeHtml(s) {
         var d = document.createElement('div');
@@ -746,111 +979,214 @@ require __DIR__ . '/includes/layout_start.php';
         return d.innerHTML;
     }
 
-    form.addEventListener('submit', function (ev) {
-        ev.preventDefault();
-        var term = termEl ? String(termEl.value || '').trim() : '';
-        if (!term) {
-            out.innerHTML = '<p class="alert alert--error" style="margin-top:1rem;margin-bottom:0">Please enter an invoice number.</p>';
-            return;
-        }
-        var tok = '';
-        try {
-            tok = localStorage.getItem(lsKey) || '';
-        } catch (err) {}
-        if (!tok) {
-            out.innerHTML = '<p class="alert alert--error" style="margin-top:1rem;margin-bottom:0">No Dingg token in this browser. Sign out and sign in again.</p>';
-            return;
-        }
-        if (statusEl) {
-            statusEl.style.display = '';
-            statusEl.textContent = 'Searching…';
-        }
-        out.innerHTML = '';
-        fetch('invoice_search_api.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-AllureOne-Dingg-Token': tok
+    if (form && out) {
+        form.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            var term = termEl ? String(termEl.value || '').trim() : '';
+            if (!term) {
+                out.innerHTML = '<p class="alert alert--error" style="margin-top:1rem;margin-bottom:0">Please enter an invoice number.</p>';
+                return;
+            }
+            if (statusEl) {
+                statusEl.style.display = '';
+                statusEl.textContent = 'Searching…';
+            }
+            out.innerHTML = '';
+            fetch('invoice_search_api.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ term: term, _csrf: csrf }),
+                credentials: 'same-origin'
+            })
+                .then(function (r) {
+                    return r.text().then(function (text) {
+                        var j = null;
+                        try {
+                            j = JSON.parse(text);
+                        } catch (e) {}
+                        return { httpOk: r.ok, j: j, raw: text };
+                    });
+                })
+                .then(function (x) {
+                    if (statusEl) {
+                        statusEl.style.display = 'none';
+                        statusEl.textContent = '';
+                    }
+                    if (!x.j || x.j.ok !== true) {
+                        var msg = (x.j && x.j.error) ? String(x.j.error) : 'Could not search invoices.';
+                        var det = (x.j && x.j.error_detail) ? String(x.j.error_detail) : '';
+                        var logoutHint =
+                            x.j && x.j.auth_expired
+                                ? ' <a class="link--underlined" href="logout.php">Log out</a>'
+                                : '';
+                        out.innerHTML =
+                            '<p class="alert alert--error" style="margin-top:1rem;margin-bottom:0">' +
+                            escapeHtml(msg) +
+                            logoutHint +
+                            '</p>' +
+                            (det !== ''
+                                ? '<p class="main__meta" style="margin-top:0.5rem;font-size:0.85rem">' + escapeHtml(det) + '</p>'
+                                : '');
+                        return;
+                    }
+                    out.innerHTML = x.j.html || '';
+                })
+                .catch(function () {
+                    if (statusEl) {
+                        statusEl.style.display = 'none';
+                        statusEl.textContent = '';
+                    }
+                    out.innerHTML = '<p class="alert alert--error" style="margin-top:1rem;margin-bottom:0">Network error.</p>';
+                });
+        });
+
+        out.addEventListener('click', function (ev) {
+            var t = ev.target;
+            if (t && t.classList && t.classList.contains('invoice-search-reset')) {
+                out.innerHTML = '';
+                if (termEl) termEl.value = '';
+            }
+        });
+
+        out.addEventListener(
+            'submit',
+            function (ev) {
+                var f = ev.target;
+                if (f && f.classList && f.classList.contains('invoice-cancel-form')) {
+                    if (ev.defaultPrevented) {
+                        return;
+                    }
+                    if (f.dataset.submitting === '1') {
+                        ev.preventDefault();
+                        return;
+                    }
+                    f.dataset.submitting = '1';
+
+                    var inp = f.querySelector('.invoice-cancel-dingg-bearer');
+                    if (inp) {
+                        try {
+                            inp.value = localStorage.getItem(lsKey) || '';
+                        } catch (err) {}
+                    }
+                    var submitBtn = f.querySelector('.invoice-cancel-submit');
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = 'Submitting...';
+                    }
+                }
             },
-            body: JSON.stringify({ term: term, _csrf: csrf }),
-            credentials: 'same-origin'
+            false
+        );
+    }
+
+    var rzpModal = document.getElementById('rzp-status-modal');
+    var rzpClose = document.getElementById('rzp-status-close');
+    var rzpContent = document.getElementById('rzp-status-content');
+
+    function showRzpModal(html) {
+        if (!rzpModal || !rzpContent) return;
+        rzpContent.innerHTML = html;
+        rzpModal.style.display = 'flex';
+    }
+
+    function hideRzpModal() {
+        if (!rzpModal || !rzpContent) return;
+        rzpModal.style.display = 'none';
+        rzpContent.innerHTML = '';
+    }
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = String(s || '');
+        return d.innerHTML;
+    }
+
+    if (rzpClose) {
+        rzpClose.addEventListener('click', hideRzpModal);
+    }
+    if (rzpModal) {
+        rzpModal.addEventListener('click', function (ev) {
+            if (ev.target === rzpModal) hideRzpModal();
+        });
+    }
+
+    document.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!(t && t.classList && t.classList.contains('js-rzp-check-status'))) {
+            return;
+        }
+        var paymentId = String(t.getAttribute('data-payment-id') || '').trim();
+        if (!paymentId) return;
+        t.disabled = true;
+        var oldText = t.textContent;
+        t.textContent = 'Checking...';
+
+        fetch('razorpay_payment_status_api.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ payment_id: paymentId, _csrf: csrf })
         })
             .then(function (r) {
                 return r.text().then(function (text) {
                     var j = null;
-                    try {
-                        j = JSON.parse(text);
-                    } catch (e) {}
-                    return { httpOk: r.ok, j: j, raw: text };
+                    try { j = JSON.parse(text); } catch (e) {}
+                    return { j: j, raw: text };
                 });
             })
-            .then(function (x) {
-                if (statusEl) {
-                    statusEl.style.display = 'none';
-                    statusEl.textContent = '';
-                }
-                if (!x.j || x.j.ok !== true) {
-                    var msg = (x.j && x.j.error) ? String(x.j.error) : 'Could not search invoices.';
-                    var det = (x.j && x.j.error_detail) ? String(x.j.error_detail) : '';
-                    var logoutHint =
-                        x.j && x.j.auth_expired
-                            ? ' <a class="link--underlined" href="logout.php">Log out</a>'
-                            : '';
-                    out.innerHTML =
-                        '<p class="alert alert--error" style="margin-top:1rem;margin-bottom:0">' +
-                        escapeHtml(msg) +
-                        logoutHint +
-                        '</p>' +
-                        (det !== ''
-                            ? '<p class="main__meta" style="margin-top:0.5rem;font-size:0.85rem">' + escapeHtml(det) + '</p>'
-                            : '');
+            .then(function (j) {
+                if (!j || !j.j || j.j.ok !== true || !j.j.data) {
+                    var em = (j && j.j && j.j.error) ? j.j.error : '';
+                    if (!em && j && j.raw) {
+                        em = String(j.raw).trim().slice(0, 300);
+                    }
+                    if (!em) em = 'Could not fetch Razorpay status.';
+                    showRzpModal('<p class="alert alert--error" style="margin:0">' + esc(em) + '</p>');
                     return;
                 }
-                out.innerHTML = x.j.html || '';
+                var d = j.j.data;
+                var statusHtml = esc(d.payment_status);
+                if (String(d.payment_status || '').toLowerCase() === 'captured') {
+                    statusHtml = '<span style="color:#166534;font-weight:600">Successful (captured)</span>';
+                } else if (d.has_error) {
+                    statusHtml = '<span style="color:#b91c1c;font-weight:600">' + esc(d.payment_status || 'error') + '</span>';
+                }
+                var rows =
+                    '<table class="data"><tbody>' +
+                    '<tr><th>Payment Id</th><td>' + esc(d.payment_id) + '</td></tr>' +
+                    '<tr><th>Order Id</th><td>' + esc(d.order_id) + '</td></tr>' +
+                    '<tr><th>Payment Status</th><td>' + statusHtml + '</td></tr>' +
+                    '<tr><th>Amount</th><td>' + esc(d.amount) + '</td></tr>' +
+                    '<tr><th>Contact</th><td>' + esc(d.contact) + '</td></tr>' +
+                    '<tr><th>Email</th><td>' + esc(d.email) + '</td></tr>' +
+                    '<tr><th>Payment Method</th><td>' + esc(d.payment_method) + '</td></tr>';
+                if (d.has_error) {
+                    rows +=
+                        '<tr><th>Error</th><td>' + esc(d.error_description) + '</td></tr>' +
+                        '<tr><th>Error Reason</th><td>' + esc(d.error_reason) + '</td></tr>' +
+                        '<tr><th>Error Step</th><td>' + esc(d.error_step) + '</td></tr>';
+                }
+                rows += '</tbody></table>';
+                showRzpModal(rows);
             })
             .catch(function () {
-                if (statusEl) {
-                    statusEl.style.display = 'none';
-                    statusEl.textContent = '';
-                }
-                out.innerHTML = '<p class="alert alert--error" style="margin-top:1rem;margin-bottom:0">Network error.</p>';
+                showRzpModal('<p class="alert alert--error" style="margin:0">Network error while checking payment status.</p>');
+            })
+            .finally(function () {
+                t.disabled = false;
+                t.textContent = oldText;
             });
     });
-
-    out.addEventListener('click', function (ev) {
-        var t = ev.target;
-        if (t && t.classList && t.classList.contains('invoice-search-reset')) {
-            out.innerHTML = '';
-            if (termEl) termEl.value = '';
-        }
-    });
-
-    out.addEventListener(
-        'submit',
-        function (ev) {
-            var f = ev.target;
-            if (f && f.classList && f.classList.contains('invoice-cancel-form')) {
-                if (f.dataset.submitting === '1') {
-                    ev.preventDefault();
-                    return;
-                }
-                f.dataset.submitting = '1';
-
-                var inp = f.querySelector('.invoice-cancel-dingg-bearer');
-                if (inp) {
-                    try {
-                        inp.value = localStorage.getItem(lsKey) || '';
-                    } catch (err) {}
-                }
-                var submitBtn = f.querySelector('.invoice-cancel-submit');
-                if (submitBtn) {
-                    submitBtn.disabled = true;
-                    submitBtn.textContent = 'Submitting...';
-                }
-            }
-        },
-        true
-    );
 })();
 </script>
+<?php
+$invoiceReviewApiDebug = $GLOBALS['allureone_review_invoice_api_debug'] ?? null;
+if (is_array($invoiceReviewApiDebug) && $selectedReviewRow !== null):
+?>
+<script>
+console.log('Cancellation review invoice API response', <?= json_encode($invoiceReviewApiDebug, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
+</script>
+<?php endif; ?>
 <?php require __DIR__ . '/includes/layout_end.php'; ?>

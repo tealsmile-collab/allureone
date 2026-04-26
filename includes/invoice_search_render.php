@@ -97,6 +97,10 @@ function allureone_invoice_search_result_markup(
         $invDate = dingg_format_invoice_date(isset($invBill['selected_date']) ? (string) $invBill['selected_date'] : null);
         $clientName = dingg_format_invoice_client_name($invBill);
         $statusLabel = dingg_format_invoice_status_label($invBill);
+        $paymentStatus = strtolower(trim((string) ($invBill['payment_status'] ?? '')));
+        $isInactiveInvoice = (($invBill['status'] ?? null) === false) || str_contains(strtolower($statusLabel), 'inactive');
+        $existingCancelReason = trim((string) ($invBill['cancel_reason'] ?? ''));
+        $isAlreadyCancelled = $paymentStatus === 'cancelled' || $existingCancelReason !== '';
         $invoiceAmount = format_amount($invBill['total'] ?? null);
         $branchName = $invBranchLabel !== '' ? $invBranchLabel : '—';
         $branchId = 0;
@@ -120,12 +124,12 @@ function allureone_invoice_search_result_markup(
             <table class="data">
                 <tbody>
                     <tr><th>Branch</th><td><?= e($branchName) ?></td></tr>
-                    <tr><th>Invoice number</th><td><?= e($billNo) ?></td></tr>
+                    <tr><th>Invoice number</th><td><?= $isInactiveInvoice ? '<span style="color:#b91c1c;text-decoration:line-through">' . e($billNo) . '</span>' : e($billNo) ?></td></tr>
                     <tr><th>Invoice ID</th><td><?= $billId ?></td></tr>
                     <tr><th>Invoice date</th><td><?= e($invDate) ?></td></tr>
                     <tr><th>Client name</th><td><?= e($clientName) ?></td></tr>
                     <tr><th>Total</th><td><?= e($invoiceAmount) ?></td></tr>
-                    <tr><th>Status</th><td><?= e($statusLabel) ?></td></tr>
+                    <tr><th>Status</th><td><?= $isInactiveInvoice ? '<span style="color:#b91c1c">Cancelled</span> ' . e($statusLabel) : e($statusLabel) ?></td></tr>
                 </tbody>
             </table>
             <div class="invoice-detail__actions" style="margin-top:1rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
@@ -146,12 +150,14 @@ function allureone_invoice_search_result_markup(
                         <div style="width:100%;margin:0.25rem 0 0.5rem">
                             <label for="cancel_reason_<?= $billId ?>" style="display:block;margin-bottom:0.35rem">Cancellation reason <span class="required-mark" aria-hidden="true">*</span></label>
                             <textarea id="cancel_reason_<?= $billId ?>" name="cancel_reason" maxlength="100" rows="3"
-                                      required aria-required="true"
+                                      required aria-required="true"<?= $isAlreadyCancelled ? ' readonly aria-readonly="true"' : '' ?>
                                       placeholder="Enter reason (required, max 100 characters)"
-                                      style="width:100%;height:80px;box-sizing:border-box;resize:vertical"></textarea>
+                                      style="width:100%;height:80px;box-sizing:border-box;resize:vertical"><?= e($existingCancelReason) ?></textarea>
                         </div>
                         <div style="display:flex;gap:0.75rem;align-items:center">
-                            <button type="submit" class="btn btn--danger invoice-cancel-submit">Request Cancellation</button>
+                            <?php if (!$isAlreadyCancelled): ?>
+                                <button type="submit" class="btn btn--danger invoice-cancel-submit">Request Cancellation</button>
+                            <?php endif; ?>
                             <button type="button" class="btn btn--ghost invoice-search-reset">Clear</button>
                         </div>
                     </form>

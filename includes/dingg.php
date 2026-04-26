@@ -796,6 +796,28 @@ function dingg_invoice_bill_branch_display(array $bill, array $locationMap): str
  *
  * @return array{ok:bool, http:int, body:string, error?:string}
  */
+function dingg_sales_target_token_from_session_data_admin(): ?string
+{
+    try {
+        $st = db()->prepare(
+            'SELECT session_key
+             FROM allureone_session_data
+             WHERE mobile_number = :mobile_number
+             ORDER BY updated_date DESC
+             LIMIT 1'
+        );
+        $st->execute(['mobile_number' => 'admin']);
+        $token = trim((string) ($st->fetchColumn() ?: ''));
+        if ($token !== '') {
+            return $token;
+        }
+    } catch (PDOException $e) {
+        error_log('Dingg sales target token lookup failed: ' . $e->getMessage());
+    }
+
+    return null;
+}
+
 function dingg_fetch_sales_target(string $startDateYmd, string $endDateYmd, string $locationIdsCsv): array
 {
     $locationIdsCsv = trim($locationIdsCsv);
@@ -803,7 +825,7 @@ function dingg_fetch_sales_target(string $startDateYmd, string $endDateYmd, stri
         return ['ok' => false, 'http' => 0, 'body' => '', 'error' => 'empty_location_ids'];
     }
 
-    $token = dingg_resolve_pos_token_for_api();
+    $token = dingg_sales_target_token_from_session_data_admin();
     if ($token === null || $token === '') {
         return ['ok' => false, 'http' => 0, 'body' => '', 'error' => 'no_token'];
     }

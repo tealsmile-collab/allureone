@@ -84,6 +84,17 @@ CREATE TABLE IF NOT EXISTS allurepro_InvoiceCancellation (
   KEY idx_invoice_cancel_invoice_id (`Invoice ID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS allureone_session_data (
+  mobile_number VARCHAR(20) NOT NULL,
+  mobile_key VARCHAR(50) NOT NULL,
+  session_key VARCHAR(255) NOT NULL,
+  branch_id INT NULL,
+  updated_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (mobile_key),
+  KEY idx_session_mobile_number (mobile_number),
+  KEY idx_session_updated_date (updated_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 INSERT INTO allureone_roles (id, RoleName, isActive) VALUES
   (1, 'Superadmin', 1),
   (2, 'admin', 1),

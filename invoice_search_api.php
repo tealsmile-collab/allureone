@@ -45,30 +45,7 @@ if ($term === '') {
     exit;
 }
 
-$headerToken = '';
-if (function_exists('getallheaders')) {
-    $h = getallheaders();
-    if (is_array($h)) {
-        foreach ($h as $k => $v) {
-            if (strcasecmp((string) $k, 'X-AllureOne-Dingg-Token') === 0) {
-                $headerToken = trim((string) $v);
-                break;
-            }
-        }
-    }
-}
-if ($headerToken === '' && isset($_SERVER['HTTP_X_ALLUREONE_DINGG_TOKEN'])) {
-    $headerToken = trim((string) $_SERVER['HTTP_X_ALLUREONE_DINGG_TOKEN']);
-}
-
-if ($headerToken === '') {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'No Dingg token. Sign in again or allow localStorage for this site.'], JSON_UNESCAPED_UNICODE);
-
-    exit;
-}
-
-$invoiceApiResult = dingg_fetch_vendor_bills_with_token($term, $headerToken);
+$invoiceApiResult = dingg_fetch_vendor_bills($term);
 $invHttp = (int) ($invoiceApiResult['http'] ?? 0);
 $invBody = (string) ($invoiceApiResult['body'] ?? '');
 if (($invoiceApiResult['ok'] ?? false) && dingg_response_looks_unauthorized($invHttp, $invBody)) {
@@ -95,7 +72,7 @@ if (!($invoiceApiResult['ok'] ?? false)) {
 $parsed = allureone_parse_invoice_bills_api_result($invoiceApiResult);
 $invBranchLabel = '';
 if ($parsed['invBill'] !== null && is_array($parsed['invBill'])) {
-    $invLocationMap = dingg_fetch_vendor_business_location_map_with_token($headerToken);
+    $invLocationMap = dingg_fetch_vendor_business_location_map();
     $invBranchLabel = dingg_invoice_bill_branch_display($parsed['invBill'], $invLocationMap);
 }
 

@@ -141,11 +141,67 @@ function allureone_format_datetime_ist(?string $utcDateTime): string
     }
 }
 
+function allureone_cancel_cancellation_request_for_user(int $id, array $user): bool
+{
+    if ($id <= 0) {
+        return false;
+    }
+
+    $roleId = (int) ($user['role_id'] ?? 0);
+    $userId = (int) ($user['id'] ?? 0);
+    $branchId = isset($user['branch_id']) && (int) $user['branch_id'] > 0 ? (int) $user['branch_id'] : null;
+    $isAdminScope = $roleId === ROLE_ADMIN || $roleId === ROLE_SUPERADMIN;
+
+    $sql = 'UPDATE allurepro_InvoiceCancellation
+            SET CancellationStatus = 2
+            WHERE id = :id
+              AND CancellationStatus = 0';
+    $params = ['id' => $id];
+
+    if ($isAdminScope) {
+        if ($branchId !== null && $branchId > 0) {
+            $sql .= ' AND `Branch ID` = :branch_id';
+            $params['branch_id'] = $branchId;
+        }
+    } else {
+        $sql .= ' AND RequestUserID = :request_user_id';
+        $params['request_user_id'] = $userId;
+    }
+
+    $st = db()->prepare($sql);
+    $st->execute($params);
+
+    return $st->rowCount() > 0;
+}
+
 $user = current_user();
 $detailId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 $detailRow = null;
 $rows = [];
 $loadError = '';
+$flash = ['type' => '', 'text' => ''];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_request'])) {
+    if (!csrf_validate($_POST['_csrf'] ?? null)) {
+        $flash = ['type' => 'error', 'text' => 'Invalid session. Please refresh and try again.'];
+    } else {
+        $cancelId = isset($_POST['cancel_request_id']) ? (int) $_POST['cancel_request_id'] : 0;
+        try {
+            $ok = allureone_cancel_cancellation_request_for_user($cancelId, $user ?? []);
+            if ($ok) {
+                $flash = ['type' => 'ok', 'text' => 'Cancellation request cancelled successfully.'];
+                $detailId = 0;
+            } else {
+                $flash = ['type' => 'error', 'text' => 'Could not cancel request. It may already be reviewed/cancelled.'];
+                $detailId = $cancelId;
+            }
+        } catch (PDOException $e) {
+            error_log('AllureOne cancel request action failed: ' . $e->getMessage());
+            $flash = ['type' => 'error', 'text' => 'Could not cancel request. Please try again.'];
+            $detailId = $cancelId;
+        }
+    }
+}
 
 try {
     if ($detailId > 0) {
@@ -166,6 +222,9 @@ require __DIR__ . '/includes/layout_start.php';
 <?php if ($loadError !== ''): ?>
     <p class="alert alert--error" style="margin-top:0;margin-bottom:1rem"><?= e($loadError) ?></p>
 <?php endif; ?>
+<?php if ($flash['text'] !== ''): ?>
+    <p class="alert alert--<?= $flash['type'] === 'ok' ? 'ok' : 'error' ?>" style="margin-top:0;margin-bottom:1rem"><?= e((string) $flash['text']) ?></p>
+<?php endif; ?>
 
 <details class="card" open>
     <summary class="card__head card__toggle">
@@ -178,18 +237,16 @@ require __DIR__ . '/includes/layout_start.php';
         <?php if ($detailId > 0): ?>
             <?php if ($detailRow === null): ?>
                 <p class="empty" style="margin-top:0">Request not found or access denied.</p>
-                <p style="margin-bottom:0"><a class="btn btn--ghost" href="invoice_cancellation.php">Back to List</a></p>
+                <p style="margin-bottom:0"><a class="btn btn--light-green" href="invoice_cancellation.php">Back to List</a></p>
             <?php else: ?>
                 <table class="data">
                     <tbody>
                         <tr><th>Branch</th><td><?= e((string) ($detailRow['branch_name'] ?? '')) ?></td></tr>
-                        <tr><th>Branch ID</th><td><?= (int) ($detailRow['branch_id'] ?? 0) ?></td></tr>
                         <tr><th>Invoice Number</th><td><?= e((string) ($detailRow['invoice_number'] ?? '')) ?></td></tr>
-                        <tr><th>Invoice ID</th><td><?= (int) ($detailRow['invoice_id'] ?? 0) ?></td></tr>
                         <tr><th>Invoice Date</th><td><?= e((string) ($detailRow['invoice_date'] ?? '')) ?></td></tr>
                         <tr><th>Client Name</th><td><?= e((string) ($detailRow['client_name'] ?? '')) ?></td></tr>
                         <tr><th>Amount</th><td><?= e((string) ($detailRow['invoice_amount'] ?? '')) ?></td></tr>
-                        <tr><th>Status</th><td><?= e(allureone_invoice_cancellation_status_label((int) ($detailRow['cancellation_status'] ?? 0))) ?></td></tr>
+                        <tr><th>Cancellation Status</th><td><?= e(allureone_invoice_cancellation_status_label((int) ($detailRow['cancellation_status'] ?? 0))) ?></td></tr>
                         <tr><th>Invoice Status</th><td><?= e((string) ($detailRow['invoice_status'] ?? '')) ?></td></tr>
                         <tr><th>Cancellation Reason</th><td><?= e((string) ($detailRow['cancellation_remark'] ?? '')) ?></td></tr>
                         <tr><th>Admin Remark</th><td><?= e((string) ($detailRow['admin_remark'] ?? '')) ?></td></tr>
@@ -199,7 +256,19 @@ require __DIR__ . '/includes/layout_start.php';
                         <tr><th>Reviewed On</th><td><?= e(allureone_format_datetime_ist((string) ($detailRow['cancelled_date'] ?? ''))) ?></td></tr>
                     </tbody>
                 </table>
-                <p style="margin-bottom:0;margin-top:0.75rem"><a class="btn btn--ghost" href="invoice_cancellation.php">Back to List</a></p>
+                <div style="margin-bottom:0;margin-top:0.75rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+                    <?php if ((int) ($detailRow['cancellation_status'] ?? 0) === 0): ?>
+                        <form method="post" action="invoice_cancellation.php?id=<?= (int) ($detailRow['id'] ?? 0) ?>"
+                              onsubmit="return confirm('Are you sure you want to cancel this request?');"
+                              style="margin:0">
+                            <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                            <input type="hidden" name="cancel_request" value="1">
+                            <input type="hidden" name="cancel_request_id" value="<?= (int) ($detailRow['id'] ?? 0) ?>">
+                            <button type="submit" class="btn btn--danger">Cancel Request</button>
+                        </form>
+                    <?php endif; ?>
+                    <a class="btn btn--light-green" href="invoice_cancellation.php">Back to List</a>
+                </div>
             <?php endif; ?>
         <?php else: ?>
             <?php if (count($rows) === 0): ?>

@@ -25,39 +25,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ((function_exists('mb_strlen') ? mb_strlen($password) : strlen($password)) > 128) {
             $error = 'Password is too long.';
         } else {
-            $result = dingg_vendor_login_credentials($loginname, $password);
-            if (!($result['ok'] ?? false)) {
-                $error = (string) ($result['error'] ?? 'Sign-in failed.');
+            $pdo = db();
+            $st = $pdo->prepare(
+                'SELECT id, loginname, password, FullName, BranchId, RoleId, isactive
+                 FROM allureone_users
+                 WHERE loginname = :login
+                 LIMIT 1'
+            );
+            $st->execute(['login' => $loginname]);
+            $row = $st->fetch();
+            if (!is_array($row)) {
+                $error = 'Invalid user name or password.';
+            } elseif ((int) ($row['isactive'] ?? 0) !== 1) {
+                $error = 'Your account is inactive. Please contact admin.';
+            } elseif (!password_verify($password, (string) ($row['password'] ?? ''))) {
+                $error = 'Invalid user name or password.';
             } else {
-                $tok = (string) ($result['token'] ?? '');
-                if ($tok === '') {
-                    $error = 'No token received from Dingg.';
+                $branchId = isset($row['BranchId']) && (int) $row['BranchId'] > 0 ? (int) $row['BranchId'] : null;
+                $sessionKey = '';
+                if ($branchId !== null) {
+                    $sst = $pdo->prepare(
+                        'SELECT session_key
+                         FROM allureone_session_data
+                         WHERE branch_id = :branch_id
+                         ORDER BY updated_date DESC
+                         LIMIT 1'
+                    );
+                    $sst->execute(['branch_id' => $branchId]);
+                    $sessionKey = trim((string) ($sst->fetchColumn() ?: ''));
+                }
+
+                if ($sessionKey === '') {
+                    $error = 'Dingg session key is not configured for your branch. Please contact admin.';
                 } else {
-                    $mappedUser = auth_find_active_user_by_mobile_or_email($loginname);
-                    if ($mappedUser === null) {
-                        $error = 'User is not mapped in User Master with active status.';
-                    } else {
                     dingg_clear_session_encrypted_token();
-                    dingg_encrypt_session_token($tok);
-                    $_SESSION['dingg_bearer_bootstrap'] = $tok;
-                    $displayName = trim((string) ($result['employee_name'] ?? ''));
-                    if ($displayName === '') {
-                        $displayName = trim((string) ($mappedUser['FullName'] ?? ''));
-                    }
+                    dingg_encrypt_session_token($sessionKey);
+
+                    $displayName = trim((string) ($row['FullName'] ?? ''));
                     if ($displayName === '') {
                         $displayName = 'User';
                     }
+
                     login_user([
-                        'id' => (int) ($mappedUser['id'] ?? 0),
-                        'loginname' => (string) ($mappedUser['loginname'] ?? $loginname),
+                        'id' => (int) ($row['id'] ?? 0),
+                        'loginname' => (string) ($row['loginname'] ?? $loginname),
                         'full_name' => $displayName,
-                        'branch_id' => isset($mappedUser['BranchId']) ? (int) $mappedUser['BranchId'] : null,
-                        'role_id' => (int) ($mappedUser['RoleId'] ?? 0),
+                        'branch_id' => $branchId,
+                        'role_id' => (int) ($row['RoleId'] ?? 0),
                     ]);
                     session_write_close();
                     header('Location: dashboard.php', true, 302);
                     exit;
-                    }
                 }
             }
         }

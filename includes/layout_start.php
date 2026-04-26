@@ -36,16 +36,16 @@ $user = current_user();
         <nav class="sidebar__nav">
             <a class="sidebar__link<?= ($activeNav === 'dashboard') ? ' is-active' : '' ?>" href="dashboard.php">Dashboard</a>
             <a class="sidebar__link<?= ($activeNav === 'invoice_cancellation') ? ' is-active' : '' ?>" href="invoice_cancellation.php">Invoice Cancellation</a>
-            <a class="sidebar__link<?= ($activeNav === 'gift_codes') ? ' is-active' : '' ?>" href="gift_codes.php">Gift codes</a>
+            <a class="sidebar__link<?= ($activeNav === 'gift_codes') ? ' is-active' : '' ?>" href="gift_codes.php">Gift Card Sale</a>
             <a class="sidebar__link<?= ($activeNav === 'sales_target') ? ' is-active' : '' ?>" href="sales_target.php">Sales target</a>
             <?php if ($user && $user['role_id'] === ROLE_SUPERADMIN): ?>
                 <a class="sidebar__link<?= ($activeNav === 'branch') ? ' is-active' : '' ?>" href="branch_master.php">Branch Master</a>
                 <a class="sidebar__link<?= ($activeNav === 'user') ? ' is-active' : '' ?>" href="user_master.php">User Master</a>
             <?php endif; ?>
+            <a class="sidebar__link" href="logout.php">Logout</a>
             <?php if ($user && trim((string) ($user['full_name'] ?? '')) !== ''): ?>
                 <p class="sidebar__user-line"><?= e((string) $user['full_name']) ?></p>
             <?php endif; ?>
-            <a class="sidebar__link sidebar__link--logout" href="logout.php">Logout</a>
         </nav>
     </aside>
     <main class="main">

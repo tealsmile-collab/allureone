@@ -25,9 +25,18 @@ if ($userBranchId > 0) {
 
 $giftRows = [];
 $giftDetail = null;
+$giftDebug = [
+    'selected_item_id' => $selectedItemId,
+    'branch_locality' => $branchLocality,
+    'filter_by_locality' => gift_cards_filter_by_branch_locality_enabled(),
+];
 try {
     $pdo = wp_db();
     $wpPrefix = wp_table_prefix();
+    $giftDebug['wp_prefix'] = $wpPrefix;
+    $cfg = require __DIR__ . '/config.php';
+    $giftDebug['wp_db_host'] = (string) (($cfg['wordpress_db']['host'] ?? ''));
+    $giftDebug['wp_db_name'] = (string) (($cfg['wordpress_db']['database'] ?? ''));
     $baseSelect = "SELECT
             oi.order_item_id,
             oi.order_id,
@@ -83,6 +92,7 @@ try {
           )";
         $baseParams['branch_locality'] = $branchLocality;
     }
+    $giftDebug['base_params'] = $baseParams;
 
     if ($selectedItemId > 0) {
         $detailSql = $baseSelect . "
@@ -93,8 +103,12 @@ try {
         $stmt = $pdo->prepare($detailSql);
         $detailParams = $baseParams;
         $detailParams['item_id'] = $selectedItemId;
+        $giftDebug['mode'] = 'detail';
+        $giftDebug['sql'] = $detailSql;
+        $giftDebug['params'] = $detailParams;
         $stmt->execute($detailParams);
         $giftDetail = $stmt->fetch() ?: null;
+        $giftDebug['detail_found'] = $giftDetail !== null;
         if ($giftDetail !== null) {
             $resolvedRecipientEmail = '';
             $orderId = (int) ($giftDetail['order_id'] ?? 0);
@@ -146,11 +160,21 @@ try {
             ORDER BY p.post_date DESC
             LIMIT 20";
         $stmt = $pdo->prepare($listSql);
+        $giftDebug['mode'] = 'list';
+        $giftDebug['sql'] = $listSql;
+        $giftDebug['params'] = $baseParams;
         $stmt->execute($baseParams);
         $giftRows = $stmt->fetchAll();
+        $giftDebug['row_count'] = count($giftRows);
     }
 } catch (PDOException $e) {
     error_log('AllureOne gift_codes WP DB: ' . $e->getMessage());
+    $giftDebug['error'] = [
+        'message' => $e->getMessage(),
+        'code' => $e->getCode(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+    ];
 }
 
 $pageTitle = 'Gift Card Sale';
@@ -347,6 +371,9 @@ require __DIR__ . '/includes/layout_start.php';
             });
     });
 })();
+</script>
+<script>
+console.log('Gift Card Sale debug', <?= json_encode($giftDebug, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
 </script>
 
 <?php require __DIR__ . '/includes/layout_end.php'; ?>

@@ -3,8 +3,9 @@ declare(strict_types=1);
 
 /**
  * Google Ads Lead Form webhook endpoint.
- * For now, it writes incoming payloads to a local log file.
+ * Logs webhook payload and stores lead in DB.
  */
+require_once __DIR__ . '/includes/database.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -113,9 +114,93 @@ if ($writeOk === false) {
     exit;
 }
 
+/**
+ * @param array<string, mixed> $payload
+ */
+function webhook_extract_lead_value(array $payload, string $targetColumnId): string
+{
+    $rows = $payload['user_column_data'] ?? null;
+    if (!is_array($rows)) {
+        return '';
+    }
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $columnId = trim((string) ($row['column_id'] ?? ''));
+        if ($columnId !== $targetColumnId) {
+            continue;
+        }
+
+        return trim((string) ($row['string_value'] ?? ''));
+    }
+
+    return '';
+}
+
+$fullName = webhook_extract_lead_value($parsed, 'FULL_NAME');
+$phoneNumber = webhook_extract_lead_value($parsed, 'PHONE_NUMBER');
+$city = webhook_extract_lead_value($parsed, 'CITY');
+$investmentBudget = webhook_extract_lead_value($parsed, 'what_is_your_investment_budget_for_the_project?');
+$preferredTimeline = webhook_extract_lead_value($parsed, 'what_is_your_preferred_timeline_to_start_operations?');
+$experienceInWellness = webhook_extract_lead_value($parsed, 'do_you_have_experience_in_the_wellness_or_beauty_industry?');
+$propertyForWellness = webhook_extract_lead_value($parsed, 'do_you_already_have_a_property_for_the_wellness_centre?');
+$formId = trim((string) ($parsed['form_id'] ?? ''));
+$campaignId = trim((string) ($parsed['campaign_id'] ?? ''));
+
+try {
+    $pdo = db();
+    $sql = 'INSERT INTO allureone_franchise_leads (
+                FULL_NAME,
+                PHONE_NUMBER,
+                CITY,
+                investment_budget,
+                preferred_timeline,
+                experience_in_the_wellness,
+                property_for_the_wellness,
+                DateTime,
+                form_id,
+                campaign_id
+            ) VALUES (
+                :full_name,
+                :phone_number,
+                :city,
+                :investment_budget,
+                :preferred_timeline,
+                :experience_in_the_wellness,
+                :property_for_the_wellness,
+                NOW(),
+                :form_id,
+                :campaign_id
+            )';
+    $st = $pdo->prepare($sql);
+    $st->execute([
+        'full_name' => $fullName,
+        'phone_number' => $phoneNumber,
+        'city' => $city,
+        'investment_budget' => $investmentBudget,
+        'preferred_timeline' => $preferredTimeline,
+        'experience_in_the_wellness' => $experienceInWellness,
+        'property_for_the_wellness' => $propertyForWellness,
+        'form_id' => $formId,
+        'campaign_id' => $campaignId,
+    ]);
+    error_log('GoogleAdWebhook DB insert success: lead_id=' . trim((string) ($parsed['lead_id'] ?? '')) . ' form_id=' . $formId . ' campaign_id=' . $campaignId);
+} catch (Throwable $e) {
+    http_response_code(500);
+    $response = [
+        'ok' => false,
+        'error' => 'Could not save lead into database.',
+    ];
+    error_log('GoogleAdWebhook DB insert failed: ' . $e->getMessage());
+    error_log('GoogleAdWebhook response 500: ' . json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    echo json_encode($response);
+    exit;
+}
+
 $response = [
     'ok' => true,
-    'message' => 'Webhook received and logged.',
+    'message' => 'Webhook received, logged, and saved.',
 ];
 error_log('GoogleAdWebhook response 200: ' . json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 echo json_encode($response);

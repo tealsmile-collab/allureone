@@ -28,7 +28,7 @@ if ($rawBody !== '') {
     $json = json_decode($rawBody, true);
     if (is_array($json)) {
         $parsed = $json;
-    } elseif (str_contains($contentType, 'application/x-www-form-urlencoded')) {
+    } elseif (strpos($contentType, 'application/x-www-form-urlencoded') !== false) {
         parse_str($rawBody, $formData);
         if (is_array($formData)) {
             $parsed = $formData;
@@ -48,25 +48,16 @@ if (function_exists('getallheaders')) {
     }
 }
 
-$incomingKey = trim((string) (
-    $_GET['key']
-    ?? $_POST['key']
-    ?? ($parsed['key'] ?? '')
-    ?? ($_SERVER['HTTP_X_WEBHOOK_KEY'] ?? '')
-    ?? ($_SERVER['HTTP_X_GOOGLE_WEBHOOK_KEY'] ?? '')
-));
-if ($incomingKey === '' && is_array($headers)) {
-    $incomingKey = trim((string) (
-        $headers['X-Webhook-Key']
-        ?? $headers['x-webhook-key']
-        ?? $headers['X-Google-Webhook-Key']
-        ?? $headers['x-google-webhook-key']
-        ?? ''
-    ));
+$incomingKey = trim((string) ($parsed['google_key'] ?? ''));
+if ($incomingKey === '' && isset($_POST['google_key'])) {
+    $incomingKey = trim((string) $_POST['google_key']);
+}
+if ($incomingKey === '' && isset($_GET['google_key'])) {
+    $incomingKey = trim((string) $_GET['google_key']);
 }
 
 if (!hash_equals($expectedWebhookKey, $incomingKey)) {
-    error_log('GoogleAdWebhook request unauthorized: method=' . (string) ($_SERVER['REQUEST_METHOD'] ?? '') . ' ip=' . (string) ($_SERVER['REMOTE_ADDR'] ?? '') . ' content_type=' . $contentType);
+    error_log('GoogleAdWebhook request unauthorized: method=' . (string) ($_SERVER['REQUEST_METHOD'] ?? '') . ' ip=' . (string) ($_SERVER['REMOTE_ADDR'] ?? '') . ' content_type=' . $contentType . ' lead_id=' . trim((string) ($parsed['lead_id'] ?? '')));
     http_response_code(401);
     $response = [
         'ok' => false,

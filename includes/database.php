@@ -56,3 +56,11 @@ function wp_db(): PDO
 
     return $pdo;
 }
+
+function wp_table_prefix(): string
+{
+    $config = require __DIR__ . '/../config.php';
+    $prefix = trim((string) (($config['wordpress_db']['prefix'] ?? 'wp_')));
+
+    return $prefix !== '' ? $prefix : 'wp_';
+}

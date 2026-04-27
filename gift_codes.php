@@ -27,6 +27,7 @@ $giftRows = [];
 $giftDetail = null;
 try {
     $pdo = wp_db();
+    $wpPrefix = wp_table_prefix();
     $baseSelect = "SELECT
             oi.order_item_id,
             oi.order_id,
@@ -68,6 +69,7 @@ try {
               FROM wp_woocommerce_order_itemmeta
               WHERE meta_key = '_ywgc_gift_card_code'
           )";
+    $baseSelect = str_replace('wp_', $wpPrefix, $baseSelect);
 
     $baseParams = [];
     if ($branchLocality !== '' && gift_cards_filter_by_branch_locality_enabled()) {
@@ -97,15 +99,15 @@ try {
             $resolvedRecipientEmail = '';
             $orderId = (int) ($giftDetail['order_id'] ?? 0);
             if ($orderId > 0) {
-                $emailStmt = $pdo->prepare(
-                    "SELECT
+                $emailSql = "SELECT
                         pm.post_id,
                         pm.meta_value AS recipient_email
                      FROM wp_postmeta pm
                      WHERE pm.meta_key = '_ywgc_recipient'
                        AND pm.post_id = :order_id
-                     LIMIT 5"
-                );
+                     LIMIT 5";
+                $emailSql = str_replace('wp_', $wpPrefix, $emailSql);
+                $emailStmt = $pdo->prepare($emailSql);
                 $emailStmt->execute(['order_id' => $orderId]);
                 $emailRows = $emailStmt->fetchAll();
                 foreach ($emailRows as $er) {
@@ -120,14 +122,14 @@ try {
             if ($resolvedRecipientEmail === '') {
                 $giftCode = extract_gift_code((string) ($giftDetail['gift_card_code'] ?? ''));
                 if ($giftCode !== '') {
-                    $emailByCodeStmt = $pdo->prepare(
-                        "SELECT pm.meta_value AS recipient_email
+                    $emailByCodeSql = "SELECT pm.meta_value AS recipient_email
                          FROM wp_postmeta pm
                          JOIN wp_posts gp ON gp.ID = pm.post_id
                          WHERE pm.meta_key = '_ywgc_recipient'
                            AND gp.post_title = :gift_code
-                         LIMIT 1"
-                    );
+                         LIMIT 1";
+                    $emailByCodeSql = str_replace('wp_', $wpPrefix, $emailByCodeSql);
+                    $emailByCodeStmt = $pdo->prepare($emailByCodeSql);
                     $emailByCodeStmt->execute(['gift_code' => $giftCode]);
                     $emailByCode = $emailByCodeStmt->fetchColumn();
                     $resolvedRecipientEmail = extract_email_value((string) ($emailByCode ?: ''));

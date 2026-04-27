@@ -15,6 +15,7 @@ return [
         'password' => 'your_wp_db_password',
         'database' => 'your_wp_database',
         'charset' => 'utf8mb4',
+        'prefix' => 'wp_',
     ],
     'dingg' => [
         'login_url' => 'https://api.dingg.app/api/v1/vendor/login',

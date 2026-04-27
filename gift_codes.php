@@ -373,7 +373,14 @@ require __DIR__ . '/includes/layout_start.php';
 })();
 </script>
 <script>
-console.log('Gift Card Sale debug', <?= json_encode($giftDebug, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
+var giftCardSaleDebug = <?= json_encode($giftDebug, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+console.log('Gift Card Sale debug', giftCardSaleDebug);
+if (giftCardSaleDebug && giftCardSaleDebug.error) {
+    console.error('Gift Card Sale error details:', giftCardSaleDebug.error);
+}
+try {
+    console.log('Gift Card Sale debug JSON:', JSON.stringify(giftCardSaleDebug));
+} catch (e) {}
 </script>
 
 <?php require __DIR__ . '/includes/layout_end.php'; ?>

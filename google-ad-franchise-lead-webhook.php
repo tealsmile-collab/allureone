@@ -18,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 date_default_timezone_set('UTC');
+$expectedWebhookKey = 'aellure123franchise';
 
 $rawBody = (string) file_get_contents('php://input');
 $contentType = strtolower(trim((string) ($_SERVER['CONTENT_TYPE'] ?? '')));
@@ -45,6 +46,32 @@ if (function_exists('getallheaders')) {
     if (is_array($h)) {
         $headers = $h;
     }
+}
+
+$incomingKey = trim((string) (
+    $_GET['key']
+    ?? $_POST['key']
+    ?? ($parsed['key'] ?? '')
+    ?? ($_SERVER['HTTP_X_WEBHOOK_KEY'] ?? '')
+    ?? ($_SERVER['HTTP_X_GOOGLE_WEBHOOK_KEY'] ?? '')
+));
+if ($incomingKey === '' && is_array($headers)) {
+    $incomingKey = trim((string) (
+        $headers['X-Webhook-Key']
+        ?? $headers['x-webhook-key']
+        ?? $headers['X-Google-Webhook-Key']
+        ?? $headers['x-google-webhook-key']
+        ?? ''
+    ));
+}
+
+if (!hash_equals($expectedWebhookKey, $incomingKey)) {
+    http_response_code(401);
+    echo json_encode([
+        'ok' => false,
+        'error' => 'Unauthorized webhook key.',
+    ]);
+    exit;
 }
 
 $entry = [

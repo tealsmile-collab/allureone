@@ -66,11 +66,14 @@ if ($incomingKey === '' && is_array($headers)) {
 }
 
 if (!hash_equals($expectedWebhookKey, $incomingKey)) {
+    error_log('GoogleAdWebhook request unauthorized: method=' . (string) ($_SERVER['REQUEST_METHOD'] ?? '') . ' ip=' . (string) ($_SERVER['REMOTE_ADDR'] ?? '') . ' content_type=' . $contentType);
     http_response_code(401);
-    echo json_encode([
+    $response = [
         'ok' => false,
         'error' => 'Unauthorized webhook key.',
-    ]);
+    ];
+    error_log('GoogleAdWebhook response 401: ' . json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    echo json_encode($response);
     exit;
 }
 
@@ -85,29 +88,43 @@ $entry = [
     'parsed_payload' => $parsed,
 ];
 
+error_log('GoogleAdWebhook request accepted: ' . json_encode([
+    'method' => (string) ($_SERVER['REQUEST_METHOD'] ?? ''),
+    'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
+    'content_type' => $contentType,
+    'query' => $_GET,
+    'payload_keys' => array_keys(is_array($parsed) ? $parsed : []),
+], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
 $logPath = __DIR__ . '/google_ad_franchise_lead_webhook.log';
 $logLine = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
 if ($logLine === false) {
     http_response_code(500);
-    echo json_encode([
+    $response = [
         'ok' => false,
         'error' => 'Could not encode webhook payload.',
-    ]);
+    ];
+    error_log('GoogleAdWebhook response 500: ' . json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    echo json_encode($response);
     exit;
 }
 
 $writeOk = @file_put_contents($logPath, $logLine . PHP_EOL, FILE_APPEND | LOCK_EX);
 if ($writeOk === false) {
     http_response_code(500);
-    echo json_encode([
+    $response = [
         'ok' => false,
         'error' => 'Could not write webhook log file.',
-    ]);
+    ];
+    error_log('GoogleAdWebhook response 500: ' . json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    echo json_encode($response);
     exit;
 }
 
-echo json_encode([
+$response = [
     'ok' => true,
     'message' => 'Webhook received and logged.',
-]);
+];
+error_log('GoogleAdWebhook response 200: ' . json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+echo json_encode($response);

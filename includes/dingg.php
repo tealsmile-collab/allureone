@@ -975,9 +975,7 @@ function dingg_fetch_vendor_bills_with_token(string $term, string $bearerToken):
     $cfg = require __DIR__ . '/../config.php';
     if (($cfg['dingg']['log_invoice_search'] ?? true)) {
         $http = (int) ($resp['http'] ?? 0);
-        $body = (string) ($resp['body'] ?? '');
         error_log('Dingg invoice search (vendor/bills) term=' . $term . ' HTTP=' . $http . ' url=' . $url);
-        error_log('Dingg invoice search (vendor/bills) response body: ' . $body);
     }
 
     return [

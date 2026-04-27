@@ -29,7 +29,13 @@ function wp_db(): PDO
     }
 
     $config = require __DIR__ . '/../config.php';
-    $c = $config['wordpress_db'];
+    $c = $config['wordpress_db'] ?? ($config['db'] ?? null);
+    if (!is_array($c)) {
+        throw new RuntimeException('Database config missing: define wordpress_db (or db) in config.php');
+    }
+    if (!isset($config['wordpress_db']) || !is_array($config['wordpress_db'])) {
+        error_log('AllureOne: wordpress_db config missing; falling back to db config for wp_db().');
+    }
     $pdo = allureone_connect_pdo_with_charset_fallback($c);
 
     return $pdo;
@@ -61,7 +67,7 @@ function allureone_connect_pdo_with_charset_fallback(array $c): PDO
         return new PDO($dsn, (string) ($c['user'] ?? ''), (string) ($c['password'] ?? ''), $options);
     } catch (PDOException $e) {
         $msg = strtolower($e->getMessage());
-        $isUnknownCharset = ((int) $e->getCode() === 2019) || str_contains($msg, 'unknown character set');
+        $isUnknownCharset = ((int) $e->getCode() === 2019) || (strpos($msg, 'unknown character set') !== false);
         if (!$isUnknownCharset || strtolower($charset) === 'utf8') {
             throw $e;
         }
@@ -81,7 +87,8 @@ function allureone_connect_pdo_with_charset_fallback(array $c): PDO
 function wp_table_prefix(): string
 {
     $config = require __DIR__ . '/../config.php';
-    $prefix = trim((string) (($config['wordpress_db']['prefix'] ?? 'wp_')));
+    $wpCfg = $config['wordpress_db'] ?? null;
+    $prefix = is_array($wpCfg) ? trim((string) (($wpCfg['prefix'] ?? 'wp_'))) : 'wp_';
 
     return $prefix !== '' ? $prefix : 'wp_';
 }

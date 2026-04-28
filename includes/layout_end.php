@@ -28,18 +28,29 @@
     (function () {
         var body = document.body;
         var btn = document.getElementById('menuToggle');
+        var closeBtn = document.getElementById('mobileMenuClose');
         if (!body || !btn) return;
         var key = 'allureone_menu_collapsed';
-        var isCollapsed = localStorage.getItem(key) === '1';
+        var isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+        var stored = isMobile ? null : localStorage.getItem(key);
+        var isCollapsed = stored === null ? true : stored === '1';
         function applyState() {
             body.classList.toggle('menu-collapsed', isCollapsed);
             btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
         }
         btn.addEventListener('click', function () {
             isCollapsed = !isCollapsed;
-            localStorage.setItem(key, isCollapsed ? '1' : '0');
+            if (!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches)) {
+                localStorage.setItem(key, isCollapsed ? '1' : '0');
+            }
             applyState();
         });
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () {
+                isCollapsed = true;
+                applyState();
+            });
+        }
         applyState();
     })();
     </script>

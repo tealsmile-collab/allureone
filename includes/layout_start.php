@@ -34,6 +34,7 @@ $isFranchiseOfficerRole = is_franchise_officer_role($user);
     }
     ?>
     <aside class="sidebar" id="appSidebar">
+        <button type="button" class="sidebar__close-btn" id="mobileMenuClose" aria-label="Close menu">×</button>
         <a class="sidebar__brand" href="<?= $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Franchise-leads.php' : 'dashboard.php') ?>"><?= e($appName) ?></a>
         <nav class="sidebar__nav">
             <?php if (!$isAccountsRole && !$isFranchiseOfficerRole): ?>
@@ -61,7 +62,7 @@ $isFranchiseOfficerRole = is_franchise_officer_role($user);
             <?php endif; ?>
             <a class="sidebar__link" href="logout.php">Logout</a>
             <?php if ($user && trim((string) ($user['full_name'] ?? '')) !== ''): ?>
-                <p class="sidebar__user-line"><?= e((string) $user['full_name']) ?></p>
+                <p class="sidebar__user-line"><?= e((string) $user['full_name']) ?> · <?= e((string) ($user['loginname'] ?? '')) ?></p>
             <?php endif; ?>
         </nav>
     </aside>
@@ -70,7 +71,6 @@ $isFranchiseOfficerRole = is_franchise_officer_role($user);
             <button class="menu-toggle" type="button" id="menuToggle" aria-expanded="true" aria-controls="appSidebar" aria-label="Toggle menu" title="Toggle menu">
                 <span class="menu-toggle__icon" aria-hidden="true"></span>
             </button>
-            <h1 class="main__title"><?= e($pageTitle) ?></h1>
             <?php if ($user): ?>
                 <p class="main__meta"><?= e($user['full_name']) ?> · <?= e($user['loginname']) ?></p>
             <?php endif; ?>

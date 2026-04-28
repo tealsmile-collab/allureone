@@ -33,62 +33,199 @@ function franchise_leads_format_datetime_ist(?string $utcDateTime): string
  */
 function franchise_leads_list(): array
 {
+    $rows = [];
+
     $sql = 'SELECT
                 id,
                 DateTime AS lead_datetime,
                 FULL_NAME AS full_name,
                 CITY AS city,
                 PHONE_NUMBER AS phone_number,
-                sourceName AS source_name
-            FROM allureone_franchise_leads
-            ORDER BY DateTime DESC, id DESC';
+                investment_budget,
+                preferred_timeline,
+                experience_in_the_wellness,
+                property_for_the_wellness,
+                sourceName AS source_name,
+                form_id,
+                campaign_id
+            FROM allureone_franchise_leads';
     $st = db()->query($sql);
+    foreach ($st->fetchAll() as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $row['lead_key'] = 'db-' . (int) ($row['id'] ?? 0);
+        $rows[] = $row;
+    }
 
-    return $st->fetchAll();
+    $wpdb = wp_db();
+    $wpPrefix = wp_table_prefix();
+    $wsql = 'SELECT id, response, created_at, form_id
+             FROM wp_fluentform_submissions
+             WHERE form_id = 11';
+    $wsql = str_replace('wp_', $wpPrefix, $wsql);
+    $wst = $wpdb->query($wsql);
+    foreach ($wst->fetchAll() as $wrow) {
+        if (!is_array($wrow)) {
+            continue;
+        }
+        $mapped = franchise_leads_map_fluentform_response((string) ($wrow['response'] ?? ''));
+        $rows[] = [
+            'id' => (int) ($wrow['id'] ?? 0),
+            'lead_key' => 'web-' . (int) ($wrow['id'] ?? 0),
+            'lead_datetime' => (string) ($wrow['created_at'] ?? ''),
+            'full_name' => (string) ($mapped['full_name'] ?? ''),
+            'phone_number' => (string) ($mapped['phone_number'] ?? ''),
+            'city' => (string) ($mapped['city'] ?? ''),
+            'investment_budget' => (string) ($mapped['investment_budget'] ?? ''),
+            'preferred_timeline' => (string) ($mapped['preferred_timeline'] ?? ''),
+            'experience_in_the_wellness' => (string) ($mapped['experience_in_the_wellness'] ?? ''),
+            'property_for_the_wellness' => (string) ($mapped['property_for_the_wellness'] ?? ''),
+            'source_name' => 'Website',
+            'form_id' => (string) ($wrow['form_id'] ?? ''),
+            'campaign_id' => '',
+        ];
+    }
+
+    usort($rows, static function (array $a, array $b): int {
+        $ta = strtotime((string) ($a['lead_datetime'] ?? '')) ?: 0;
+        $tb = strtotime((string) ($b['lead_datetime'] ?? '')) ?: 0;
+        if ($tb === $ta) {
+            return strcmp((string) ($b['lead_key'] ?? ''), (string) ($a['lead_key'] ?? ''));
+        }
+
+        return $tb <=> $ta;
+    });
+
+    return $rows;
 }
 
 /**
  * @return array<string, mixed>|null
  */
-function franchise_leads_detail(int $id): ?array
+function franchise_leads_detail(string $leadKey): ?array
 {
+    $leadKey = trim($leadKey);
+    if ($leadKey === '' || strpos($leadKey, '-') === false) {
+        return null;
+    }
+    [$source, $idPart] = explode('-', $leadKey, 2);
+    $id = (int) $idPart;
     if ($id <= 0) {
         return null;
     }
-    $sql = 'SELECT
-                id,
-                FULL_NAME,
-                PHONE_NUMBER,
-                CITY,
-                investment_budget,
-                preferred_timeline,
-                experience_in_the_wellness,
-                property_for_the_wellness,
-                DateTime,
-                form_id,
-                campaign_id
-            FROM allureone_franchise_leads
-            WHERE id = :id
-            LIMIT 1';
-    $st = db()->prepare($sql);
-    $st->execute(['id' => $id]);
-    $row = $st->fetch();
 
-    return is_array($row) ? $row : null;
+    if ($source === 'db') {
+        $sql = 'SELECT
+                    id,
+                    DateTime AS lead_datetime,
+                    FULL_NAME AS full_name,
+                    PHONE_NUMBER AS phone_number,
+                    CITY AS city,
+                    investment_budget,
+                    preferred_timeline,
+                    experience_in_the_wellness,
+                    property_for_the_wellness,
+                    sourceName AS source_name,
+                    form_id,
+                    campaign_id
+                FROM allureone_franchise_leads
+                WHERE id = :id
+                LIMIT 1';
+        $st = db()->prepare($sql);
+        $st->execute(['id' => $id]);
+        $row = $st->fetch();
+        if (!is_array($row)) {
+            return null;
+        }
+        $row['lead_key'] = 'db-' . (int) ($row['id'] ?? 0);
+
+        return $row;
+    }
+
+    if ($source === 'web') {
+        $wpdb = wp_db();
+        $wpPrefix = wp_table_prefix();
+        $sql = 'SELECT id, response, created_at, form_id
+                FROM wp_fluentform_submissions
+                WHERE form_id = 11 AND id = :id
+                LIMIT 1';
+        $sql = str_replace('wp_', $wpPrefix, $sql);
+        $st = $wpdb->prepare($sql);
+        $st->execute(['id' => $id]);
+        $row = $st->fetch();
+        if (!is_array($row)) {
+            return null;
+        }
+        $mapped = franchise_leads_map_fluentform_response((string) ($row['response'] ?? ''));
+
+        return [
+            'id' => (int) ($row['id'] ?? 0),
+            'lead_key' => 'web-' . (int) ($row['id'] ?? 0),
+            'lead_datetime' => (string) ($row['created_at'] ?? ''),
+            'full_name' => (string) ($mapped['full_name'] ?? ''),
+            'phone_number' => (string) ($mapped['phone_number'] ?? ''),
+            'city' => (string) ($mapped['city'] ?? ''),
+            'investment_budget' => (string) ($mapped['investment_budget'] ?? ''),
+            'preferred_timeline' => (string) ($mapped['preferred_timeline'] ?? ''),
+            'experience_in_the_wellness' => (string) ($mapped['experience_in_the_wellness'] ?? ''),
+            'property_for_the_wellness' => (string) ($mapped['property_for_the_wellness'] ?? ''),
+            'source_name' => 'Website',
+            'form_id' => (string) ($row['form_id'] ?? ''),
+            'campaign_id' => '',
+        ];
+    }
+
+    return null;
 }
 
-$detailId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+/**
+ * @return array<string, string>
+ */
+function franchise_leads_map_fluentform_response(string $jsonResponse): array
+{
+    $decoded = json_decode($jsonResponse, true);
+    if (!is_array($decoded)) {
+        return [
+            'full_name' => '',
+            'phone_number' => '',
+            'city' => '',
+            'investment_budget' => '',
+            'preferred_timeline' => '',
+            'experience_in_the_wellness' => '',
+            'property_for_the_wellness' => '',
+        ];
+    }
+
+    $names = $decoded['names'] ?? null;
+    $firstName = '';
+    if (is_array($names)) {
+        $firstName = trim((string) ($names['first_name'] ?? ''));
+    }
+
+    return [
+        'full_name' => $firstName,
+        'phone_number' => trim((string) ($decoded['input_mask'] ?? '')),
+        'city' => trim((string) ($decoded['input_text'] ?? '')),
+        'investment_budget' => trim((string) ($decoded['dropdown'] ?? '')),
+        'preferred_timeline' => trim((string) ($decoded['dropdown_1'] ?? '')),
+        'experience_in_the_wellness' => trim((string) ($decoded['dropdown_2'] ?? '')),
+        'property_for_the_wellness' => trim((string) ($decoded['dropdown_3'] ?? '')),
+    ];
+}
+
+$detailKey = trim((string) ($_GET['id'] ?? ''));
 $rows = [];
 $detailRow = null;
 $loadError = '';
 
 try {
-    if ($detailId > 0) {
-        $detailRow = franchise_leads_detail($detailId);
+    if ($detailKey !== '') {
+        $detailRow = franchise_leads_detail($detailKey);
     } else {
         $rows = franchise_leads_list();
     }
-} catch (PDOException $e) {
+} catch (Throwable $e) {
     error_log('AllureOne franchise leads page failed: ' . $e->getMessage());
     $loadError = 'Could not load franchise leads.';
 }
@@ -105,7 +242,7 @@ require __DIR__ . '/includes/layout_start.php';
     <div class="card__body">
         <?php if ($loadError !== ''): ?>
             <p class="alert alert--error" style="margin:1rem 1.25rem"><?= e($loadError) ?></p>
-        <?php elseif ($detailId > 0): ?>
+        <?php elseif ($detailKey !== ''): ?>
             <?php if ($detailRow === null): ?>
                 <p class="empty">Lead not found.</p>
                 <p style="padding:0 1.25rem 1.25rem;margin:0"><a class="btn btn--ghost" href="Franchise-leads.php">Back</a></p>
@@ -113,14 +250,15 @@ require __DIR__ . '/includes/layout_start.php';
                 <div style="padding:1.25rem">
                     <table class="data">
                         <tbody>
-                            <tr><th>Date</th><td><?= e(franchise_leads_format_datetime_ist((string) ($detailRow['DateTime'] ?? ''))) ?></td></tr>
-                            <tr><th>Full Name</th><td><?= e((string) ($detailRow['FULL_NAME'] ?? '')) ?></td></tr>
-                            <tr><th>Mobile</th><td><?= e((string) ($detailRow['PHONE_NUMBER'] ?? '')) ?></td></tr>
-                            <tr><th>City</th><td><?= e((string) ($detailRow['CITY'] ?? '')) ?></td></tr>
+                            <tr><th>Date</th><td><?= e(franchise_leads_format_datetime_ist((string) ($detailRow['lead_datetime'] ?? ''))) ?></td></tr>
+                            <tr><th>Full Name</th><td><?= e((string) ($detailRow['full_name'] ?? '')) ?></td></tr>
+                            <tr><th>Mobile</th><td><?= e((string) ($detailRow['phone_number'] ?? '')) ?></td></tr>
+                            <tr><th>City</th><td><?= e((string) ($detailRow['city'] ?? '')) ?></td></tr>
                             <tr><th>Investment Budget</th><td><?= e((string) ($detailRow['investment_budget'] ?? '')) ?></td></tr>
                             <tr><th>Preferred Timeline</th><td><?= e((string) ($detailRow['preferred_timeline'] ?? '')) ?></td></tr>
                             <tr><th>Experience In Wellness</th><td><?= e((string) ($detailRow['experience_in_the_wellness'] ?? '')) ?></td></tr>
                             <tr><th>Property For Wellness</th><td><?= e((string) ($detailRow['property_for_the_wellness'] ?? '')) ?></td></tr>
+                            <tr><th>Source</th><td><?= e((string) ($detailRow['source_name'] ?? '')) ?></td></tr>
                             <tr><th>Form ID</th><td><?= e((string) ($detailRow['form_id'] ?? '')) ?></td></tr>
                             <tr><th>Campaign ID</th><td><?= e((string) ($detailRow['campaign_id'] ?? '')) ?></td></tr>
                         </tbody>
@@ -146,7 +284,7 @@ require __DIR__ . '/includes/layout_start.php';
                         <?php foreach ($rows as $row): ?>
                             <tr>
                                 <td><?= e(franchise_leads_format_datetime_ist((string) ($row['lead_datetime'] ?? ''))) ?></td>
-                                <td><a class="link--underlined" href="Franchise-leads.php?id=<?= (int) ($row['id'] ?? 0) ?>"><?= e((string) ($row['full_name'] ?? '')) ?></a></td>
+                                <td><a class="link--underlined" href="Franchise-leads.php?id=<?= urlencode((string) ($row['lead_key'] ?? '')) ?>"><?= e((string) ($row['full_name'] ?? '')) ?></a></td>
                                 <td><?= e((string) ($row['city'] ?? '')) ?></td>
                                 <td><?= e((string) ($row['phone_number'] ?? '')) ?></td>
                                 <td><?= e((string) ($row['source_name'] ?? '')) ?></td>

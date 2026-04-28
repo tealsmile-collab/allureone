@@ -215,15 +215,48 @@ function franchise_leads_map_fluentform_response(string $jsonResponse): array
 }
 
 $detailKey = trim((string) ($_GET['id'] ?? ''));
+$sourceFilter = trim((string) ($_GET['source'] ?? ''));
+$allowedSources = ['Google Ads', 'Website'];
+if ($sourceFilter !== '' && !in_array($sourceFilter, $allowedSources, true)) {
+    $sourceFilter = '';
+}
+$page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+if ($page < 1) {
+    $page = 1;
+}
+$perPage = 20;
 $rows = [];
+$pagedRows = [];
 $detailRow = null;
 $loadError = '';
+$totalRows = 0;
+$totalPages = 1;
+$listQuery = [];
+if ($sourceFilter !== '') {
+    $listQuery['source'] = $sourceFilter;
+}
+if ($page > 1) {
+    $listQuery['page'] = (string) $page;
+}
+$listUrl = 'Franchise-leads.php' . ($listQuery === [] ? '' : ('?' . http_build_query($listQuery, '', '&', PHP_QUERY_RFC3986)));
 
 try {
     if ($detailKey !== '') {
         $detailRow = franchise_leads_detail($detailKey);
     } else {
         $rows = franchise_leads_list();
+        if ($sourceFilter !== '') {
+            $rows = array_values(array_filter($rows, static function (array $row) use ($sourceFilter): bool {
+                return trim((string) ($row['source_name'] ?? '')) === $sourceFilter;
+            }));
+        }
+        $totalRows = count($rows);
+        $totalPages = max(1, (int) ceil($totalRows / $perPage));
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+        $offset = ($page - 1) * $perPage;
+        $pagedRows = array_slice($rows, $offset, $perPage);
     }
 } catch (Throwable $e) {
     error_log('AllureOne franchise leads page failed: ' . $e->getMessage());
@@ -245,7 +278,7 @@ require __DIR__ . '/includes/layout_start.php';
         <?php elseif ($detailKey !== ''): ?>
             <?php if ($detailRow === null): ?>
                 <p class="empty">Lead not found.</p>
-                <p style="padding:0 1.25rem 1.25rem;margin:0"><a class="btn btn--ghost" href="Franchise-leads.php">Back</a></p>
+                <p style="padding:0 1.25rem 1.25rem;margin:0"><a class="btn btn--ghost" href="<?= e($listUrl) ?>">Back</a></p>
             <?php else: ?>
                 <div style="padding:1.25rem">
                     <table class="data">
@@ -263,12 +296,40 @@ require __DIR__ . '/includes/layout_start.php';
                             <tr><th>Campaign ID</th><td><?= e((string) ($detailRow['campaign_id'] ?? '')) ?></td></tr>
                         </tbody>
                     </table>
-                    <p style="margin-top:0.75rem;margin-bottom:0"><a class="btn btn--ghost" href="Franchise-leads.php">Back</a></p>
+                    <p style="margin-top:0.75rem;margin-bottom:0"><a class="btn btn--ghost" href="<?= e($listUrl) ?>">Back</a></p>
                 </div>
             <?php endif; ?>
         <?php elseif ($rows === []): ?>
+            <form method="get" action="Franchise-leads.php" class="form form--invoice-search" style="padding:1rem 1.25rem 0">
+                <div class="form__row">
+                    <label for="source_filter">Source</label>
+                    <select id="source_filter" name="source">
+                        <option value="">All</option>
+                        <?php foreach ($allowedSources as $src): ?>
+                            <option value="<?= e($src) ?>"<?= $sourceFilter === $src ? ' selected' : '' ?>><?= e($src) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form__row form__row--submit">
+                    <button type="submit" class="btn btn--primary">Apply</button>
+                </div>
+            </form>
             <p class="empty">No franchise leads found.</p>
         <?php else: ?>
+            <form method="get" action="Franchise-leads.php" class="form form--invoice-search" style="padding:1rem 1.25rem 0">
+                <div class="form__row">
+                    <label for="source_filter">Source</label>
+                    <select id="source_filter" name="source">
+                        <option value="">All</option>
+                        <?php foreach ($allowedSources as $src): ?>
+                            <option value="<?= e($src) ?>"<?= $sourceFilter === $src ? ' selected' : '' ?>><?= e($src) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form__row form__row--submit">
+                    <button type="submit" class="btn btn--primary">Apply</button>
+                </div>
+            </form>
             <div class="table-wrap">
                 <table class="data">
                     <thead>
@@ -281,10 +342,19 @@ require __DIR__ . '/includes/layout_start.php';
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($rows as $row): ?>
+                        <?php foreach ($pagedRows as $row): ?>
                             <tr>
                                 <td><?= e(franchise_leads_format_datetime_ist((string) ($row['lead_datetime'] ?? ''))) ?></td>
-                                <td><a class="link--underlined" href="Franchise-leads.php?id=<?= urlencode((string) ($row['lead_key'] ?? '')) ?>"><?= e((string) ($row['full_name'] ?? '')) ?></a></td>
+                                <?php
+                                $detailQuery = ['id' => (string) ($row['lead_key'] ?? '')];
+                                if ($sourceFilter !== '') {
+                                    $detailQuery['source'] = $sourceFilter;
+                                }
+                                if ($page > 1) {
+                                    $detailQuery['page'] = (string) $page;
+                                }
+                                ?>
+                                <td><a class="link--underlined" href="Franchise-leads.php?<?= e(http_build_query($detailQuery, '', '&', PHP_QUERY_RFC3986)) ?>"><?= e((string) ($row['full_name'] ?? '')) ?></a></td>
                                 <td><?= e((string) ($row['city'] ?? '')) ?></td>
                                 <td><?= e((string) ($row['phone_number'] ?? '')) ?></td>
                                 <td><?= e((string) ($row['source_name'] ?? '')) ?></td>
@@ -293,6 +363,33 @@ require __DIR__ . '/includes/layout_start.php';
                     </tbody>
                 </table>
             </div>
+            <?php if ($totalPages > 1): ?>
+                <div style="padding:0.9rem 1.25rem 1.15rem;display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap">
+                    <?php if ($page > 1): ?>
+                        <?php
+                        $prevQuery = [];
+                        if ($sourceFilter !== '') {
+                            $prevQuery['source'] = $sourceFilter;
+                        }
+                        if ($page - 1 > 1) {
+                            $prevQuery['page'] = (string) ($page - 1);
+                        }
+                        ?>
+                        <a class="btn btn--ghost" href="Franchise-leads.php<?= $prevQuery === [] ? '' : ('?' . e(http_build_query($prevQuery, '', '&', PHP_QUERY_RFC3986))) ?>">Previous</a>
+                    <?php endif; ?>
+                    <span class="main__meta" style="margin:0">Page <?= $page ?> of <?= $totalPages ?></span>
+                    <?php if ($page < $totalPages): ?>
+                        <?php
+                        $nextQuery = [];
+                        if ($sourceFilter !== '') {
+                            $nextQuery['source'] = $sourceFilter;
+                        }
+                        $nextQuery['page'] = (string) ($page + 1);
+                        ?>
+                        <a class="btn btn--ghost" href="Franchise-leads.php?<?= e(http_build_query($nextQuery, '', '&', PHP_QUERY_RFC3986)) ?>">Next</a>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </div>

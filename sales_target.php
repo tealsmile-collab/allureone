@@ -4,6 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/includes/gift_helpers.php';
 require_login();
+require_not_accounts_role();
+require_not_franchise_officer_role();
 
 $curY = (int) date('Y');
 $curM = (int) date('n');

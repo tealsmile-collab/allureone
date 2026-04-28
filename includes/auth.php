@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 const ROLE_SUPERADMIN = 1;
 const ROLE_ADMIN = 2;
+const ROLE_ACCOUNTS = 7;
+const ROLE_FRANCHISE_OFFICER = 9;
 
 function csrf_token(): string
 {
@@ -47,6 +49,44 @@ function require_superadmin(): void
     if (current_user()['role_id'] !== ROLE_SUPERADMIN) {
         http_response_code(403);
         echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied. Superadmin only.</p><p><a href="dashboard.php">Dashboard</a></p></body></html>';
+        exit;
+    }
+}
+
+function is_accounts_role(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+
+    return (int) ($u['role_id'] ?? 0) === ROLE_ACCOUNTS;
+}
+
+function require_not_accounts_role(): void
+{
+    require_login();
+    if (is_accounts_role()) {
+        header('Location: gift_codes.php', true, 302);
+        exit;
+    }
+}
+
+function is_franchise_officer_role(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+
+    return (int) ($u['role_id'] ?? 0) === ROLE_FRANCHISE_OFFICER;
+}
+
+function require_not_franchise_officer_role(): void
+{
+    require_login();
+    if (is_franchise_officer_role()) {
+        header('Location: Franchise-leads.php', true, 302);
         exit;
     }
 }

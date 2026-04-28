@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 require_login();
+require_not_accounts_role();
+require_not_franchise_officer_role();
 
 $user = current_user();
 $roleId = (int) ($user['role_id'] ?? 0);

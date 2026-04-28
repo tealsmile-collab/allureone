@@ -4,7 +4,14 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 
 if (current_user() !== null) {
-    header('Location: dashboard.php');
+    $cu = current_user();
+    $target = 'dashboard.php';
+    if (is_accounts_role($cu)) {
+        $target = 'gift_codes.php';
+    } elseif (is_franchise_officer_role($cu)) {
+        $target = 'Franchise-leads.php';
+    }
+    header('Location: ' . $target);
     exit;
 }
 
@@ -55,11 +62,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sessionKey = trim((string) ($sst->fetchColumn() ?: ''));
                 }
 
-                if ($sessionKey === '') {
+                if ($branchId !== null && $sessionKey === '') {
                     $error = 'Dingg session key is not configured for your branch. Please contact admin.';
                 } else {
                     dingg_clear_session_encrypted_token();
-                    dingg_encrypt_session_token($sessionKey);
+                    if ($sessionKey !== '') {
+                        dingg_encrypt_session_token($sessionKey);
+                    }
 
                     $displayName = trim((string) ($row['FullName'] ?? ''));
                     if ($displayName === '') {
@@ -74,7 +83,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'role_id' => (int) ($row['RoleId'] ?? 0),
                     ]);
                     session_write_close();
-                    header('Location: dashboard.php', true, 302);
+                    $roleId = (int) ($row['RoleId'] ?? 0);
+                    $target = 'dashboard.php';
+                    if ($roleId === ROLE_ACCOUNTS) {
+                        $target = 'gift_codes.php';
+                    } elseif ($roleId === ROLE_FRANCHISE_OFFICER) {
+                        $target = 'Franchise-leads.php';
+                    }
+                    header('Location: ' . $target, true, 302);
                     exit;
                 }
             }

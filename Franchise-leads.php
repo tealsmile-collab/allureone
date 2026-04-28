@@ -3,10 +3,11 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 require_login();
+require_not_accounts_role();
 
 $user = current_user();
 $roleId = (int) ($user['role_id'] ?? 0);
-if ($roleId !== ROLE_SUPERADMIN && $roleId !== ROLE_ADMIN) {
+if ($roleId !== ROLE_SUPERADMIN && $roleId !== ROLE_ADMIN && $roleId !== ROLE_FRANCHISE_OFFICER) {
     http_response_code(403);
     exit('Forbidden');
 }

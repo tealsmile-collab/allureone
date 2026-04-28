@@ -145,6 +145,7 @@ $investmentBudget = webhook_extract_lead_value($parsed, 'what_is_your_investment
 $preferredTimeline = webhook_extract_lead_value($parsed, 'what_is_your_preferred_timeline_to_start_operations?');
 $experienceInWellness = webhook_extract_lead_value($parsed, 'do_you_have_experience_in_the_wellness_or_beauty_industry?');
 $propertyForWellness = webhook_extract_lead_value($parsed, 'do_you_already_have_a_property_for_the_wellness_centre?');
+$sourceName = 'Google Ads';
 $formId = trim((string) ($parsed['form_id'] ?? ''));
 $campaignId = trim((string) ($parsed['campaign_id'] ?? ''));
 
@@ -158,6 +159,7 @@ try {
                 preferred_timeline,
                 experience_in_the_wellness,
                 property_for_the_wellness,
+                sourceName,
                 DateTime,
                 form_id,
                 campaign_id
@@ -169,6 +171,7 @@ try {
                 :preferred_timeline,
                 :experience_in_the_wellness,
                 :property_for_the_wellness,
+                :source_name,
                 NOW(),
                 :form_id,
                 :campaign_id
@@ -182,6 +185,7 @@ try {
         'preferred_timeline' => $preferredTimeline,
         'experience_in_the_wellness' => $experienceInWellness,
         'property_for_the_wellness' => $propertyForWellness,
+        'source_name' => $sourceName,
         'form_id' => $formId,
         'campaign_id' => $campaignId,
     ]);

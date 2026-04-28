@@ -158,6 +158,27 @@ CREATE TABLE IF NOT EXISTS allureone_session_data (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL
     ,
+    'franchise_leads' => <<<SQL
+CREATE TABLE IF NOT EXISTS allureone_franchise_leads (
+  id INT NOT NULL AUTO_INCREMENT,
+  FULL_NAME VARCHAR(255) NULL,
+  PHONE_NUMBER VARCHAR(50) NULL,
+  CITY VARCHAR(150) NULL,
+  investment_budget VARCHAR(255) NULL,
+  preferred_timeline VARCHAR(255) NULL,
+  experience_in_the_wellness VARCHAR(255) NULL,
+  property_for_the_wellness VARCHAR(255) NULL,
+  sourceName VARCHAR(255) NULL,
+  DateTime DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  form_id BIGINT NULL,
+  campaign_id BIGINT NULL,
+  PRIMARY KEY (id),
+  KEY idx_franchise_leads_datetime (DateTime),
+  KEY idx_franchise_leads_phone (PHONE_NUMBER),
+  KEY idx_franchise_leads_form_campaign (form_id, campaign_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL
+    ,
 ];
 
 $lastSql = '';
@@ -284,6 +305,7 @@ try {
         'allureone_giftcard' => (int) $pdo->query('SELECT COUNT(*) FROM allureone_giftcard')->fetchColumn(),
         'allurepro_InvoiceCancellation' => (int) $pdo->query('SELECT COUNT(*) FROM allurepro_InvoiceCancellation')->fetchColumn(),
         'allureone_session_data' => (int) $pdo->query('SELECT COUNT(*) FROM allureone_session_data')->fetchColumn(),
+        'allureone_franchise_leads' => (int) $pdo->query('SELECT COUNT(*) FROM allureone_franchise_leads')->fetchColumn(),
     ];
 } catch (PDOException $e) {
     $msg = htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');

@@ -3,6 +3,7 @@
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS allureone_franchise_leads;
 DROP TABLE IF EXISTS allureone_session_data;
 DROP TABLE IF EXISTS allurepro_InvoiceCancellation;
 DROP TABLE IF EXISTS allureone_giftcard;
@@ -100,6 +101,25 @@ CREATE TABLE IF NOT EXISTS allureone_session_data (
   PRIMARY KEY (mobile_key),
   KEY idx_session_mobile_number (mobile_number),
   KEY idx_session_updated_date (updated_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS allureone_franchise_leads (
+  id INT NOT NULL AUTO_INCREMENT,
+  FULL_NAME VARCHAR(255) NULL,
+  PHONE_NUMBER VARCHAR(50) NULL,
+  CITY VARCHAR(150) NULL,
+  investment_budget VARCHAR(255) NULL,
+  preferred_timeline VARCHAR(255) NULL,
+  experience_in_the_wellness VARCHAR(255) NULL,
+  property_for_the_wellness VARCHAR(255) NULL,
+  sourceName VARCHAR(255) NULL,
+  DateTime DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  form_id BIGINT NULL,
+  campaign_id BIGINT NULL,
+  PRIMARY KEY (id),
+  KEY idx_franchise_leads_datetime (DateTime),
+  KEY idx_franchise_leads_phone (PHONE_NUMBER),
+  KEY idx_franchise_leads_form_campaign (form_id, campaign_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

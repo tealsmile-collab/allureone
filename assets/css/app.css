@@ -163,6 +163,7 @@ a.link--underlined:hover {
   right: 6px;
   width: auto;
   max-width: 130px;
+  max-height: 44px;
   height: auto;
   margin: 0;
 }
@@ -639,7 +640,8 @@ table.data td.table-actions {
     padding: 1.25rem 1rem 2rem;
   }
   .main__header-logo {
-    max-width: 108px;
+    max-width: 92px;
+    max-height: 30px;
     top: 4px;
     right: 6px;
   }

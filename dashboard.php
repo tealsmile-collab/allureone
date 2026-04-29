@@ -922,7 +922,7 @@ require __DIR__ . '/includes/layout_start.php';
             <p class="empty">No gift cards yet.</p>
         <?php else: ?>
             <div class="table-wrap">
-                <table class="data">
+                <table class="data data--dashboard-gift-codes">
                     <thead>
                         <tr>
                             <th>Location</th>

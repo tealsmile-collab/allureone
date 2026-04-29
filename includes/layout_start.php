@@ -8,6 +8,7 @@ $appName = $config['app']['name'];
 $user = current_user();
 $isAccountsRole = is_accounts_role($user);
 $isFranchiseOfficerRole = is_franchise_officer_role($user);
+$homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Franchise-leads.php' : 'dashboard.php');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -35,7 +36,7 @@ $isFranchiseOfficerRole = is_franchise_officer_role($user);
     ?>
     <aside class="sidebar" id="appSidebar">
         <button type="button" class="sidebar__close-btn" id="mobileMenuClose" aria-label="Close menu">×</button>
-        <a class="sidebar__brand" href="<?= $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Franchise-leads.php' : 'dashboard.php') ?>"><?= e($appName) ?></a>
+        <a class="sidebar__brand" href="<?= e($homeHref) ?>"><?= e($appName) ?></a>
         <nav class="sidebar__nav">
             <?php if (!$isAccountsRole && !$isFranchiseOfficerRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'dashboard') ? ' is-active' : '' ?>" href="dashboard.php">Dashboard</a>
@@ -71,7 +72,9 @@ $isFranchiseOfficerRole = is_franchise_officer_role($user);
             <button class="menu-toggle" type="button" id="menuToggle" aria-expanded="true" aria-controls="appSidebar" aria-label="Toggle menu" title="Toggle menu">
                 <span class="menu-toggle__icon" aria-hidden="true"></span>
             </button>
-            <img src="assets/images/allure-logo-small.png" alt="<?= e($appName) ?>" class="main__header-logo" loading="eager" decoding="async">
+            <a href="<?= e($homeHref) ?>" class="main__header-logo-link" aria-label="<?= e($appName) ?> home">
+                <img src="assets/images/allure-logo-small.png" alt="<?= e($appName) ?>" class="main__header-logo" loading="eager" decoding="async">
+            </a>
         </header>
         <div class="main__body">
         <?php

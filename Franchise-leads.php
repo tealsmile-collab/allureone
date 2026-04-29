@@ -331,7 +331,7 @@ require __DIR__ . '/includes/layout_start.php';
                 </div>
             </form>
             <div class="table-wrap">
-                <table class="data">
+                <table class="data data--franchise-leads">
                     <thead>
                         <tr>
                             <th>Date</th>

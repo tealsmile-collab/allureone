@@ -71,9 +71,7 @@ $isFranchiseOfficerRole = is_franchise_officer_role($user);
             <button class="menu-toggle" type="button" id="menuToggle" aria-expanded="true" aria-controls="appSidebar" aria-label="Toggle menu" title="Toggle menu">
                 <span class="menu-toggle__icon" aria-hidden="true"></span>
             </button>
-            <?php if ($user): ?>
-                <p class="main__meta"><?= e($user['full_name']) ?> · <?= e($user['loginname']) ?></p>
-            <?php endif; ?>
+            <img src="assets/images/allure-logo.png" alt="<?= e($appName) ?>" class="main__header-logo" loading="eager" decoding="async">
         </header>
         <div class="main__body">
         <?php

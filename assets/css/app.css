@@ -151,7 +151,20 @@ a.link--underlined:hover {
 }
 
 .main__header {
+  position: relative;
   margin-bottom: 1.5rem;
+  min-height: 42px;
+}
+
+.main__header-logo {
+  display: block;
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: auto;
+  max-width: 130px;
+  height: auto;
+  margin: 0;
 }
 
 .menu-toggle {
@@ -624,6 +637,11 @@ table.data td.table-actions {
   }
   .main {
     padding: 1.25rem 1rem 2rem;
+  }
+  .main__header-logo {
+    max-width: 108px;
+    top: 4px;
+    right: 6px;
   }
   .main__meta {
     display: none;

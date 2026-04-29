@@ -947,6 +947,7 @@ require __DIR__ . '/includes/layout_start.php';
                     </tbody>
                 </table>
             </div>
+            <p class="main__meta" style="padding:0 1.25rem 1rem;margin:0">(Showing latest 5 sale data.)</p>
         <?php endif; ?>
     </div>
 </details>

@@ -8,9 +8,11 @@ ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/php_errors.log');
 
 if (session_status() === PHP_SESSION_NONE) {
+    $sessionLifetime = 30 * 24 * 60 * 60; // 30 days
+    ini_set('session.gc_maxlifetime', (string) $sessionLifetime);
     session_name($config['app']['session_name']);
     session_set_cookie_params([
-        'lifetime' => 0,
+        'lifetime' => $sessionLifetime,
         'path' => '/',
         'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
         'httponly' => true,

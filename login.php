@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 
+const ALLUREONE_REMEMBER_LOGIN_COOKIE = 'allureone_remember_loginname';
+
 if (current_user() !== null) {
     $cu = current_user();
     $target = 'dashboard.php';
@@ -32,6 +34,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ((function_exists('mb_strlen') ? mb_strlen($password) : strlen($password)) > 128) {
             $error = 'Password is too long.';
         } else {
+            setcookie(
+                ALLUREONE_REMEMBER_LOGIN_COOKIE,
+                $loginname,
+                [
+                    'expires' => time() + (86400 * 30),
+                    'path' => '/',
+                    'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+                    'httponly' => false,
+                    'samesite' => 'Lax',
+                ]
+            );
             $pdo = db();
             $st = $pdo->prepare(
                 'SELECT id, loginname, password, FullName, BranchId, RoleId, isactive
@@ -100,6 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $config = require __DIR__ . '/config.php';
 $appName = $config['app']['name'];
+$rememberedLoginname = trim((string) ($_COOKIE[ALLUREONE_REMEMBER_LOGIN_COOKIE] ?? ''));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -123,7 +137,7 @@ $appName = $config['app']['name'];
                 <label for="loginname">User Name</label>
                 <input id="loginname" name="loginname" type="text" inputmode="text" maxlength="50" required
                        placeholder="Email or mobile"
-                       value="<?= isset($_POST['loginname']) ? htmlspecialchars((string) $_POST['loginname'], ENT_QUOTES, 'UTF-8') : '' ?>">
+                       value="<?= isset($_POST['loginname']) ? htmlspecialchars((string) $_POST['loginname'], ENT_QUOTES, 'UTF-8') : htmlspecialchars($rememberedLoginname, ENT_QUOTES, 'UTF-8') ?>">
             </div>
             <div class="form__row">
                 <label for="password">Password</label>

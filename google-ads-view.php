@@ -30,10 +30,13 @@ require __DIR__ . '/includes/layout_start.php';
 
 <div class="card">
     <div class="card__head">
-        <span>Google Ads Events (<?= e($startDate) ?>)</span>
+        <span>Google Ads Website Visits</span>
     </div>
     <div class="card__body">
         <form method="get" action="google-ads-view.php" class="form form--invoice-search" style="padding:1rem 1.25rem 0">
+            <p class="main__meta" style="width:100%;margin:0 0 0.4rem 0;font-size:0.8rem">
+                Note: This data shows client website visit count through Google Ads on selected date. Google Business Profile visits are not counted here.
+            </p>
             <div class="form__row">
                 <label for="google_ads_view_date">Date</label>
                 <input type="date" id="google_ads_view_date" name="date" value="<?= e($selectedDateInput) ?>">

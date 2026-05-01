@@ -8,7 +8,7 @@ require_not_franchise_officer_role();
 
 $user = current_user();
 $roleId = (int) ($user['role_id'] ?? 0);
-if ($roleId !== ROLE_SUPERADMIN && $roleId !== ROLE_ADMIN && $roleId !== 3) {
+if ($roleId !== ROLE_SUPERADMIN && $roleId !== ROLE_ADMIN) {
     http_response_code(403);
     exit('Forbidden');
 }

@@ -10,7 +10,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 $user = current_user();
 $roleId = (int) ($user['role_id'] ?? 0);
-if ($roleId !== ROLE_SUPERADMIN && $roleId !== ROLE_ADMIN && $roleId !== 3) {
+if ($roleId !== ROLE_SUPERADMIN && $roleId !== ROLE_ADMIN) {
     http_response_code(403);
     echo json_encode(['ok' => false, 'error' => 'Forbidden']);
     exit;

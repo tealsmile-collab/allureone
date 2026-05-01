@@ -48,7 +48,7 @@ $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Fra
             <?php if ($isFranchiseOfficerRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'franchise_leads') ? ' is-active' : '' ?>" href="Franchise-leads.php">Franchise Leads</a>
             <?php endif; ?>
-            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN || (int) ($user['role_id'] ?? 0) === 3)): ?>
+            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'google_ads_view') ? ' is-active' : '' ?>" href="google-ads-view.php">Google Ads View</a>
             <?php endif; ?>
             <?php if (!$isFranchiseOfficerRole): ?>

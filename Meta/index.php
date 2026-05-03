@@ -95,9 +95,41 @@ $branchPhones = [
 "palghar" => "917875588844",
 "boisar" => "919325825052",
 "gujrat_-_vadodara" => "919274954980",
-"ratnagiri" => "918983188738"
+"ratnagiri" => "918983188738",
+"lokhandwala" => "917777049450"
 ];
 
+$branchMothersDayFormId = [
+    "1508534954046117" => "andheri_east",
+    "2487701328330882" => "malad_west",
+    "995393993066642" => "borivali",
+    "1709933903363090" => "powai",
+    "867425536385232" => "mulund",
+    "2742120982810743" => "thane",
+    "1520691529730936" => "navi_mumbai_-_seawoods",
+    "957352689996372" => "navi_mumbai_-_kharghar",
+    "3539000546275730" => "palghar",
+    "1653036605887959" => "boisar",
+    "1489713305938086" => "gujrat_-_vadodara",
+    "2172143546972495" => "ratnagiri",
+    "1497891295039613" => "lokhandwala"
+];
+
+$formIdToBranchId = [
+    "1508534954046117" => 3000, // andheri_east
+    "2487701328330882" => 4185, // malad_west
+    "995393993066642"  => 2973, // borivali
+    "1709933903363090" => 2935, // powai
+    "867425536385232"  => 3781, // mulund
+    "2742120982810743" => 3780, // thane
+    "1520691529730936" => 3782, // navi_mumbai_-_seawoods
+    "957352689996372"  => 5000,    // navi_mumbai_-_kharghar (not found)
+    "3539000546275730" => 5001,    // palghar (not found)
+    "1653036605887959" => 4456, // boisar
+    "1489713305938086" => 5002,    // gujrat_-_vadodara (not found)
+    "2172143546972495" => 4274,    // ratnagiri (not found)
+    "1497891295039613" => 4507  // lokhandwala
+];
 
 
 // ================= WEBHOOK VERIFICATION =================
@@ -123,7 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    global $branchPhones,$page_access_token,$api_url,$apiKey,$apiSecret,$logFile,$franchiseLogFile,$apiLogFile;
+    global $branchPhones,$branchMothersDayFormId,$formIdToBranchId,$page_access_token,$api_url,$apiKey,$apiSecret,$logFile,$franchiseLogFile,$apiLogFile;
 
     $input = file_get_contents("php://input");
     $data = json_decode($input,true);
@@ -154,6 +186,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $recipientName="Shailesh";
         $recipientPhone="918369676845";
         $sourceName="";
+        $isMothersDayLead = false;
+        $mothersDayBranchId = null;
 
 
 
@@ -254,7 +288,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         else{
 
-            $sourceName = "Meta Lead - March For Her";
+            $sourceName = "Insta-Fb Lead- Mothers Day Campaign";
+            $isMothersDayLead = true;
 
             foreach($lead['field_data'] as $field){
 
@@ -276,14 +311,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            $locationKey = strtolower(str_replace(" ","_",$preferredLocation));
+            // Preferred location is mapped by form_id for Mothers Day forms.
+            if(isset($branchMothersDayFormId[$form_id])){
+                $mappedLocationKey = strtolower(trim((string)$branchMothersDayFormId[$form_id]));
+                if($mappedLocationKey !== ''){
+                    $preferredLocation = escapeValue(normalizeValue(str_replace("_"," ",$mappedLocationKey)));
+                }
+            }
 
-            if($form_id == "925633326718664" && isset($branchPhones[$locationKey])){
+            $locationKey = strtolower(trim((string)(isset($branchMothersDayFormId[$form_id]) ? $branchMothersDayFormId[$form_id] : str_replace(" ","_",$preferredLocation))));
+
+            if( isset($branchPhones[$locationKey])){
                 $recipientName = $preferredLocation;
                 $recipientPhone = $branchPhones[$locationKey];
             }
 
-            $details = "Preferred Branch Location - ".$preferredLocation;
+            if(isset($formIdToBranchId[$form_id])){
+                $mothersDayBranchId = (int)$formIdToBranchId[$form_id];
+            }
+
+            $details = "Preferred Location - ".$preferredLocation;
         }
 
 
@@ -294,6 +341,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if(strlen($phoneNumber)==10){
             $phoneNumber="91".$phoneNumber;
+        }
+
+        // ================= SAVE META MOTHERS DAY LEAD =================
+        if($isMothersDayLead){
+            try{
+                $dsnMeta = "mysql:host=".$frDbHost.";dbname=".$frDbName.";charset=utf8";
+                $pdoMeta = new PDO($dsnMeta, $frDbUser, $frDbPass, [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::ATTR_EMULATE_PREPARES => false,
+                ]);
+
+                $sqlMeta = "INSERT INTO allureone_meta_leads
+                    (sourceName, Campaiign, branch_id, branch_name, lead_name, lead_phone_number, Created_Datetime, status, remarks, amount)
+                    VALUES
+                    (:sourceName, :campaign, :branch_id, :branch_name, :lead_name, :lead_phone_number, NOW(), :status, :remarks, :amount)";
+                $stMeta = $pdoMeta->prepare($sqlMeta);
+                $stMeta->execute([
+                    'sourceName' => 'Insta-Fb',
+                    'campaign' => 'Mothers Day Campaign',
+                    'branch_id' => $mothersDayBranchId,
+                    'branch_name' => $preferredLocation,
+                    'lead_name' => $customerName,
+                    'lead_phone_number' => $phoneNumber,
+                    'status' => 1,
+                    'remarks' => null,
+                    'amount' => null,
+                ]);
+            }catch(Throwable $e){
+                $metaDbLog = date("Y-m-d H:i:s")." | MetaLeads DB Insert Error | ".$lead_id." | ".$e->getMessage()."\n";
+                file_put_contents($apiLogFile, $metaDbLog, FILE_APPEND);
+            }
         }
 
 

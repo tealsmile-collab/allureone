@@ -328,6 +328,8 @@ $totalLeads = 0;
 $leadsBranchSummary = [];
 /** @var array{received:int,converted:int,amount_total:string}|null Branch-scoped list conversion row (role 3); null if not loaded. */
 $leadsConversionSummary = null;
+/** Set in data try: meta leads has a campaign column (Campaiign / campaign). */
+$campaignFilterColumnAvailable = false;
 $loadError = '';
 $flash = ['type' => '', 'text' => ''];
 $branchId = isset($user['branch_id']) && (int) $user['branch_id'] > 0 ? (int) $user['branch_id'] : null;
@@ -419,12 +421,27 @@ if (!$statusIsFollowUpForFilter) {
     $fFuDateSel = '';
 }
 
+/** GET `f_campaign` slug => exact value stored in meta leads campaign column (see Meta/index.php inserts). */
+$leadsCampaignFilterDbValue = [
+    'mothers_day' => 'Mothers Day Campaign',
+];
+$fCampaignSel = isset($_GET['f_campaign']) ? trim((string) $_GET['f_campaign']) : 'all';
+if ($fCampaignSel === '') {
+    $fCampaignSel = 'all';
+}
+if ($fCampaignSel !== 'all' && !isset($leadsCampaignFilterDbValue[$fCampaignSel])) {
+    $fCampaignSel = 'all';
+}
+
 $listFilterParams = ['f_status' => $fStatusSel];
 if ($statusIsFollowUpForFilter) {
     $listFilterParams['f_fu'] = $fFuSel;
     if ($fFuSel === 'custom' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fFuDateSel) === 1) {
         $listFilterParams['f_fu_date'] = $fFuDateSel;
     }
+}
+if ($fCampaignSel !== 'all') {
+    $listFilterParams['f_campaign'] = $fCampaignSel;
 }
 
 $metaLeadCols = leads_meta_leads_column_map();
@@ -552,6 +569,8 @@ try {
     $qStatus = leads_ml_qualify_ml($map, ['status']);
     $qCreated = leads_ml_qualify_ml($map, ['Created_Datetime', 'created_datetime', 'DateTime']);
     $qFollowupCol = leads_ml_qualify_ml($map, ['followup_datetime', 'Followup_Datetime']);
+    $qCampaignCol = leads_ml_qualify_ml($map, ['Campaiign', 'Campaign', 'campaign']);
+    $campaignFilterColumnAvailable = ($qCampaignCol !== null);
 
     foreach (['id' => $qId, 'lead_name' => $qLeadName, 'lead_phone_number' => $qPhone, 'status' => $qStatus] as $needKey => $q) {
         if ($q === null) {
@@ -573,6 +592,13 @@ try {
             $listFilterSql .= ' AND ' . $qFollowupCol . ' IS NOT NULL AND ' . $qFollowupCol . ' >= :list_fu_a AND ' . $qFollowupCol . ' <= :list_fu_b';
             $listFilterBind['list_fu_a'] = $fuBounds[0];
             $listFilterBind['list_fu_b'] = $fuBounds[1];
+        }
+    }
+    if ($fCampaignSel !== 'all' && $qCampaignCol !== null) {
+        $dbCampFilter = $leadsCampaignFilterDbValue[$fCampaignSel] ?? '';
+        if ($dbCampFilter !== '') {
+            $listFilterSql .= ' AND TRIM(IFNULL(' . $qCampaignCol . ', \'\')) = :list_f_campaign';
+            $listFilterBind['list_f_campaign'] = $dbCampFilter;
         }
     }
 
@@ -665,7 +691,7 @@ try {
             $totalLeads = 0;
         } else {
         $qSrc = leads_ml_qualify_ml($map, ['sourceName', 'SourceName']);
-        $qCamp = leads_ml_qualify_ml($map, ['Campaiign', 'Campaign', 'campaign']);
+        $qCamp = $qCampaignCol;
         $qRemarks = leads_ml_qualify_ml($map, ['remarks']);
         $qAmt = leads_ml_qualify_ml($map, ['amount']);
 
@@ -782,6 +808,25 @@ require __DIR__ . '/includes/layout_start.php';
         <span>Leads Summary</span>
     </div>
     <div class="card__body leads-branch-summary-card__body">
+        <?php if ($campaignFilterColumnAvailable): ?>
+        <form method="get" action="leads.php" class="leads-filters leads-summary-filters">
+            <input type="hidden" name="f_status" value="<?= e($fStatusSel) ?>">
+            <?php if ($statusIsFollowUpForFilter): ?>
+                <input type="hidden" name="f_fu" value="<?= e($fFuSel) ?>">
+                <?php if ($fFuSel === 'custom' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fFuDateSel) === 1): ?>
+                    <input type="hidden" name="f_fu_date" value="<?= e($fFuDateSel) ?>">
+                <?php endif; ?>
+            <?php endif; ?>
+            <div class="form__row">
+                <label for="f_campaign_summary">Campaign</label>
+                <select id="f_campaign_summary" name="f_campaign">
+                    <option value="all"<?= $fCampaignSel === 'all' ? ' selected' : '' ?>>All</option>
+                    <option value="mothers_day"<?= $fCampaignSel === 'mothers_day' ? ' selected' : '' ?>>Mothers Day Campaign</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn--primary">Apply</button>
+        </form>
+        <?php endif; ?>
         <div class="table-wrap">
             <table class="data leads-summary-table">
                 <thead>
@@ -996,6 +1041,15 @@ require __DIR__ . '/includes/layout_start.php';
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <?php if ($campaignFilterColumnAvailable): ?>
+                <div class="form__row">
+                    <label for="f_campaign">Campaign</label>
+                    <select id="f_campaign" name="f_campaign">
+                        <option value="all"<?= $fCampaignSel === 'all' ? ' selected' : '' ?>>All</option>
+                        <option value="mothers_day"<?= $fCampaignSel === 'mothers_day' ? ' selected' : '' ?>>Mothers Day Campaign</option>
+                    </select>
+                </div>
+                <?php endif; ?>
                 <?php if ($followUpFilterStatusId !== null && $followUpFilterStatusId > 0): ?>
                 <div id="leads_filter_fu_wrap" class="leads-filter-fu-inner" style="display:<?= $statusIsFollowUpForFilter ? 'flex' : 'none' ?>;" data-follow-up-status-id="<?= (int) $followUpFilterStatusId ?>">
                     <div class="form__row">

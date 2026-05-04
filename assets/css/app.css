@@ -264,6 +264,11 @@ a.link--underlined:hover {
 .leads-branch-summary-card__body {
   padding: 0;
 }
+form.leads-filters.leads-summary-filters {
+  padding: 0.75rem 1.15rem 0.85rem;
+  margin: 0;
+  border-bottom: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+}
 .leads-branch-summary-note {
   margin: 0;
   padding: 0.65rem 1.25rem 1rem;

@@ -75,37 +75,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sessionKey = trim((string) ($sst->fetchColumn() ?: ''));
                 }
 
-                if ($branchId !== null && $sessionKey === '') {
-                    $error = 'Dingg session key is not configured for your branch. Please contact admin.';
-                } else {
-                    dingg_clear_session_encrypted_token();
-                    if ($sessionKey !== '') {
-                        dingg_encrypt_session_token($sessionKey);
-                    }
-
-                    $displayName = trim((string) ($row['FullName'] ?? ''));
-                    if ($displayName === '') {
-                        $displayName = 'User';
-                    }
-
-                    login_user([
-                        'id' => (int) ($row['id'] ?? 0),
-                        'loginname' => (string) ($row['loginname'] ?? $loginname),
-                        'full_name' => $displayName,
-                        'branch_id' => $branchId,
-                        'role_id' => (int) ($row['RoleId'] ?? 0),
-                    ]);
-                    session_write_close();
-                    $roleId = (int) ($row['RoleId'] ?? 0);
-                    $target = 'dashboard.php';
-                    if ($roleId === ROLE_ACCOUNTS) {
-                        $target = 'gift_codes.php';
-                    } elseif ($roleId === ROLE_FRANCHISE_OFFICER) {
-                        $target = 'Franchise-leads.php';
-                    }
-                    header('Location: ' . $target, true, 302);
-                    exit;
+                $invoiceCancellationDisabled = ($branchId !== null && $sessionKey === '');
+                dingg_clear_session_encrypted_token();
+                if ($sessionKey !== '') {
+                    dingg_encrypt_session_token($sessionKey);
                 }
+
+                $displayName = trim((string) ($row['FullName'] ?? ''));
+                if ($displayName === '') {
+                    $displayName = 'User';
+                }
+
+                login_user([
+                    'id' => (int) ($row['id'] ?? 0),
+                    'loginname' => (string) ($row['loginname'] ?? $loginname),
+                    'full_name' => $displayName,
+                    'branch_id' => $branchId,
+                    'role_id' => (int) ($row['RoleId'] ?? 0),
+                ]);
+                $_SESSION['invoice_cancellation_disabled'] = $invoiceCancellationDisabled;
+                session_write_close();
+                $roleId = (int) ($row['RoleId'] ?? 0);
+                $target = 'dashboard.php';
+                if ($roleId === ROLE_ACCOUNTS) {
+                    $target = 'gift_codes.php';
+                } elseif ($roleId === ROLE_FRANCHISE_OFFICER) {
+                    $target = 'Franchise-leads.php';
+                }
+                header('Location: ' . $target, true, 302);
+                exit;
             }
         }
     }

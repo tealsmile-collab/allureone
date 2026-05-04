@@ -8,6 +8,7 @@ $appName = $config['app']['name'];
 $user = current_user();
 $isAccountsRole = is_accounts_role($user);
 $isFranchiseOfficerRole = is_franchise_officer_role($user);
+$isInvoiceCancellationEnabled = is_invoice_cancellation_enabled($user);
 $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Franchise-leads.php' : 'dashboard.php');
 ?>
 <!DOCTYPE html>
@@ -40,7 +41,9 @@ $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Fra
         <nav class="sidebar__nav">
             <?php if (!$isAccountsRole && !$isFranchiseOfficerRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'dashboard') ? ' is-active' : '' ?>" href="dashboard.php">Dashboard</a>
-                <a class="sidebar__link<?= ($activeNav === 'invoice_cancellation') ? ' is-active' : '' ?>" href="invoice_cancellation.php">Invoice Cancellation</a>
+                <?php if ($isInvoiceCancellationEnabled): ?>
+                    <a class="sidebar__link<?= ($activeNav === 'invoice_cancellation') ? ' is-active' : '' ?>" href="invoice_cancellation.php">Invoice Cancellation</a>
+                <?php endif; ?>
             <?php endif; ?>
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'franchise_leads') ? ' is-active' : '' ?>" href="Franchise-leads.php">Franchise Leads</a>
@@ -57,7 +60,7 @@ $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Fra
             <?php if (!$isFranchiseOfficerRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'gift_codes') ? ' is-active' : '' ?>" href="gift_codes.php">Gift Card Sale</a>
             <?php endif; ?>
-            <?php if (!$isAccountsRole && !$isFranchiseOfficerRole): ?>
+            <?php if (!$isAccountsRole && !$isFranchiseOfficerRole && $isInvoiceCancellationEnabled): ?>
                 <a class="sidebar__link<?= ($activeNav === 'sales_target') ? ' is-active' : '' ?>" href="sales_target.php">Sales target</a>
             <?php endif; ?>
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && $user['role_id'] === ROLE_SUPERADMIN): ?>

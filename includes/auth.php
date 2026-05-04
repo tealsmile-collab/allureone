@@ -32,7 +32,18 @@ function current_user(): ?array
         'full_name' => (string) $_SESSION['full_name'],
         'branch_id' => isset($_SESSION['branch_id']) ? (int) $_SESSION['branch_id'] : null,
         'role_id' => (int) $_SESSION['role_id'],
+        'invoice_cancellation_disabled' => !empty($_SESSION['invoice_cancellation_disabled']),
     ];
+}
+
+function is_invoice_cancellation_enabled(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+
+    return !((bool) ($u['invoice_cancellation_disabled'] ?? false));
 }
 
 function require_login(): void

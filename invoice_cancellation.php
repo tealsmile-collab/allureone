@@ -6,6 +6,11 @@ require_login();
 require_not_accounts_role();
 require_not_franchise_officer_role();
 
+if (!is_invoice_cancellation_enabled(current_user())) {
+    header('Location: dashboard.php', true, 302);
+    exit;
+}
+
 /**
  * @return array<int, array<string, mixed>>
  */

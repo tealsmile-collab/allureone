@@ -410,10 +410,11 @@ $invoiceReviewFlash = null;
 $user = current_user();
 $userRoleId = (int) ($user['role_id'] ?? 0);
 $userBranchId = isset($user['branch_id']) && (int) $user['branch_id'] > 0 ? (int) $user['branch_id'] : null;
+$invoiceCancellationEnabled = is_invoice_cancellation_enabled($user);
 $reviewScopeBranchId = $userRoleId === ROLE_ADMIN ? null : $userBranchId;
 $selectedReviewId = isset($_GET['review']) ? (int) $_GET['review'] : 0;
-$canReviewCancellations = $userRoleId === ROLE_ADMIN || $userRoleId === ROLE_SUPERADMIN;
-$canShowInvoiceCancellationRequest = $userRoleId !== ROLE_ADMIN;
+$canReviewCancellations = $invoiceCancellationEnabled && ($userRoleId === ROLE_ADMIN || $userRoleId === ROLE_SUPERADMIN);
+$canShowInvoiceCancellationRequest = $invoiceCancellationEnabled && ($userRoleId !== ROLE_ADMIN);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['invoice_review_action']) && $canReviewCancellations) {
     if (!csrf_validate($_POST['_csrf'] ?? null)) {

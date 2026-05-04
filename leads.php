@@ -330,12 +330,14 @@ $leadsBranchSummary = [];
 $leadsConversionSummary = null;
 /** Set in data try: meta leads has a campaign column (Campaiign / campaign). */
 $campaignFilterColumnAvailable = false;
+/** @var array<string,string> Active branch choices for admin branch filter (id => label). */
+$branchFilterOptions = [];
 $loadError = '';
 $flash = ['type' => '', 'text' => ''];
 $branchId = isset($user['branch_id']) && (int) $user['branch_id'] > 0 ? (int) $user['branch_id'] : null;
 $isBranchScopedRole = $roleId === 3;
 /** Executive roles: dashboard-style branch summary only; no lead list/detail card or conversion summary card. */
-$hideLeadsListAndConversionCards = ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN);
+$hideLeadsListAndConversionCards = false;
 $detailId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 if ($hideLeadsListAndConversionCards && $detailId > 0 && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     header('Location: leads.php', true, 302);
@@ -389,6 +391,33 @@ $listTotalFiltered = 0;
 $listTotalPages = 1;
 $followupPresetAllowed = ['all', 'today', 'tomorrow', 'week', 'month', 'custom'];
 
+if ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) {
+    try {
+        $branchFilterStmt = db()->query(
+            'SELECT id, locality, business_name
+             FROM allureone_branch
+             WHERE isActive = 1
+             ORDER BY locality ASC, business_name ASC, id ASC'
+        );
+        foreach ($branchFilterStmt->fetchAll(PDO::FETCH_ASSOC) as $bRow) {
+            $bId = (int) ($bRow['id'] ?? 0);
+            if ($bId <= 0) {
+                continue;
+            }
+            $label = trim((string) ($bRow['locality'] ?? ''));
+            if ($label === '') {
+                $label = trim((string) ($bRow['business_name'] ?? ''));
+            }
+            if ($label === '') {
+                $label = 'Branch #' . $bId;
+            }
+            $branchFilterOptions[(string) $bId] = $label;
+        }
+    } catch (Throwable $e) {
+        error_log('AllureOne leads branch filter options load failed: ' . $e->getMessage());
+    }
+}
+
 $fStatusSel = isset($_GET['f_status']) ? trim((string) $_GET['f_status']) : 'all';
 if ($fStatusSel === '') {
     $fStatusSel = 'all';
@@ -432,6 +461,14 @@ if ($fCampaignSel === '') {
 if ($fCampaignSel !== 'all' && !isset($leadsCampaignFilterDbValue[$fCampaignSel])) {
     $fCampaignSel = 'all';
 }
+$fBranchSel = isset($_GET['f_branch']) ? trim((string) $_GET['f_branch']) : 'all';
+if ($fBranchSel === '') {
+    $fBranchSel = 'all';
+}
+if ($fBranchSel !== 'all' && !isset($branchFilterOptions[$fBranchSel])) {
+    $fBranchSel = 'all';
+}
+$leadsSummaryCollapsedByPageNav = isset($_GET['ls_collapsed']) && (string) $_GET['ls_collapsed'] === '1';
 
 $listFilterParams = ['f_status' => $fStatusSel];
 if ($statusIsFollowUpForFilter) {
@@ -442,6 +479,9 @@ if ($statusIsFollowUpForFilter) {
 }
 if ($fCampaignSel !== 'all') {
     $listFilterParams['f_campaign'] = $fCampaignSel;
+}
+if ($fBranchSel !== 'all') {
+    $listFilterParams['f_branch'] = $fBranchSel;
 }
 
 $metaLeadCols = leads_meta_leads_column_map();
@@ -614,6 +654,10 @@ try {
     }
 
     $qMlBranchId = leads_ml_qualify_ml($map, ['branch_id', 'BranchId']);
+    if (($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $fBranchSel !== 'all' && $qMlBranchId !== null) {
+        $listFilterSql .= ' AND ' . $qMlBranchId . ' = :list_f_branch';
+        $listFilterBind['list_f_branch'] = (int) $fBranchSel;
+    }
     if (($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $qMlBranchId !== null && $detailId <= 0) {
         try {
             // locality from branch master via branch_id; per-branch converted count / converted amount totals.
@@ -781,6 +825,7 @@ try {
         foreach ($rows as $ir => $lr) {
             $rsid = (int) ($lr['status'] ?? 0);
             $rows[$ir]['status_label'] = $statusIdToLabel[$rsid] ?? ($rsid > 0 ? 'Status #' . $rsid : '—');
+            $rows[$ir]['status_key'] = $statusIdToKey[$rsid] ?? '';
         }
     }
 } catch (Throwable $e) {
@@ -803,10 +848,13 @@ require __DIR__ . '/includes/layout_start.php';
 <?php endif; ?>
 
 <?php if ($loadError === '' && $detailId <= 0 && ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $leadsBranchSummary !== []): ?>
-<div class="card leads-branch-summary-card">
-    <div class="card__head">
-        <span>Leads Summary</span>
-    </div>
+<details id="leads-summary-section" class="card leads-branch-summary-card"<?= $leadsSummaryCollapsedByPageNav ? '' : ' open' ?>>
+    <summary class="card__head card__toggle">
+        <span class="card__toggle-inner">
+            <span>Leads Summary</span>
+            <span class="card__chevron" aria-hidden="true">▼</span>
+        </span>
+    </summary>
     <div class="card__body leads-branch-summary-card__body">
         <?php if ($campaignFilterColumnAvailable): ?>
         <form method="get" action="leads.php" class="leads-filters leads-summary-filters">
@@ -867,7 +915,7 @@ require __DIR__ . '/includes/layout_start.php';
         </div>
         <p class="leads-branch-summary-note">Counts match current filters.</p>
     </div>
-</div>
+</details>
 <?php endif; ?>
 
 <?php if ($loadError === '' && $detailId <= 0 && $roleId === 3 && is_array($leadsConversionSummary)): ?>
@@ -1032,6 +1080,17 @@ require __DIR__ . '/includes/layout_start.php';
         <?php else: ?>
             <p class="main__meta main__meta--mobile-visible leads-summary">Total leads received: <span class="leads-summary__count"><?= (int) $totalLeads ?></span></p>
             <form method="get" action="leads.php" class="leads-filters">
+                <?php if (($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $branchFilterOptions !== []): ?>
+                <div class="form__row">
+                    <label for="f_branch">Branch</label>
+                    <select id="f_branch" name="f_branch">
+                        <option value="all"<?= $fBranchSel === 'all' ? ' selected' : '' ?>>All</option>
+                        <?php foreach ($branchFilterOptions as $branchFilterId => $branchFilterLabel): ?>
+                            <option value="<?= e((string) $branchFilterId) ?>"<?= $fBranchSel === (string) $branchFilterId ? ' selected' : '' ?>><?= e($branchFilterLabel) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
                 <div class="form__row">
                     <label for="f_status">Status</label>
                     <select id="f_status" name="f_status">
@@ -1148,7 +1207,8 @@ require __DIR__ . '/includes/layout_start.php';
                                             —
                                         <?php endif; ?>
                                     </td>
-                                    <td class="lead-list-col lead-list-col--status" data-label="Status"><?= e((string) ($row['status_label'] ?? '—')) ?></td>
+                                    <?php $rowStatusKey = strtolower(trim((string) ($row['status_key'] ?? ''))); ?>
+                                    <td class="lead-list-col lead-list-col--status<?= $rowStatusKey === 'converted' ? ' lead-status--converted' : '' ?>" data-label="Status"><?= e((string) ($row['status_label'] ?? '—')) ?></td>
                                     <td class="lead-list-col lead-list-col--date" data-label="Date">
                                         <span class="lead-list-date lead-list-date--full"><?= e(leads_format_date_ist_dm((string) ($row['Created_Datetime'] ?? ''))) ?></span>
                                         <span class="lead-list-date lead-list-date--short"><?= e(leads_format_date_ist_dd_mmm((string) ($row['Created_Datetime'] ?? ''))) ?></span>
@@ -1161,11 +1221,11 @@ require __DIR__ . '/includes/layout_start.php';
                 <?php if ($listTotalFiltered > $listPerPage): ?>
                     <nav class="leads-pagination" style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem 0.85rem;padding:1rem 1.25rem 1.15rem;margin:0;justify-content:center">
                         <?php if ($listPage > 1): ?>
-                            <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['page' => $listPage - 1]))) ?>">Previous</a>
+                            <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['page' => $listPage - 1, 'ls_collapsed' => 1]))) ?>">Previous</a>
                         <?php endif; ?>
                         <span style="font-size:.9rem;color:var(--muted, #64748b)">Page <?= (int) $listPage ?> of <?= (int) $listTotalPages ?></span>
                         <?php if ($listPage < $listTotalPages): ?>
-                            <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['page' => $listPage + 1]))) ?>">Next</a>
+                            <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['page' => $listPage + 1, 'ls_collapsed' => 1]))) ?>">Next</a>
                         <?php endif; ?>
                     </nav>
                 <?php endif; ?>

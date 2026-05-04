@@ -323,12 +323,14 @@ table.leads-summary-table td.leads-summary-table__total-count {
 }
 table.leads-conversion-summary-table th,
 table.leads-conversion-summary-table td.leads-conversion-summary-table__num {
-  text-align: right;
+  text-align: left;
   font-variant-numeric: tabular-nums;
 }
-table.leads-conversion-summary-table th:first-child,
-table.leads-conversion-summary-table td.leads-conversion-summary-table__num:first-child {
-  text-align: left;
+
+/* Leads list: highlight converted status in green. */
+.lead-status--converted {
+  color: #15803d;
+  font-weight: 600;
 }
 
 details.card {

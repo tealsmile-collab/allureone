@@ -327,6 +327,23 @@ table.leads-conversion-summary-table td.leads-conversion-summary-table__num {
   font-variant-numeric: tabular-nums;
 }
 
+.gift-code-completed-check {
+  margin-left: 0.35rem;
+  color: #15803d;
+  font-weight: 700;
+  font-size: 0.82rem;
+  vertical-align: baseline;
+}
+.gift-code-amount--completed {
+  color: #15803d;
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+}
+.gift-order-status--redeemed {
+  color: #15803d;
+  font-weight: 700;
+}
+
 /* Leads list: highlight converted status in green. */
 .lead-status--converted {
   color: #15803d;

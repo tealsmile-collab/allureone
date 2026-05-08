@@ -9,7 +9,12 @@ require_not_franchise_officer_role();
 $user = current_user();
 $userBranchId = (int) ($user['branch_id'] ?? 0);
 $selectedItemId = isset($_GET['gift']) ? (int) $_GET['gift'] : 0;
+$listPerPage = 20;
+$listPage = max(1, (int) ($_GET['page'] ?? 1));
+$listTotal = 0;
+$listTotalPages = 1;
 $branchLocality = '';
+$redeemedLocationOptions = [];
 if ($userBranchId > 0) {
     try {
         $mainPdo = db();
@@ -23,14 +28,123 @@ if ($userBranchId > 0) {
         error_log('AllureOne gift_codes branch lookup: ' . $e->getMessage());
     }
 }
+try {
+    $mainPdo = db();
+    $rls = $mainPdo->query(
+        'SELECT locality
+         FROM allureone_branch
+         WHERE isActive = 1
+           AND locality IS NOT NULL
+           AND TRIM(locality) <> \'\'
+         ORDER BY locality ASC'
+    );
+    foreach ($rls->fetchAll(PDO::FETCH_ASSOC) as $rlRow) {
+        $loc = trim((string) ($rlRow['locality'] ?? ''));
+        if ($loc !== '') {
+            $redeemedLocationOptions[$loc] = $loc;
+        }
+    }
+} catch (PDOException $e) {
+    error_log('AllureOne gift_codes redeemed location options lookup: ' . $e->getMessage());
+}
 
 $giftRows = [];
 $giftDetail = null;
+$markRedeemedFlash = null;
 $giftDebug = [
     'selected_item_id' => $selectedItemId,
     'branch_locality' => $branchLocality,
     'filter_by_locality' => gift_cards_filter_by_branch_locality_enabled(),
 ];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_redeemed'])) {
+    if (!csrf_validate($_POST['_csrf'] ?? null)) {
+        $markRedeemedFlash = ['type' => 'error', 'text' => 'Invalid session. Please refresh and try again.'];
+    } else {
+        $markItemId = isset($_POST['mark_item_id']) ? (int) $_POST['mark_item_id'] : 0;
+        $redeemedLocation = trim((string) ($_POST['redeemed_location'] ?? ''));
+        if ((function_exists('mb_strlen') ? mb_strlen($redeemedLocation) : strlen($redeemedLocation)) > 255) {
+            $redeemedLocation = substr($redeemedLocation, 0, 255);
+        }
+        if ($markItemId <= 0) {
+            $markRedeemedFlash = ['type' => 'error', 'text' => 'Invalid gift selected.'];
+        } else {
+            try {
+                $pdoMark = wp_db();
+                $wpPrefixMark = wp_table_prefix();
+                $orderLookupSql = "SELECT oi.order_id
+                    FROM wp_woocommerce_order_items oi
+                    WHERE oi.order_item_id = :item_id
+                      AND oi.order_item_type = 'line_item'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM wp_woocommerce_order_itemmeta oim
+                        WHERE oim.order_item_id = oi.order_item_id
+                          AND oim.meta_key = '_ywgc_gift_card_code'
+                      )
+                    LIMIT 1";
+                $orderLookupSql = str_replace('wp_', $wpPrefixMark, $orderLookupSql);
+                $lookupStmt = $pdoMark->prepare($orderLookupSql);
+                $lookupStmt->execute(['item_id' => $markItemId]);
+                $orderIdToMark = (int) ($lookupStmt->fetchColumn() ?: 0);
+                if ($orderIdToMark <= 0) {
+                    $markRedeemedFlash = ['type' => 'error', 'text' => 'Gift order not found.'];
+                } else {
+                    $updateSql = "UPDATE wp_posts
+                        SET post_status = 'wc-completed'
+                        WHERE ID = :order_id";
+                    $updateSql = str_replace('wp_', $wpPrefixMark, $updateSql);
+                    $updateStmt = $pdoMark->prepare($updateSql);
+                    $updateStmt->execute(['order_id' => $orderIdToMark]);
+
+                    $updateBalanceSql = "UPDATE wp_postmeta
+                        SET meta_value = '0'
+                        WHERE post_id IN (
+                            SELECT post_id
+                            FROM wp_postmeta
+                            WHERE meta_key = '_ywgc_order_id'
+                              AND meta_value = :order_id_meta
+                        )
+                          AND meta_key = '_ywgc_balance_total'";
+                    $updateBalanceSql = str_replace('wp_', $wpPrefixMark, $updateBalanceSql);
+                    $updateBalanceStmt = $pdoMark->prepare($updateBalanceSql);
+                    $updateBalanceStmt->execute(['order_id_meta' => (string) $orderIdToMark]);
+
+                    if ($redeemedLocation !== '') {
+                        $currLocSql = "SELECT meta_value
+                            FROM wp_postmeta
+                            WHERE post_id = :order_id
+                              AND meta_key IN ('billing_location', '_billing_location')
+                            ORDER BY CASE meta_key WHEN 'billing_location' THEN 0 ELSE 1 END
+                            LIMIT 1";
+                        $currLocSql = str_replace('wp_', $wpPrefixMark, $currLocSql);
+                        $currLocStmt = $pdoMark->prepare($currLocSql);
+                        $currLocStmt->execute(['order_id' => $orderIdToMark]);
+                        $currentLoc = trim((string) ($currLocStmt->fetchColumn() ?: ''));
+
+                        if (strcasecmp($currentLoc, $redeemedLocation) !== 0) {
+                            $updateLocSql = "UPDATE wp_postmeta
+                                SET meta_value = :redeemed_location
+                                WHERE post_id = :order_id
+                                  AND meta_key IN ('_billing_location', 'billing_location')";
+                            $updateLocSql = str_replace('wp_', $wpPrefixMark, $updateLocSql);
+                            $updateLocStmt = $pdoMark->prepare($updateLocSql);
+                            $updateLocStmt->execute([
+                                'redeemed_location' => $redeemedLocation,
+                                'order_id' => $orderIdToMark,
+                            ]);
+                        }
+                    }
+
+                    $markRedeemedFlash = ['type' => 'ok', 'text' => 'Gift code marked as Redeemed.'];
+                    $selectedItemId = $markItemId;
+                }
+            } catch (PDOException $e) {
+                error_log('AllureOne gift_codes mark redeemed failed: ' . $e->getMessage());
+                $markRedeemedFlash = ['type' => 'error', 'text' => 'Could not mark gift as Redeemed.'];
+            }
+        }
+    }
+}
 try {
     $pdo = wp_db();
     $wpPrefix = wp_table_prefix();
@@ -38,6 +152,16 @@ try {
     $cfg = require __DIR__ . '/config.php';
     $giftDebug['wp_db_host'] = (string) (($cfg['wordpress_db']['host'] ?? ''));
     $giftDebug['wp_db_name'] = (string) (($cfg['wordpress_db']['database'] ?? ''));
+    $baseFromWhere = "FROM wp_woocommerce_order_items oi
+        JOIN wp_woocommerce_order_itemmeta oim ON oi.order_item_id = oim.order_item_id
+        JOIN wp_posts p ON p.ID = oi.order_id
+        LEFT JOIN wp_postmeta pm ON p.ID = pm.post_id
+        WHERE oi.order_item_type = 'line_item'
+          AND oi.order_item_id IN (
+              SELECT order_item_id
+              FROM wp_woocommerce_order_itemmeta
+              WHERE meta_key = '_ywgc_gift_card_code'
+          )";
     $baseSelect = "SELECT
             oi.order_item_id,
             oi.order_id,
@@ -69,20 +193,20 @@ try {
             MAX(CASE WHEN pm.meta_key = '_payment_method' THEN pm.meta_value END) AS payment_method,
             MAX(CASE WHEN pm.meta_key = '_transaction_id' THEN pm.meta_value END) AS transaction_id,
             MAX(CASE WHEN pm.meta_key = '_razorpay_payment_id' THEN pm.meta_value END) AS razorpay_payment_id
-        FROM wp_woocommerce_order_items oi
-        JOIN wp_woocommerce_order_itemmeta oim ON oi.order_item_id = oim.order_item_id
-        JOIN wp_posts p ON p.ID = oi.order_id
-        LEFT JOIN wp_postmeta pm ON p.ID = pm.post_id
-        WHERE oi.order_item_type = 'line_item'
-          AND oi.order_item_id IN (
-              SELECT order_item_id
-              FROM wp_woocommerce_order_itemmeta
-              WHERE meta_key = '_ywgc_gift_card_code'
-          )";
+        " . $baseFromWhere;
+    $baseFromWhere = str_replace('wp_', $wpPrefix, $baseFromWhere);
     $baseSelect = str_replace('wp_', $wpPrefix, $baseSelect);
 
     $baseParams = [];
     if ($branchLocality !== '' && gift_cards_filter_by_branch_locality_enabled()) {
+        $baseFromWhere .= "
+          AND EXISTS (
+              SELECT 1
+              FROM wp_postmeta pmf
+              WHERE pmf.post_id = oi.order_id
+                AND pmf.meta_key = 'billing_location'
+                AND LOWER(TRIM(pmf.meta_value)) = LOWER(TRIM(:branch_locality))
+          )";
         $baseSelect .= "
           AND EXISTS (
               SELECT 1
@@ -93,6 +217,7 @@ try {
           )";
         $baseParams['branch_locality'] = $branchLocality;
     }
+    $baseFromWhere = str_replace('wp_', $wpPrefix, $baseFromWhere);
     $giftDebug['base_params'] = $baseParams;
 
     if ($selectedItemId > 0) {
@@ -156,14 +281,30 @@ try {
             }
         }
     } else {
+        $countSql = "SELECT COUNT(*)
+            FROM (
+                SELECT oi.order_item_id
+                " . $baseFromWhere . "
+                GROUP BY oi.order_item_id
+            ) t";
+        $countStmt = $pdo->prepare($countSql);
+        $countStmt->execute($baseParams);
+        $listTotal = (int) ($countStmt->fetchColumn() ?: 0);
+        $listTotalPages = max(1, (int) ceil($listTotal / $listPerPage));
+        $listPage = min($listPage, $listTotalPages);
+        $offset = ($listPage - 1) * $listPerPage;
+
         $listSql = $baseSelect . "
             GROUP BY oi.order_item_id, oi.order_id, p.post_date, p.post_status
             ORDER BY p.post_date DESC
-            LIMIT 20";
+            LIMIT " . $listPerPage . " OFFSET " . $offset;
         $stmt = $pdo->prepare($listSql);
         $giftDebug['mode'] = 'list';
         $giftDebug['sql'] = $listSql;
         $giftDebug['params'] = $baseParams;
+        $giftDebug['list_total'] = $listTotal;
+        $giftDebug['list_page'] = $listPage;
+        $giftDebug['list_total_pages'] = $listTotalPages;
         $stmt->execute($baseParams);
         $giftRows = $stmt->fetchAll();
         $giftDebug['row_count'] = count($giftRows);
@@ -189,12 +330,25 @@ require __DIR__ . '/includes/layout_start.php';
     </div>
     <div class="card__body">
         <?php if ($selectedItemId > 0): ?>
+            <?php if (is_array($markRedeemedFlash)): ?>
+                <p class="alert alert--<?= ($markRedeemedFlash['type'] ?? '') === 'ok' ? 'ok' : 'error' ?>" style="margin:1rem 1.25rem 0"><?= e((string) ($markRedeemedFlash['text'] ?? '')) ?></p>
+            <?php endif; ?>
             <?php if ($giftDetail === null): ?>
                 <p class="empty">Gift details not found.</p>
                 <p style="padding:0 1.25rem 1.25rem;margin:0"><a class="btn btn--ghost" href="gift_codes.php">Back</a></p>
             <?php else: ?>
                 <div style="padding:1.25rem">
-                    <p style="margin-top:0"><a class="btn btn--ghost" href="gift_codes.php">Back</a></p>
+                    <?php $detailOrderStatus = strtolower(trim((string) ($giftDetail['order_status'] ?? ''))); ?>
+                    <div style="margin-top:0;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+                        <?php if ($detailOrderStatus !== 'completed'): ?>
+                            <form id="mark_redeemed_form" method="post" action="gift_codes.php?gift=<?= (int) ($giftDetail['order_item_id'] ?? 0) ?>" style="margin:0">
+                                <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="mark_item_id" value="<?= (int) ($giftDetail['order_item_id'] ?? 0) ?>">
+                                <button type="submit" class="btn btn--primary" name="mark_redeemed" value="1" onclick="return confirm('Mark this gift code as Redeemed?');">Mark Redeemed</button>
+                            </form>
+                        <?php endif; ?>
+                        <a class="btn btn--ghost" href="gift_codes.php">Back</a>
+                    </div>
                     <table class="data">
                         <tbody>
                             <tr><th>Order ID</th><td><?= (int) ($giftDetail['order_id'] ?? 0) ?></td></tr>
@@ -205,6 +359,16 @@ require __DIR__ . '/includes/layout_start.php';
                             <tr><th>Buyer Name</th><td><?= e((string) ($giftDetail['sender_name'] ?? '')) ?></td></tr>
                             <tr><th>Buyer Phone</th><td><?= e((string) ($giftDetail['buyer_phone'] ?? '')) ?></td></tr>
                             <tr><th>Location</th><td><?= e((string) ($giftDetail['location'] ?? '')) ?></td></tr>
+                            <tr>
+                                <th>Order Status</th>
+                                <td>
+                                    <?php if ($detailOrderStatus === 'completed'): ?>
+                                        <span class="gift-order-status--redeemed">Redeemed</span>
+                                    <?php else: ?>
+                                        <?= e((string) ($giftDetail['order_status'] ?? '—')) ?>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
                             <tr><th>Razorpay Transaction</th><td>
                                 <?php $rzpTxn = trim((string) ($giftDetail['transaction_id'] ?? '')); ?>
                                 <?= e($rzpTxn) ?>
@@ -216,6 +380,19 @@ require __DIR__ . '/includes/layout_start.php';
                             </td></tr>
                             <tr><th>Amount</th><td><?= e(format_amount($giftDetail['amount'] ?? null)) ?></td></tr>
                             <tr><th>Order Date</th><td><?= e(format_purchase_date($giftDetail['post_date'] ?? null)) ?></td></tr>
+                            <tr>
+                                <th>Redeemed Location</th>
+                                <td>
+                                    <?php $selectedRedeemedLoc = trim((string) ($giftDetail['location'] ?? '')); ?>
+                                    <select name="redeemed_location" id="redeemed_location" form="mark_redeemed_form" style="min-width:16rem;max-width:100%"<?= $detailOrderStatus === 'completed' ? ' disabled' : '' ?>>
+                                        <option value="">Select location</option>
+                                        <?php foreach ($redeemedLocationOptions as $rlOpt): ?>
+                                            <?php $isSel = (strcasecmp($selectedRedeemedLoc, $rlOpt) === 0); ?>
+                                            <option value="<?= e((string) $rlOpt) ?>"<?= $isSel ? ' selected' : '' ?>><?= e((string) $rlOpt) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                     <p style="margin-top:0.75rem;margin-bottom:0"><a class="btn btn--ghost" href="gift_codes.php">Back</a></p>
@@ -240,22 +417,37 @@ require __DIR__ . '/includes/layout_start.php';
                             <?php
                             $itemId = (int) ($gr['order_item_id'] ?? 0);
                             $codeDisplay = e(extract_gift_code((string) ($gr['gift_card_code'] ?? '')));
+                            $isCompletedOrder = strtolower(trim((string) ($gr['order_status'] ?? ''))) === 'completed';
                             ?>
                             <tr>
                                 <td>
                                     <a class="link--underlined" href="gift_codes.php?gift=<?= $itemId ?>"><?= $codeDisplay ?></a>
+                                    <?php if ($isCompletedOrder): ?>
+                                        <span class="gift-code-completed-check" title="Completed" aria-label="Completed">✓</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <a class="link--underlined" href="gift_codes.php?gift=<?= $itemId ?>"><?= e((string) ($gr['location'] ?? '')) ?></a>
                                 </td>
                                 <td><?= e((string) ($gr['sender_name'] ?? '')) ?></td>
-                                <td><?= e(format_amount($gr['amount'] ?? null)) ?></td>
+                                <td class="<?= $isCompletedOrder ? 'gift-code-amount--completed' : '' ?>"><?= e(format_amount($gr['amount'] ?? null)) ?></td>
                                 <td><?= e(format_purchase_date($gr['post_date'] ?? null)) ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
+            <?php if ($listTotal > $listPerPage): ?>
+                <nav class="leads-pagination" style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem 0.85rem;padding:1rem 1.25rem 1.15rem;margin:0;justify-content:center">
+                    <?php if ($listPage > 1): ?>
+                        <a class="btn btn--ghost" href="gift_codes.php?<?= e(http_build_query(['page' => $listPage - 1])) ?>">Previous</a>
+                    <?php endif; ?>
+                    <span style="font-size:.9rem;color:var(--muted, #64748b)">Page <?= (int) $listPage ?> of <?= (int) $listTotalPages ?></span>
+                    <?php if ($listPage < $listTotalPages): ?>
+                        <a class="btn btn--ghost" href="gift_codes.php?<?= e(http_build_query(['page' => $listPage + 1])) ?>">Next</a>
+                    <?php endif; ?>
+                </nav>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </div>

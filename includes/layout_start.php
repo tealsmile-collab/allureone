@@ -53,6 +53,7 @@ $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Fra
             <?php endif; ?>
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN || (int) ($user['role_id'] ?? 0) === 3)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'leads') ? ' is-active' : '' ?>" href="leads.php">Leads</a>
+                <a class="sidebar__link<?= ($activeNav === 'crm') ? ' is-active' : '' ?>" href="crm.php">CRM</a>
             <?php endif; ?>
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'google_ads_view') ? ' is-active' : '' ?>" href="google-ads-view.php">Google Ads View</a>
@@ -63,9 +64,12 @@ $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Fra
             <?php if (!$isAccountsRole && !$isFranchiseOfficerRole && $isInvoiceCancellationEnabled): ?>
                 <a class="sidebar__link<?= ($activeNav === 'sales_target') ? ' is-active' : '' ?>" href="sales_target.php">Sales target</a>
             <?php endif; ?>
-            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && $user['role_id'] === ROLE_SUPERADMIN): ?>
+            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'branch') ? ' is-active' : '' ?>" href="branch_master.php">Branch Master</a>
                 <a class="sidebar__link<?= ($activeNav === 'user') ? ' is-active' : '' ?>" href="user_master.php">User Master</a>
+            <?php endif; ?>
+            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && (((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN) || ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN))): ?>
+                <a class="sidebar__link<?= ($activeNav === 'crm_setup') ? ' is-active' : '' ?>" href="crmsetup.php">CRM Segments</a>
             <?php endif; ?>
             <a class="sidebar__link" href="logout.php">Logout</a>
             <?php if ($user && trim((string) ($user['full_name'] ?? '')) !== ''): ?>

@@ -7,6 +7,7 @@ require_not_franchise_officer_role();
 
 $pageTitle = 'Utility';
 $activeNav = 'utility';
+$directPaymentLink = 'https://razorpay.me/@allurethai';
 require __DIR__ . '/includes/layout_start.php';
 ?>
 
@@ -15,6 +16,22 @@ require __DIR__ . '/includes/layout_start.php';
         <span>Utility</span>
     </div>
     <div class="card__body" style="padding:1rem 1.25rem">
+        <div style="display:flex;align-items:center;justify-content:flex-start;gap:0.2rem;max-width:42rem;margin:0 0 0.75rem">
+            <a href="<?= e($directPaymentLink) ?>" class="link--underlined" target="_blank" rel="noopener noreferrer"><?= e('Direct Payment Link - ' . $directPaymentLink) ?></a>
+            <button type="button"
+                    class="btn btn--ghost"
+                    id="utility-copy-direct-pay-link"
+                    data-copy-url="<?= e($directPaymentLink) ?>"
+                    aria-label="Copy direct payment link"
+                    title="Copy link"
+                    style="margin:0;padding:0.25rem;line-height:0;border:none;min-width:auto;flex-shrink:0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+            </button>
+        </div>
+        <p id="utility-copy-feedback" role="status" style="margin:-0.5rem 0 0.75rem;font-size:0.875rem;color:var(--muted, #64748b);display:none;max-width:42rem"></p>
         <h3 style="margin:0 0 0.75rem;font-size:1rem">Payment Check</h3>
         <form id="utility-payment-check-form" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;max-width:42rem;margin:0">
             <input type="text"
@@ -182,6 +199,47 @@ require __DIR__ . '/includes/layout_start.php';
         paymentForm.addEventListener('submit', function (ev) {
             ev.preventDefault();
             runCheck();
+        });
+    }
+
+    var copyBtn = document.getElementById('utility-copy-direct-pay-link');
+    var copyFeedback = document.getElementById('utility-copy-feedback');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+            var url = String(copyBtn.getAttribute('data-copy-url') || '').trim();
+            if (!url) return;
+            function showMsg(msg) {
+                if (!copyFeedback) return;
+                copyFeedback.textContent = msg;
+                copyFeedback.style.display = 'block';
+                window.setTimeout(function () {
+                    copyFeedback.style.display = 'none';
+                }, 2500);
+            }
+            function doFallback() {
+                var ta = document.createElement('textarea');
+                ta.value = url;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                try {
+                    document.execCommand('copy');
+                    showMsg('Link copied.');
+                } catch (err) {
+                    showMsg('Could not copy.');
+                }
+                document.body.removeChild(ta);
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(function () {
+                    showMsg('Link copied.');
+                }).catch(function () {
+                    doFallback();
+                });
+            } else {
+                doFallback();
+            }
         });
     }
 })();

@@ -339,20 +339,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_crm'])) {
 try {
     if ($detailId > 0) {
         $params = ['id' => $detailId];
-        $sql = "SELECT id, user_id, `Mobile` AS mobile, fname, `Gender` AS gender, client_code, last_visit,
-                       branch_id, crm_status, remarks, followup_datetime, last_contacted_datetime
-                FROM allureone_crm
-                WHERE id = :id";
+        $sql = "SELECT c.id, c.user_id, c.`Mobile` AS mobile, c.fname, c.`Gender` AS gender, c.client_code, c.last_visit,
+                       c.branch_id, c.crm_status, c.remarks, c.followup_datetime, c.last_contacted_datetime,
+                       seg.segment_name AS segment_name
+                FROM allureone_crm c
+                LEFT JOIN allureone_segments seg ON seg.segment_id = c.segment_id
+                WHERE c.id = :id";
         if ($isAdminRole) {
             if ($fBranchSel > 0) {
-                $sql .= ' AND branch_id = :branch_id';
+                $sql .= ' AND c.branch_id = :branch_id';
                 $params['branch_id'] = $fBranchSel;
             }
         } else {
             if ($userBranchId === null) {
                 $sql .= ' AND 0=1';
             } else {
-                $sql .= ' AND branch_id = :branch_id';
+                $sql .= ' AND c.branch_id = :branch_id';
                 $params['branch_id'] = $userBranchId;
             }
         }
@@ -561,6 +563,10 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                             <tr><th>Gender</th><td><?= e((string) ($detailRow['gender'] ?? '')) ?></td></tr>
                             <tr><th>Client Code</th><td><?= e((string) ($detailRow['client_code'] ?? '')) ?></td></tr>
                             <tr><th>Last Visit</th><td><?= e(crm_format_date_dd_mmm_yy((string) ($detailRow['last_visit'] ?? ''))) ?></td></tr>
+                            <tr>
+                                <th>Segment</th>
+                                <td><?php $crmSegName = trim((string) ($detailRow['segment_name'] ?? '')); echo e($crmSegName !== '' ? $crmSegName : '—'); ?></td>
+                            </tr>
                         </tbody>
                     </table>
                     <div class="card" style="margin-top:0.55rem">

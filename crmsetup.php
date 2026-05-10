@@ -59,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_import_branch']))
     } else {
         $branchId = isset($_POST['branch_id']) ? (int) $_POST['branch_id'] : 0;
         $segmentId = isset($_POST['segment_id']) ? (int) $_POST['segment_id'] : 0;
+        $segmentNamePost = trim((string) ($_POST['segment_name'] ?? ''));
         $selectedBranchId = $branchId > 0 ? $branchId : $selectedBranchId;
         $selectedSegmentId = $segmentId > 0 ? $segmentId : $selectedSegmentId;
         if ($branchId <= 0 || $segmentId <= 0) {
@@ -125,10 +126,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_import_branch']))
                             }
                         }
 
-                        $insSql = 'INSERT INTO allureone_crm
-                            (user_id, Mobile, fname, Gender, client_code, last_visit, branch_id, crm_status, remarks, followup_datetime, last_contacted_datetime, created_datetime, update_datetime)
-                            VALUES
-                            (:user_id, :mobile, :fname, :gender, :client_code, :last_visit, :branch_id, :crm_status, :remarks, :followup_datetime, :last_contacted_datetime, NOW(), NOW())';
+                        $hasCrmSegmentIdColumn = false;
+                        try {
+                            $colStmt = $pdoMain->query("SHOW COLUMNS FROM allureone_crm LIKE 'segment_id'");
+                            $hasCrmSegmentIdColumn = is_array($colStmt->fetch(PDO::FETCH_ASSOC));
+                        } catch (Throwable $e) {
+                            $hasCrmSegmentIdColumn = false;
+                        }
+                        $insSql = $hasCrmSegmentIdColumn
+                            ? 'INSERT INTO allureone_crm
+                                (user_id, Mobile, fname, Gender, client_code, last_visit, branch_id, crm_status, segment_id, remarks, followup_datetime, last_contacted_datetime, created_datetime, update_datetime)
+                                VALUES
+                                (:user_id, :mobile, :fname, :gender, :client_code, :last_visit, :branch_id, :crm_status, :segment_id, :remarks, :followup_datetime, :last_contacted_datetime, NOW(), NOW())'
+                            : 'INSERT INTO allureone_crm
+                                (user_id, Mobile, fname, Gender, client_code, last_visit, branch_id, crm_status, remarks, followup_datetime, last_contacted_datetime, created_datetime, update_datetime)
+                                VALUES
+                                (:user_id, :mobile, :fname, :gender, :client_code, :last_visit, :branch_id, :crm_status, :remarks, :followup_datetime, :last_contacted_datetime, NOW(), NOW())';
                         $insStmt = $pdoMain->prepare($insSql);
                         $insertedCount = 0;
                         foreach ($candidateMap as $uid => $row) {
@@ -146,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_import_branch']))
                             if ($lastVisitRaw !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $lastVisitRaw) === 1) {
                                 $lastVisit = $lastVisitRaw . ' 00:00:00';
                             }
-                            $insStmt->execute([
+                            $insParams = [
                                 'user_id' => $uid,
                                 'mobile' => $mobile !== '' ? $mobile : null,
                                 'fname' => $fname !== '' ? $fname : null,
@@ -158,8 +171,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_import_branch']))
                                 'remarks' => null,
                                 'followup_datetime' => null,
                                 'last_contacted_datetime' => null,
-                            ]);
+                            ];
+                            if ($hasCrmSegmentIdColumn) {
+                                $insParams['segment_id'] = $segmentId;
+                            }
+                            $insStmt->execute($insParams);
                             $insertedCount++;
+                        }
+                        if ($segmentNamePost !== '') {
+                            $segChk = $pdoMain->prepare('SELECT id FROM allureone_segments WHERE segment_id = :segment_id LIMIT 1');
+                            $segChk->execute(['segment_id' => $segmentId]);
+                            $segExists = $segChk->fetch(PDO::FETCH_ASSOC);
+                            if (!is_array($segExists)) {
+                                $segIns = $pdoMain->prepare(
+                                    'INSERT INTO allureone_segments (segment_id, segment_name) VALUES (:segment_id, :segment_name)'
+                                );
+                                $segIns->execute([
+                                    'segment_id' => $segmentId,
+                                    'segment_name' => $segmentNamePost,
+                                ]);
+                            }
                         }
                         $flash = [
                             'type' => 'ok',
@@ -369,7 +400,8 @@ require __DIR__ . '/includes/layout_start.php';
                             <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                             <input type="hidden" name="branch_id" value="<?= (int) ($selectedBranch['id'] ?? 0) ?>">
                             <input type="hidden" name="segment_id" value="<?= (int) $selectedSegmentId ?>">
-                            <button class="btn btn--primary" style="background:#15803d;border-color:#15803d" type="submit" name="crm_import_branch" value="1">Import</button>
+                            <input type="hidden" name="segment_name" value="<?= e($selectedSegmentName) ?>">
+                            <button class="btn btn--primary" style="background:#15803d;border-color:#15803d" type="submit" name="crm_import_branch" value="1" onclick="return confirm('Are you sure you want to import this segment data?');">Import</button>
                     </form>
                     <?php if ($importSkippedUserIds !== []): ?>
                         <p class="main__meta" style="margin:0 0 0.7rem">

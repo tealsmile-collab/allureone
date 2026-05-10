@@ -60,6 +60,7 @@ $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Fra
             <?php endif; ?>
             <?php if (!$isFranchiseOfficerRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'gift_codes') ? ' is-active' : '' ?>" href="gift_codes.php">Gift Card Sale</a>
+                <a class="sidebar__link<?= ($activeNav === 'utility') ? ' is-active' : '' ?>" href="utility.php">Utility</a>
             <?php endif; ?>
             <?php if (!$isAccountsRole && !$isFranchiseOfficerRole && $isInvoiceCancellationEnabled): ?>
                 <a class="sidebar__link<?= ($activeNav === 'sales_target') ? ' is-active' : '' ?>" href="sales_target.php">Sales target</a>

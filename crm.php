@@ -83,6 +83,64 @@ function crm_branch_session_key(int $branchId): string
     return '';
 }
 
+function crm_count_updated_last_48h(int $branchId): int
+{
+    if ($branchId <= 0) {
+        return 0;
+    }
+    try {
+        $st = db()->prepare(
+            'SELECT COUNT(*)
+             FROM allureone_crm c
+             WHERE c.branch_id = :branch_id
+               AND (
+                   (c.update_datetime IS NOT NULL AND c.update_datetime >= DATE_SUB(NOW(), INTERVAL 48 HOUR))
+                   OR (c.last_contacted_datetime IS NOT NULL AND c.last_contacted_datetime >= DATE_SUB(NOW(), INTERVAL 48 HOUR))
+               )'
+        );
+        $st->execute(['branch_id' => $branchId]);
+
+        return (int) ($st->fetchColumn() ?: 0);
+    } catch (PDOException $e) {
+        error_log('AllureOne CRM 48h update count failed: ' . $e->getMessage());
+    }
+
+    return 0;
+}
+
+function crm_branch_label(int $branchId): string
+{
+    if ($branchId <= 0) {
+        return '';
+    }
+    try {
+        $st = db()->prepare(
+            'SELECT locality, business_name
+             FROM allureone_branch
+             WHERE id = :id AND isActive = 1
+             LIMIT 1'
+        );
+        $st->execute(['id' => $branchId]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return 'Branch #' . $branchId;
+        }
+        $lbl = trim((string) ($row['locality'] ?? ''));
+        if ($lbl === '') {
+            $lbl = trim((string) ($row['business_name'] ?? ''));
+        }
+        if ($lbl === '') {
+            $lbl = 'Branch #' . $branchId;
+        }
+
+        return $lbl;
+    } catch (PDOException $e) {
+        error_log('AllureOne CRM branch label lookup failed: ' . $e->getMessage());
+    }
+
+    return 'Branch #' . $branchId;
+}
+
 function crm_api_value_or_dash($value): string
 {
     $v = trim((string) ($value ?? ''));
@@ -256,6 +314,11 @@ if ($isAdminRole) {
         error_log('AllureOne CRM branch options load failed: ' . $e->getMessage());
     }
 }
+$userBranchLabel = '';
+if (!$isAdminRole && $userBranchId !== null && $userBranchId > 0) {
+    $userBranchLabel = crm_branch_label($userBranchId);
+}
+$showSummaryButton = $isAdminRole || ($userBranchId !== null && $userBranchId > 0);
 if ($fStatusSel > 0 && !isset($statusIdToKey[$fStatusSel])) {
     $fStatusSel = 0;
 }
@@ -264,6 +327,166 @@ if ($fFollowupRange !== '' && !isset($followupRangeOptions[$fFollowupRange])) {
 }
 if ($fStatusSel <= 0 || $followUpFilterStatusId === null || $fStatusSel !== $followUpFilterStatusId) {
     $fFollowupRange = '';
+}
+
+if (isset($_GET['crm_summary']) && (string) $_GET['crm_summary'] === '1') {
+    header('Content-Type: application/json; charset=utf-8');
+    $summaryBranchId = 0;
+    if ($isAdminRole) {
+        $summaryBranchId = isset($_GET['f_branch']) ? (int) $_GET['f_branch'] : 0;
+        if ($summaryBranchId > 0 && !isset($branchOptions[$summaryBranchId])) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid branch selected.']);
+            exit;
+        }
+    } else {
+        $summaryBranchId = $userBranchId ?? 0;
+        if ($summaryBranchId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Branch is not assigned to your account.']);
+            exit;
+        }
+    }
+    try {
+        if ($isAdminRole && $summaryBranchId <= 0) {
+            $sumSql = 'SELECT c.branch_id, c.crm_status, COUNT(*) AS cnt
+                       FROM allureone_crm c
+                       GROUP BY c.branch_id, c.crm_status';
+            $sumStmt = db()->query($sumSql);
+            $matrix = [];
+            $extraStatusIds = [];
+            foreach ($sumStmt->fetchAll(PDO::FETCH_ASSOC) as $sumRow) {
+                $bid = (int) ($sumRow['branch_id'] ?? 0);
+                $sid = (int) ($sumRow['crm_status'] ?? 0);
+                if ($bid <= 0) {
+                    continue;
+                }
+                if (!isset($matrix[$bid])) {
+                    $matrix[$bid] = [];
+                }
+                $matrix[$bid][$sid] = (int) ($sumRow['cnt'] ?? 0);
+                $extraStatusIds[$sid] = true;
+            }
+            $recentUpdatesByBranch = [];
+            $recentSql = 'SELECT c.branch_id, COUNT(*) AS cnt
+                          FROM allureone_crm c
+                          WHERE (
+                              (c.update_datetime IS NOT NULL AND c.update_datetime >= DATE_SUB(NOW(), INTERVAL 48 HOUR))
+                              OR (c.last_contacted_datetime IS NOT NULL AND c.last_contacted_datetime >= DATE_SUB(NOW(), INTERVAL 48 HOUR))
+                          )
+                          GROUP BY c.branch_id';
+            $recentStmt = db()->query($recentSql);
+            foreach ($recentStmt->fetchAll(PDO::FETCH_ASSOC) as $recentRow) {
+                $rbid = (int) ($recentRow['branch_id'] ?? 0);
+                if ($rbid > 0) {
+                    $recentUpdatesByBranch[$rbid] = (int) ($recentRow['cnt'] ?? 0);
+                }
+            }
+            $summaryColumns = [];
+            $seenStatusIds = [];
+            foreach ($statusOptions as $sopt) {
+                $sid = (int) ($sopt['id'] ?? 0);
+                if ($sid <= 0) {
+                    continue;
+                }
+                $seenStatusIds[$sid] = true;
+                $summaryColumns[] = ['id' => $sid, 'label' => (string) ($sopt['label'] ?? '')];
+            }
+            foreach (array_keys($extraStatusIds) as $sid) {
+                if (isset($seenStatusIds[$sid])) {
+                    continue;
+                }
+                $summaryColumns[] = [
+                    'id' => $sid,
+                    'label' => $sid > 0 ? ('Status #' . $sid) : 'Unassigned',
+                ];
+            }
+            $summaryRows = [];
+            $branchIdsForTable = $branchOptions !== [] ? array_keys($branchOptions) : array_keys($matrix);
+            sort($branchIdsForTable);
+            foreach ($branchIdsForTable as $bid) {
+                $bid = (int) $bid;
+                if ($bid <= 0) {
+                    continue;
+                }
+                $branchLabel = $branchOptions[$bid] ?? crm_branch_label($bid);
+                $counts = [];
+                $rowTotal = 0;
+                foreach ($summaryColumns as $col) {
+                    $sid = (int) ($col['id'] ?? 0);
+                    $cnt = $matrix[$bid][$sid] ?? 0;
+                    $counts[(string) $sid] = $cnt;
+                    $rowTotal += $cnt;
+                }
+                $summaryRows[] = [
+                    'branch_id' => $bid,
+                    'branch_label' => $branchLabel,
+                    'counts' => $counts,
+                    'total' => $rowTotal,
+                    'updated_48h' => $recentUpdatesByBranch[$bid] ?? 0,
+                ];
+            }
+            echo json_encode([
+                'ok' => true,
+                'mode' => 'all_branches',
+                'columns' => $summaryColumns,
+                'rows' => $summaryRows,
+            ]);
+            exit;
+        }
+
+        $summaryBranchLabel = $branchOptions[$summaryBranchId] ?? crm_branch_label($summaryBranchId);
+        if (!$isAdminRole && $userBranchLabel !== '') {
+            $summaryBranchLabel = $userBranchLabel;
+        }
+        $sumParams = ['branch_id' => $summaryBranchId];
+        $sumSql = 'SELECT c.crm_status, COUNT(*) AS cnt
+                   FROM allureone_crm c
+                   WHERE c.branch_id = :branch_id
+                   GROUP BY c.crm_status';
+        $sumStmt = db()->prepare($sumSql);
+        $sumStmt->execute($sumParams);
+        $countsByStatus = [];
+        foreach ($sumStmt->fetchAll(PDO::FETCH_ASSOC) as $sumRow) {
+            $sid = (int) ($sumRow['crm_status'] ?? 0);
+            $countsByStatus[$sid] = (int) ($sumRow['cnt'] ?? 0);
+        }
+        $totalStmt = db()->prepare('SELECT COUNT(*) FROM allureone_crm c WHERE c.branch_id = :branch_id');
+        $totalStmt->execute($sumParams);
+        $summaryTotal = (int) ($totalStmt->fetchColumn() ?: 0);
+        $summaryRows = [];
+        $seenStatusIds = [];
+        foreach ($statusOptions as $sopt) {
+            $sid = (int) ($sopt['id'] ?? 0);
+            if ($sid <= 0) {
+                continue;
+            }
+            $seenStatusIds[$sid] = true;
+            $summaryRows[] = [
+                'label' => (string) ($sopt['label'] ?? ''),
+                'count' => $countsByStatus[$sid] ?? 0,
+            ];
+        }
+        foreach ($countsByStatus as $sid => $cnt) {
+            if (isset($seenStatusIds[$sid])) {
+                continue;
+            }
+            $summaryRows[] = [
+                'label' => $sid > 0 ? ('Status #' . $sid) : 'Unassigned',
+                'count' => $cnt,
+            ];
+        }
+        echo json_encode([
+            'ok' => true,
+            'mode' => 'branch',
+            'rows' => $summaryRows,
+            'total' => $summaryTotal,
+            'branch_label' => $summaryBranchLabel,
+            'updated_48h' => crm_count_updated_last_48h($summaryBranchId),
+        ]);
+    } catch (PDOException $e) {
+        error_log('AllureOne CRM summary failed: ' . $e->getMessage());
+        echo json_encode(['ok' => false, 'error' => 'Could not load CRM summary.']);
+    }
+    exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_crm'])) {
@@ -677,7 +900,10 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                         </select>
                     </div>
                     <div style="display:flex;align-items:flex-end;gap:0.85rem;margin-left:auto;min-width:260px;justify-content:space-between">
-                        <button type="submit" name="show" value="1" class="btn btn--primary">Show</button>
+                        <div style="display:flex;align-items:center;gap:0.5rem">
+                            <button type="button" id="crm-summary-btn" class="btn btn--ghost js-crm-summary-open">Summary</button>
+                            <button type="submit" name="show" value="1" class="btn btn--primary">Show</button>
+                        </div>
                         <?php if ($showTotalRecordsLabel): ?>
                             <span style="font-size:.9rem;color:var(--muted, #64748b);white-space:nowrap">Total Records: <?= (int) $listTotal ?></span>
                         <?php endif; ?>
@@ -704,7 +930,12 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                         </select>
                     </div>
                     <div style="display:flex;align-items:flex-end;gap:0.85rem;margin-left:auto;min-width:260px;justify-content:space-between">
-                        <button type="submit" name="show" value="1" class="btn btn--primary">Show</button>
+                        <div style="display:flex;align-items:center;gap:0.5rem">
+                            <?php if ($showSummaryButton): ?>
+                                <button type="button" class="btn btn--ghost js-crm-summary-open">Summary</button>
+                            <?php endif; ?>
+                            <button type="submit" name="show" value="1" class="btn btn--primary">Show</button>
+                        </div>
                         <?php if ($showTotalRecordsLabel): ?>
                             <span style="font-size:.9rem;color:var(--muted, #64748b);white-space:nowrap">Total Records: <?= (int) $listTotal ?></span>
                         <?php endif; ?>
@@ -779,5 +1010,259 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
         <?php endif; ?>
     </div>
 </div>
+
+<?php if ($detailId <= 0): ?>
+<div id="crm-summary-modal" class="crm-summary-modal" style="display:none" aria-hidden="true">
+    <div class="crm-summary-modal__backdrop js-crm-summary-close" role="presentation"></div>
+    <div class="crm-summary-modal__panel" role="dialog" aria-modal="true" aria-labelledby="crm-summary-modal-title">
+        <div class="crm-summary-modal__head">
+            <strong id="crm-summary-modal-title">CRM Summary</strong>
+            <button type="button" class="btn btn--ghost js-crm-summary-close" style="padding:0.3rem 0.65rem">Close</button>
+        </div>
+        <div id="crm-summary-modal-body" class="crm-summary-modal__body">
+            <p class="empty" style="margin:0">Loading…</p>
+        </div>
+    </div>
+</div>
+<style>
+.crm-summary-modal { position: fixed; inset: 0; z-index: 2000; }
+.crm-summary-modal__backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+.crm-summary-modal__panel {
+    position: relative;
+    margin: 1rem auto;
+    max-width: 520px;
+    width: calc(100% - 2rem);
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #d6dde6;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+    top: 50%;
+    transform: translateY(-50%);
+}
+.crm-summary-modal__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid #d6dde6;
+}
+.crm-summary-modal__body { padding: 1rem; max-height: 70vh; overflow: auto; }
+.crm-summary-modal__panel:has(.crm-summary-matrix) { max-width: min(96vw, 1100px); }
+.crm-summary-branch-wrap { display: inline-block; max-width: 100%; vertical-align: top; }
+table.data.crm-summary-branch {
+  width: auto;
+  max-width: 100%;
+}
+table.data.crm-summary-branch th,
+table.data.crm-summary-branch td {
+  padding: 0.45rem 0.65rem;
+}
+table.data.crm-summary-branch th:first-child,
+table.data.crm-summary-branch td:first-child {
+  padding-right: 0.85rem;
+}
+table.data.crm-summary-branch th:last-child,
+table.data.crm-summary-branch td:last-child {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+  padding-left: 0.85rem;
+}
+.crm-summary-matrix th:not(:first-child),
+.crm-summary-matrix td:not(.crm-summary-branch-cell) { white-space: nowrap; }
+.crm-summary-matrix th:first-child,
+.crm-summary-matrix td.crm-summary-branch-cell {
+  white-space: normal !important;
+  vertical-align: top;
+  min-width: 11rem;
+  max-width: 16rem;
+}
+.crm-summary-branch-name {
+  display: block;
+  font-weight: 600;
+  color: var(--text, #0f172a);
+  line-height: 1.35;
+}
+.crm-summary-branch-recent {
+  display: block !important;
+  margin-top: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: #475569 !important;
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.crm-summary-recent-banner {
+  margin: 0 0 0.85rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.875rem;
+  color: #334155;
+  background: #f1f5f9;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+</style>
+<script>
+(function () {
+    var modal = document.getElementById('crm-summary-modal');
+    var body = document.getElementById('crm-summary-modal-body');
+    var titleEl = document.getElementById('crm-summary-modal-title');
+    var isAdmin = <?= $isAdminRole ? 'true' : 'false' ?>;
+    var roleBranchId = <?= (int) ($userBranchId ?? 0) ?>;
+    var roleBranchLabel = <?= json_encode($userBranchLabel, JSON_UNESCAPED_UNICODE) ?>;
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = String(s || '');
+        return d.innerHTML;
+    }
+
+    function hideModal() {
+        if (!modal) return;
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+        if (body) body.innerHTML = '<p class="empty" style="margin:0">Loading…</p>';
+    }
+
+    function showModal() {
+        if (!modal) return;
+        modal.style.display = 'block';
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function summaryTitle(branchLabel, mode) {
+        if (mode === 'all_branches') {
+            return 'CRM Summary — All Branches';
+        }
+        var lbl = String(branchLabel || '').trim();
+        return lbl !== '' ? ('CRM Summary — ' + lbl) : 'CRM Summary';
+    }
+
+    function selectedBranchId() {
+        if (!isAdmin) {
+            return roleBranchId;
+        }
+        var branchEl = document.getElementById('f_branch');
+        return branchEl ? parseInt(branchEl.value || '0', 10) : 0;
+    }
+
+    function selectedBranchLabel() {
+        if (!isAdmin) {
+            return roleBranchLabel || '';
+        }
+        var branchEl = document.getElementById('f_branch');
+        if (!branchEl || branchEl.selectedIndex < 0) {
+            return '';
+        }
+        return String(branchEl.options[branchEl.selectedIndex].text || '').trim();
+    }
+
+    function renderSummary(data) {
+        if (!body) return;
+        var mode = String((data && data.mode) || 'branch');
+        if (mode === 'all_branches') {
+            if (titleEl) {
+                titleEl.textContent = summaryTitle('', 'all_branches');
+            }
+            var columns = data.columns || [];
+            var matrixRows = data.rows || [];
+            if (matrixRows.length === 0) {
+                body.innerHTML = '<p class="empty" style="margin:0">No CRM data found.</p>';
+                return;
+            }
+            var matrixHtml = '<div class="table-wrap"><table class="data crm-summary-matrix"><thead><tr><th>Branch</th>';
+            for (var c = 0; c < columns.length; c++) {
+                matrixHtml += '<th style="text-align:right">' + esc(columns[c].label) + '</th>';
+            }
+            matrixHtml += '<th style="text-align:right">Total</th></tr></thead><tbody>';
+            for (var r = 0; r < matrixRows.length; r++) {
+                var matrixRow = matrixRows[r];
+                var updated48h = matrixRow.updated_48h != null ? parseInt(matrixRow.updated_48h, 10) : 0;
+                if (isNaN(updated48h)) {
+                    updated48h = 0;
+                }
+                matrixHtml += '<tr><td class="crm-summary-branch-cell">';
+                matrixHtml += '<span class="crm-summary-branch-name">' + esc(matrixRow.branch_label) + '</span>';
+                matrixHtml += '<span class="crm-summary-branch-recent">' + esc(String(updated48h)) + ' updated in last 48 hrs</span>';
+                matrixHtml += '</td>';
+                var rowCounts = matrixRow.counts || {};
+                for (c = 0; c < columns.length; c++) {
+                    var statusId = String(columns[c].id);
+                    matrixHtml += '<td style="text-align:right">' + esc(String(rowCounts[statusId] != null ? rowCounts[statusId] : 0)) + '</td>';
+                }
+                matrixHtml += '<td style="text-align:right"><strong>' + esc(String(matrixRow.total || 0)) + '</strong></td></tr>';
+            }
+            matrixHtml += '</tbody></table></div>';
+            body.innerHTML = matrixHtml;
+            return;
+        }
+
+        var branchLabel = String((data && data.branch_label) || selectedBranchLabel() || '').trim();
+        if (titleEl) {
+            titleEl.textContent = summaryTitle(branchLabel, 'branch');
+        }
+        var updated48hBranch = data.updated_48h != null ? parseInt(data.updated_48h, 10) : 0;
+        if (isNaN(updated48hBranch)) {
+            updated48hBranch = 0;
+        }
+        var html = '<p class="crm-summary-recent-banner"><strong>' + esc(branchLabel) + '</strong><br>' + esc(String(updated48hBranch)) + ' updated in last 48 hrs</p>';
+        html += '<div class="table-wrap crm-summary-branch-wrap"><table class="data crm-summary-branch"><thead><tr><th>Status</th><th>Count</th></tr></thead><tbody>';
+        var rows = data.rows || [];
+        for (var i = 0; i < rows.length; i++) {
+            html += '<tr><td>' + esc(rows[i].label) + '</td><td>' + esc(String(rows[i].count)) + '</td></tr>';
+        }
+        html += '<tr><th>Total</th><th>' + esc(String(data.total || 0)) + '</th></tr>';
+        html += '</tbody></table></div>';
+        body.innerHTML = html;
+    }
+
+    function openSummary() {
+        if (!body) return;
+        if (!isAdmin && roleBranchId <= 0) {
+            return;
+        }
+        var branchId = selectedBranchId();
+        var branchLabelPreview = selectedBranchLabel();
+        var previewMode = (isAdmin && branchId <= 0) ? 'all_branches' : 'branch';
+        body.innerHTML = '<p class="empty" style="margin:0">Loading…</p>';
+        showModal();
+        if (titleEl) {
+            titleEl.textContent = summaryTitle(branchLabelPreview, previewMode);
+        }
+
+        var url = 'crm.php?crm_summary=1';
+        if (isAdmin && branchId > 0) {
+            url += '&f_branch=' + encodeURIComponent(String(branchId));
+        }
+
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!j || j.ok !== true) {
+                    body.innerHTML = '<p class="alert alert--error" style="margin:0">' + esc((j && j.error) ? j.error : 'Could not load summary.') + '</p>';
+                    return;
+                }
+                renderSummary(j);
+            })
+            .catch(function () {
+                body.innerHTML = '<p class="alert alert--error" style="margin:0">Network error while loading summary.</p>';
+            });
+    }
+
+    document.querySelectorAll('.js-crm-summary-open').forEach(function (btn) {
+        btn.addEventListener('click', openSummary);
+    });
+    document.querySelectorAll('.js-crm-summary-close').forEach(function (btn) {
+        btn.addEventListener('click', hideModal);
+    });
+    document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape' && modal && modal.style.display !== 'none') {
+            hideModal();
+        }
+    });
+})();
+</script>
+<?php endif; ?>
 
 <?php require __DIR__ . '/includes/layout_end.php'; ?>

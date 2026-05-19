@@ -1070,28 +1070,23 @@ table.data.crm-summary-branch td:last-child {
 }
 .crm-summary-matrix th:not(:first-child),
 .crm-summary-matrix td:not(.crm-summary-branch-cell) { white-space: nowrap; }
-.crm-summary-matrix th:first-child,
+.crm-summary-matrix th.crm-summary-branch-col,
 .crm-summary-matrix td.crm-summary-branch-cell {
   white-space: normal !important;
   vertical-align: top;
   min-width: 11rem;
-  max-width: 16rem;
+  max-width: 18rem;
+  text-transform: none;
+  letter-spacing: normal;
 }
-.crm-summary-branch-name {
-  display: block;
+.crm-summary-matrix th.crm-summary-branch-col {
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+.crm-summary-branch-label-count {
   font-weight: 600;
   color: var(--text, #0f172a);
   line-height: 1.35;
-}
-.crm-summary-branch-recent {
-  display: block !important;
-  margin-top: 0.35rem;
-  font-size: 0.8125rem;
-  font-weight: 400;
-  color: #475569 !important;
-  line-height: 1.35;
-  text-transform: none;
-  letter-spacing: normal;
 }
 .crm-summary-recent-banner {
   margin: 0 0 0.85rem;
@@ -1171,7 +1166,7 @@ table.data.crm-summary-branch td:last-child {
                 body.innerHTML = '<p class="empty" style="margin:0">No CRM data found.</p>';
                 return;
             }
-            var matrixHtml = '<div class="table-wrap"><table class="data crm-summary-matrix"><thead><tr><th>Branch</th>';
+            var matrixHtml = '<div class="table-wrap"><table class="data crm-summary-matrix"><thead><tr><th class="crm-summary-branch-col">BRANCH (updated in last 48 hrs)</th>';
             for (var c = 0; c < columns.length; c++) {
                 matrixHtml += '<th style="text-align:right">' + esc(columns[c].label) + '</th>';
             }
@@ -1182,10 +1177,7 @@ table.data.crm-summary-branch td:last-child {
                 if (isNaN(updated48h)) {
                     updated48h = 0;
                 }
-                matrixHtml += '<tr><td class="crm-summary-branch-cell">';
-                matrixHtml += '<span class="crm-summary-branch-name">' + esc(matrixRow.branch_label) + '</span>';
-                matrixHtml += '<span class="crm-summary-branch-recent">' + esc(String(updated48h)) + ' updated in last 48 hrs</span>';
-                matrixHtml += '</td>';
+                matrixHtml += '<tr><td class="crm-summary-branch-cell"><span class="crm-summary-branch-label-count">' + esc(matrixRow.branch_label) + ' (' + esc(String(updated48h)) + ')</span></td>';
                 var rowCounts = matrixRow.counts || {};
                 for (c = 0; c < columns.length; c++) {
                     var statusId = String(columns[c].id);

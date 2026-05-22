@@ -28,6 +28,21 @@ function crm_format_last_visit(?string $date): string
     }
 }
 
+function crm_truncate_list_remark(?string $remark, int $maxLen = 15): string
+{
+    $raw = trim((string) ($remark ?? ''));
+    if ($raw === '') {
+        return '—';
+    }
+    $len = function_exists('mb_strlen') ? mb_strlen($raw) : strlen($raw);
+    if ($len <= $maxLen) {
+        return $raw;
+    }
+    $cut = function_exists('mb_substr') ? mb_substr($raw, 0, $maxLen) : substr($raw, 0, $maxLen);
+
+    return $cut . '...';
+}
+
 function crm_format_utc_to_datetime_local_input(?string $utcDateTime): string
 {
     $raw = trim((string) ($utcDateTime ?? ''));
@@ -148,6 +163,92 @@ function crm_api_value_or_dash($value): string
     return $v !== '' ? $v : '—';
 }
 
+/**
+ * @param list<mixed> $packages
+ * @return array{display: string, is_html: bool}
+ */
+function crm_membership_from_packages(array $packages): array
+{
+    if ($packages === []) {
+        return ['display' => '—', 'is_html' => false];
+    }
+
+    $activeNames = [];
+    $inactiveNames = [];
+    foreach ($packages as $pkg) {
+        if (!is_array($pkg)) {
+            continue;
+        }
+        $pkgType = isset($pkg['package_type']) && is_array($pkg['package_type']) ? $pkg['package_type'] : [];
+        $name = trim((string) ($pkgType['package_name'] ?? ''));
+        if ($name === '') {
+            $name = 'Package';
+        }
+        $status = $pkg['status'] ?? false;
+        $isActive = $status === true || $status === 1 || $status === '1';
+        if ($isActive) {
+            $activeNames[] = $name;
+        } else {
+            $inactiveNames[] = $name;
+        }
+    }
+
+    if ($activeNames === [] && $inactiveNames === []) {
+        return ['display' => '—', 'is_html' => false];
+    }
+
+    if ($activeNames !== []) {
+        $parts = [];
+        foreach ($activeNames as $name) {
+            $parts[] = '<span style="color:#166534">Active</span> (' . e($name) . ')';
+        }
+
+        return ['display' => implode('<br>', $parts), 'is_html' => true];
+    }
+
+    $struck = [];
+    foreach ($inactiveNames as $name) {
+        $struck[] = '<span style="text-decoration:line-through">' . e($name) . '</span>';
+    }
+
+    return [
+        'display' => '<span style="color:#b91c1c">InActive Member</span>(' . implode(', ', $struck) . ')',
+        'is_html' => true,
+    ];
+}
+
+/**
+ * @param list<mixed> $serviceHistoryItems
+ * @return array<int, list<string>> bill_id => unique service names
+ */
+function crm_services_by_bill_id(array $serviceHistoryItems): array
+{
+    $byBill = [];
+    foreach ($serviceHistoryItems as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $bill = isset($item['bill']) && is_array($item['bill']) ? $item['bill'] : [];
+        $billId = (int) ($bill['id'] ?? 0);
+        if ($billId <= 0) {
+            continue;
+        }
+        $vendorService = isset($item['vendor_service']) && is_array($item['vendor_service']) ? $item['vendor_service'] : [];
+        $serviceName = trim((string) ($vendorService['service'] ?? ''));
+        if ($serviceName === '') {
+            continue;
+        }
+        if (!isset($byBill[$billId])) {
+            $byBill[$billId] = [];
+        }
+        if (!in_array($serviceName, $byBill[$billId], true)) {
+            $byBill[$billId][] = $serviceName;
+        }
+    }
+
+    return $byBill;
+}
+
 function crm_amount_display($value): string
 {
     if (!is_numeric($value)) {
@@ -223,18 +324,28 @@ $flash = ['type' => '', 'text' => ''];
 $loadError = '';
 $rows = [];
 $detailRow = null;
-$crmApiSummary = ['dob' => '—', 'first_visit' => '—', 'avg_spend' => '—'];
+$crmApiSummary = [
+    'dob' => '—',
+    'first_visit' => '—',
+    'avg_spend' => '—',
+    'membership' => '—',
+    'membership_is_html' => false,
+];
 $crmInvoiceRows = [];
+$crmInvoiceTotalCount = 0;
 $crmApiError = '';
 $statusOptions = [];
 $statusIdToKey = [];
 $statusIdToLabel = [];
 $branchOptions = [];
+/** @var array<int, string> */
+$segmentOptions = [];
 $isAdminRole = ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN);
 $userBranchId = isset($user['branch_id']) && (int) $user['branch_id'] > 0 ? (int) $user['branch_id'] : null;
 $fBranchSel = isset($_GET['f_branch']) ? (int) $_GET['f_branch'] : 0;
 $showRequested = isset($_GET['show']) && (string) $_GET['show'] === '1';
 $fStatusSel = isset($_GET['f_status']) ? (int) $_GET['f_status'] : 0; // 0 => All
+$fSegmentSel = isset($_GET['f_segment']) ? (int) $_GET['f_segment'] : 0; // 0 => All
 $fFollowupRange = isset($_GET['f_followup_range']) ? strtolower(trim((string) $_GET['f_followup_range'])) : '';
 $followupRangeOptions = [
     'today' => 'Today',
@@ -314,6 +425,59 @@ if ($isAdminRole) {
         error_log('AllureOne CRM branch options load failed: ' . $e->getMessage());
     }
 }
+
+$segmentBranchId = null;
+if ($isAdminRole) {
+    if ($fBranchSel > 0) {
+        $segmentBranchId = $fBranchSel;
+    }
+} elseif ($userBranchId !== null && $userBranchId > 0) {
+    $segmentBranchId = $userBranchId;
+}
+if ($segmentBranchId !== null) {
+    try {
+        $segStmt = db()->prepare(
+            'SELECT DISTINCT c.segment_id, seg.segment_name
+             FROM allureone_crm c
+             LEFT JOIN allureone_segments seg ON seg.segment_id = c.segment_id
+             WHERE c.branch_id = :branch_id
+               AND c.segment_id IS NOT NULL
+               AND c.segment_id > 0
+             ORDER BY seg.segment_name ASC, c.segment_id ASC'
+        );
+        $segStmt->execute(['branch_id' => $segmentBranchId]);
+        foreach ($segStmt->fetchAll(PDO::FETCH_ASSOC) as $segRow) {
+            $segId = (int) ($segRow['segment_id'] ?? 0);
+            $segName = trim((string) ($segRow['segment_name'] ?? ''));
+            if ($segId <= 0) {
+                continue;
+            }
+            if ($segName === '') {
+                $segName = 'Segment #' . $segId;
+            }
+            $segmentOptions[$segId] = $segName;
+        }
+        $segmentNameCounts = [];
+        foreach ($segmentOptions as $segName) {
+            $segmentNameCounts[$segName] = ($segmentNameCounts[$segName] ?? 0) + 1;
+        }
+        foreach ($segmentOptions as $segId => $segName) {
+            if (($segmentNameCounts[$segName] ?? 0) > 1) {
+                $segmentOptions[$segId] = $segName . ' (' . $segId . ')';
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('AllureOne CRM segment options load failed: ' . $e->getMessage());
+    }
+}
+if ($segmentBranchId === null) {
+    $fSegmentSel = 0;
+}
+if ($fSegmentSel > 0 && !isset($segmentOptions[$fSegmentSel])) {
+    $fSegmentSel = 0;
+}
+$showSegmentFilter = $segmentBranchId !== null && $segmentBranchId > 0;
+
 $userBranchLabel = '';
 if (!$isAdminRole && $userBranchId !== null && $userBranchId > 0) {
     $userBranchLabel = crm_branch_label($userBranchId);
@@ -609,7 +773,59 @@ try {
                         $firstHistory = isset($userHistories[0]) && is_array($userHistories[0]) ? $userHistories[0] : [];
                         $avgSpendRaw = $firstHistory['avg_spend'] ?? '';
                         $crmApiSummary['avg_spend'] = is_numeric($avgSpendRaw) ? ('Rs. ' . crm_amount_display($avgSpendRaw)) : crm_api_value_or_dash($avgSpendRaw);
+
+                        $detailHistoryId = (int) ($firstHistory['id'] ?? 0);
+                        if ($detailHistoryId > 0) {
+                            $packagesUrl = 'https://api.dingg.app/api/v1/vendor/customer/other?' . http_build_query(
+                                [
+                                    'id' => (string) $detailUserId,
+                                    'historyId' => (string) $detailHistoryId,
+                                    'type' => 'packages',
+                                ],
+                                '',
+                                '&',
+                                PHP_QUERY_RFC3986
+                            );
+                            $packagesResp = dingg_http_request_authenticated('GET', $packagesUrl, $sessionKey, null);
+                            $packagesHttp = (int) ($packagesResp['http'] ?? 0);
+                            $packagesBody = (string) ($packagesResp['body'] ?? '');
+                            if ($packagesHttp >= 200 && $packagesHttp < 300 && $packagesBody !== '' && !dingg_response_looks_unauthorized($packagesHttp, $packagesBody)) {
+                                $packagesJson = json_decode($packagesBody, true);
+                                $packagesRoot = is_array($packagesJson) && isset($packagesJson['data']) && is_array($packagesJson['data'])
+                                    ? $packagesJson['data']
+                                    : [];
+                                $packagesList = isset($packagesRoot['packages']) && is_array($packagesRoot['packages'])
+                                    ? $packagesRoot['packages']
+                                    : [];
+                                $membershipDisplay = crm_membership_from_packages($packagesList);
+                                $crmApiSummary['membership'] = $membershipDisplay['display'];
+                                $crmApiSummary['membership_is_html'] = $membershipDisplay['is_html'];
+                            }
+                        }
                     }
+                }
+
+                $servicesByBillId = [];
+                $serviceHistoryUrl = 'https://api.dingg.app/api/v1/vendor/customer/service-history?' . http_build_query(
+                    [
+                        'id' => (string) $detailUserId,
+                        'page' => '1',
+                        'limit' => '1000',
+                        'multiLocation' => 'false',
+                    ],
+                    '',
+                    '&',
+                    PHP_QUERY_RFC3986
+                );
+                $serviceHistoryResp = dingg_http_request_authenticated('GET', $serviceHistoryUrl, $sessionKey, null);
+                $serviceHistoryHttp = (int) ($serviceHistoryResp['http'] ?? 0);
+                $serviceHistoryBody = (string) ($serviceHistoryResp['body'] ?? '');
+                if ($serviceHistoryHttp >= 200 && $serviceHistoryHttp < 300 && $serviceHistoryBody !== '' && !dingg_response_looks_unauthorized($serviceHistoryHttp, $serviceHistoryBody)) {
+                    $serviceHistoryJson = json_decode($serviceHistoryBody, true);
+                    $serviceHistoryData = is_array($serviceHistoryJson) && isset($serviceHistoryJson['data']) && is_array($serviceHistoryJson['data'])
+                        ? $serviceHistoryJson['data']
+                        : [];
+                    $servicesByBillId = crm_services_by_bill_id($serviceHistoryData);
                 }
 
                 $invoiceUrl = 'https://api.dingg.app/api/v1/vendor/customer/bill?' . http_build_query(
@@ -628,12 +844,34 @@ try {
                         if (!is_array($invoiceRow)) {
                             continue;
                         }
+                        $billId = (int) ($invoiceRow['id'] ?? 0);
+                        $serviceNames = ($billId > 0 && isset($servicesByBillId[$billId]))
+                            ? $servicesByBillId[$billId]
+                            : [];
+                        $servicesDisplay = $serviceNames !== [] ? implode(', ', $serviceNames) : 'Membership';
                         $crmInvoiceRows[] = [
+                            'bill_id' => $billId,
                             'bill_number' => trim((string) ($invoiceRow['bill_number'] ?? '')),
+                            'services' => $servicesDisplay,
                             'selected_date' => trim((string) ($invoiceRow['selected_date'] ?? '')),
                             'paid' => $invoiceRow['paid'] ?? null,
                             'payment_status' => trim((string) ($invoiceRow['payment_status'] ?? '')),
                         ];
+                    }
+                    $crmInvoiceTotalCount = count($crmInvoiceRows);
+                    if ($crmInvoiceTotalCount > 1) {
+                        usort($crmInvoiceRows, static function (array $a, array $b): int {
+                            $da = strtotime((string) ($a['selected_date'] ?? '')) ?: 0;
+                            $db = strtotime((string) ($b['selected_date'] ?? '')) ?: 0;
+                            if ($db === $da) {
+                                return ((int) ($b['bill_id'] ?? 0)) <=> ((int) ($a['bill_id'] ?? 0));
+                            }
+
+                            return $db <=> $da;
+                        });
+                    }
+                    if ($crmInvoiceTotalCount > 5) {
+                        $crmInvoiceRows = array_slice($crmInvoiceRows, 0, 5);
                     }
                 }
             } elseif ($detailUserId > 0 && $sessionKey === '') {
@@ -647,6 +885,10 @@ try {
         if ($fStatusSel > 0) {
             $where .= ' AND c.crm_status = :crm_status';
             $params['crm_status'] = $fStatusSel;
+        }
+        if ($fSegmentSel > 0) {
+            $where .= ' AND c.segment_id = :segment_id';
+            $params['segment_id'] = $fSegmentSel;
         }
         if ($fFollowupRange !== '' && $followUpFilterStatusId !== null && $fStatusSel === $followUpFilterStatusId) {
             [$followupStartUtc, $followupEndUtc] = crm_followup_range_utc_bounds($fFollowupRange);
@@ -687,7 +929,7 @@ try {
             $orderBy = ($sortBy === 'name')
                 ? (' ORDER BY c.fname ' . ($nameDir === 'asc' ? 'ASC' : 'DESC') . ', c.id DESC')
                 : (' ORDER BY c.last_visit ' . ($visitDir === 'asc' ? 'ASC' : 'DESC') . ', c.id DESC');
-            $sql = "SELECT c.id, c.fname, c.`Mobile` AS mobile, c.last_visit, c.crm_status
+            $sql = "SELECT c.id, c.fname, c.`Mobile` AS mobile, c.last_visit, c.crm_status, c.remarks
                     FROM allureone_crm c" . $where . "
                     " . $orderBy . "
                     LIMIT " . $listPerPage . " OFFSET " . $offset;
@@ -715,6 +957,9 @@ if ($isAdminRole && $showRequested) {
 }
 if ($fStatusSel > 0) {
     $listFilterParams['f_status'] = $fStatusSel;
+}
+if ($fSegmentSel > 0) {
+    $listFilterParams['f_segment'] = $fSegmentSel;
 }
 if ($fFollowupRange !== '') {
     $listFilterParams['f_followup_range'] = $fFollowupRange;
@@ -761,16 +1006,53 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                 $detailWhatsappUrl = crm_whatsapp_wa_me_url($detailMobile);
                 ?>
                 <style>
+                .crm-detail-compact { padding: 0.5rem 0.65rem; }
                 .crm-detail-compact .data th,
-                .crm-detail-compact .data td { padding: .4rem .55rem; }
-                .crm-detail-compact .form__row { margin-bottom: .45rem !important; }
+                .crm-detail-compact .data td { padding: 0.3rem 0.45rem; font-size: 0.88rem; }
+                .crm-detail-compact .data th { font-size: 0.78rem; }
+                .crm-detail-compact .crm-summary-card { margin-top: 0.35rem; }
+                .crm-detail-compact .crm-summary-card .card__head {
+                    padding: 0.35rem 0.5rem;
+                    font-size: 0.86rem;
+                    line-height: 1.25;
+                }
+                .crm-detail-compact .crm-summary-card .card__body {
+                    padding: 0.3rem 0.45rem !important;
+                }
+                .crm-detail-compact .crm-summary-card .data th,
+                .crm-detail-compact .crm-summary-card .data td {
+                    padding: 0.2rem 0.4rem;
+                    font-size: 0.86rem;
+                }
+                .crm-detail-compact .crm-summary-card .data th {
+                    font-size: 0.74rem;
+                    letter-spacing: 0.02em;
+                }
+                .crm-detail-compact .crm-invoices-list {
+                    margin-top: 0.25rem;
+                    padding-top: 0.25rem;
+                    border-top: 1px solid #e2e8f0;
+                }
+                .crm-detail-compact .crm-invoice-line {
+                    margin: 0 0 0.18rem;
+                    font-size: 0.86rem;
+                    line-height: 1.3;
+                }
+                .crm-detail-compact .crm-invoices-more-note {
+                    margin: 0.15rem 0 0;
+                    font-size: 0.75rem;
+                    color: #64748b;
+                    line-height: 1.25;
+                }
+                .crm-detail-compact .crm-detail-form { margin-top: 0.4rem; }
+                .crm-detail-compact .form__row { margin-bottom: 0.4rem !important; }
                 .crm-detail-compact input[type="text"],
                 .crm-detail-compact input[type="datetime-local"],
                 .crm-detail-compact select,
-                .crm-detail-compact textarea { padding: .45rem .55rem; }
-                .crm-detail-compact .btn { padding: .45rem .8rem; }
+                .crm-detail-compact textarea { padding: 0.4rem 0.5rem; }
+                .crm-detail-compact .btn { padding: 0.4rem 0.75rem; }
                 </style>
-                <div class="crm-detail-compact" style="padding:0.85rem 1rem">
+                <div class="crm-detail-compact">
                     <table class="data">
                         <tbody>
                             <tr><th>Full Name</th><td><?= e((string) ($detailRow['fname'] ?? '')) ?></td></tr>
@@ -792,45 +1074,57 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                             </tr>
                         </tbody>
                     </table>
-                    <div class="card" style="margin-top:0.55rem">
+                    <div class="card crm-summary-card">
                         <div class="card__head"><span>Summary & Invoices</span></div>
-                        <div class="card__body" style="padding:0.55rem 0.75rem">
+                        <div class="card__body">
                             <table class="data" style="margin:0">
                                 <tbody>
                                     <tr><th>DOB</th><td><?= e($crmApiSummary['dob']) ?></td></tr>
                                     <tr><th>First Visit</th><td><?= e($crmApiSummary['first_visit']) ?></td></tr>
                                     <tr><th>Average Spend</th><td><?= e($crmApiSummary['avg_spend']) ?></td></tr>
+                                    <tr>
+                                        <th>Membership</th>
+                                        <td>
+                                            <?php if (!empty($crmApiSummary['membership_is_html'])): ?>
+                                                <?= $crmApiSummary['membership'] ?>
+                                            <?php else: ?>
+                                                <?= e((string) ($crmApiSummary['membership'] ?? '—')) ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
-                            <div style="margin-top:0.4rem;padding-top:0.35rem;border-top:1px solid #e2e8f0">
+                            <div class="crm-invoices-list">
                                 <?php if ($crmApiError !== ''): ?>
-                                    <p class="alert alert--error" style="margin:0"><?= e($crmApiError) ?></p>
+                                    <p class="alert alert--error" style="margin:0;font-size:0.86rem"><?= e($crmApiError) ?></p>
                                 <?php elseif ($crmInvoiceRows === []): ?>
-                                    <p class="empty" style="margin:0">No invoices found.</p>
+                                    <p class="empty" style="margin:0;font-size:0.86rem">No invoices found.</p>
                                 <?php else: ?>
                                     <?php foreach ($crmInvoiceRows as $inv): ?>
                                         <?php
                                         $invBill = trim((string) ($inv['bill_number'] ?? ''));
+                                        $invServices = trim((string) ($inv['services'] ?? ''));
                                         $invDate = trim((string) ($inv['selected_date'] ?? ''));
                                         $invPaid = crm_amount_display($inv['paid'] ?? null);
-                                        $invPaymentStatus = strtolower(trim((string) ($inv['payment_status'] ?? '')));
-                                        $isPaid = ($invPaymentStatus === 'is_paid');
                                         ?>
-                                        <p style="margin:0 0 0.2rem 0;font-size:0.92rem">
-                                            Invoices: <?= e($invBill !== '' ? $invBill : '—') ?>,
+                                        <p class="crm-invoice-line" style="color:#0f172a">
+                                            <span style="color:#ea580c;font-weight:600"><?= e($invBill !== '' ? $invBill : '—') ?></span><?php if ($invServices !== ''): ?>
+                                             — <span style="color:#2563eb"><?= e($invServices) ?></span><?php endif; ?>,
                                             Date: <?= e(crm_format_date_dd_mmm_yy($invDate)) ?>,
-                                            Amount:
-                                            <span<?= $isPaid ? ' style="color:#16a34a;font-weight:600"' : '' ?>>Rs. <?= e($invPaid) ?></span>
+                                            Amount: Rs. <?= e($invPaid) ?>
                                         </p>
                                     <?php endforeach; ?>
+                                    <?php if ($crmInvoiceTotalCount > 5): ?>
+                                        <p class="crm-invoices-more-note">showing last 5 invoice from multiple invoices</p>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </div>
                         </div>
                     </div>
-                    <form method="post" action="crm.php?<?= e(http_build_query(array_merge($listFilterParams, ['id' => (int) ($detailRow['id'] ?? 0)])) ) ?>" style="margin-top:0.55rem">
+                    <form method="post" class="crm-detail-form" action="crm.php?<?= e(http_build_query(array_merge($listFilterParams, ['id' => (int) ($detailRow['id'] ?? 0)])) ) ?>">
                         <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="crm_id" value="<?= (int) ($detailRow['id'] ?? 0) ?>">
-                        <div class="form__row" style="margin-bottom:0.75rem">
+                        <div class="form__row">
                             <label for="crm_status">Status</label>
                             <select id="crm_status" name="crm_status">
                                 <?php foreach ($statusOptions as $sopt): ?>
@@ -838,15 +1132,15 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="form__row" id="crm_followup_wrap" style="margin-bottom:0.75rem;<?= $currStatusKey === 'follow_up' ? '' : 'display:none;' ?>">
+                        <div class="form__row" id="crm_followup_wrap" style="<?= $currStatusKey === 'follow_up' ? '' : 'display:none;' ?>">
                             <label for="followup_datetime">Follow-up date/time</label>
                             <input type="datetime-local" id="followup_datetime" name="followup_datetime" value="<?= e(crm_format_utc_to_datetime_local_input((string) ($detailRow['followup_datetime'] ?? ''))) ?>">
                         </div>
-                        <div class="form__row" style="margin-bottom:0.75rem">
+                        <div class="form__row">
                             <label for="remarks">Remarks <span class="required-mark" aria-hidden="true">*</span></label>
-                            <textarea id="remarks" name="remarks" rows="3" maxlength="500" required><?= e((string) ($detailRow['remarks'] ?? '')) ?></textarea>
+                            <textarea id="remarks" name="remarks" rows="2" maxlength="500" required><?= e((string) ($detailRow['remarks'] ?? '')) ?></textarea>
                         </div>
-                        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.75rem 1rem">
+                        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem 0.75rem">
                             <button class="btn btn--primary" type="submit" name="save_crm" value="1">Save</button>
                             <a class="btn btn--ghost" href="crm.php?<?= e(http_build_query($listFilterParams)) ?>">Back</a>
                         </div>
@@ -890,6 +1184,15 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <div class="form__row" id="crm_segment_filter_wrap" style="<?= $showSegmentFilter ? '' : 'display:none;' ?>">
+                        <label for="f_segment">Segment</label>
+                        <select id="f_segment" name="f_segment">
+                            <option value="0">All</option>
+                            <?php foreach ($segmentOptions as $segId => $segName): ?>
+                                <option value="<?= (int) $segId ?>"<?= $fSegmentSel === (int) $segId ? ' selected' : '' ?>><?= e($segName) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                     <div class="form__row" id="crm_followup_range_filter_wrap" style="<?= ($fStatusSel > 0 && $followUpFilterStatusId !== null && $fStatusSel === $followUpFilterStatusId) ? '' : 'display:none;' ?>">
                         <label for="f_followup_range">Follow-up date range</label>
                         <select id="f_followup_range" name="f_followup_range">
@@ -917,6 +1220,15 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                             <option value="0">All</option>
                             <?php foreach ($statusOptions as $sopt): ?>
                                 <option value="<?= (int) ($sopt['id'] ?? 0) ?>"<?= $fStatusSel === (int) ($sopt['id'] ?? 0) ? ' selected' : '' ?>><?= e((string) ($sopt['label'] ?? '')) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form__row">
+                        <label for="f_segment">Segment</label>
+                        <select id="f_segment" name="f_segment">
+                            <option value="0">All</option>
+                            <?php foreach ($segmentOptions as $segId => $segName): ?>
+                                <option value="<?= (int) $segId ?>"<?= $fSegmentSel === (int) $segId ? ' selected' : '' ?>><?= e($segName) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -961,6 +1273,24 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                     statusEl.addEventListener('change', syncFollowupRangeFilter);
                     syncFollowupRangeFilter();
                 })();
+                <?php if ($isAdminRole): ?>
+                (function () {
+                    var branchEl = document.getElementById('f_branch');
+                    var segmentWrap = document.getElementById('crm_segment_filter_wrap');
+                    var segmentEl = document.getElementById('f_segment');
+                    if (!branchEl || !segmentWrap || !segmentEl) return;
+                    function syncSegmentFilter() {
+                        var branchId = parseInt(branchEl.value || '0', 10);
+                        var show = branchId > 0;
+                        segmentWrap.style.display = show ? '' : 'none';
+                        if (!show) {
+                            segmentEl.value = '0';
+                        }
+                    }
+                    branchEl.addEventListener('change', syncSegmentFilter);
+                    syncSegmentFilter();
+                })();
+                <?php endif; ?>
                 </script>
             <?php endif; ?>
             <?php if ($isAdminRole && !$showRequested): ?>
@@ -970,6 +1300,26 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
             <?php elseif ($rows === []): ?>
                 <p class="empty">No CRM clients found.</p>
             <?php else: ?>
+                <style>
+                .crm-client-link-spinner {
+                    display: inline-block;
+                    width: 14px;
+                    height: 14px;
+                    margin-left: 0.35rem;
+                    border: 2px solid #c9d8ea;
+                    border-top-color: #2f5f90;
+                    border-radius: 50%;
+                    animation: crmClientLinkSpin 0.75s linear infinite;
+                    vertical-align: middle;
+                }
+                @keyframes crmClientLinkSpin {
+                    to { transform: rotate(360deg); }
+                }
+                a.js-crm-client-link.is-loading {
+                    opacity: 0.75;
+                    pointer-events: none;
+                }
+                </style>
                 <div class="table-wrap">
                     <table class="data">
                         <thead>
@@ -978,18 +1328,23 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                                 <th>Number</th>
                                 <th><a class="link--underlined" href="<?= e($visitSortUrl) ?>">Last Visit<?= e($visitArrow) ?></a></th>
                                 <th>Status</th>
+                                <th>Remark</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($rows as $r):
                                 $sid = (int) ($r['crm_status'] ?? 0);
                                 $slabel = $statusIdToLabel[$sid] ?? ($sid > 0 ? 'Status #' . $sid : '—');
+                                $remarkRaw = trim((string) ($r['remarks'] ?? ''));
+                                $remarkDisplay = crm_truncate_list_remark($remarkRaw);
+                                $remarkTitle = $remarkRaw !== '' && $remarkDisplay !== $remarkRaw ? $remarkRaw : '';
                             ?>
                                 <tr>
-                                    <td><a class="link--underlined" href="crm.php?<?= e(http_build_query(array_merge($listFilterParams, ['id' => (int) ($r['id'] ?? 0)]))) ?>"><?= e((string) ($r['fname'] ?? '')) ?></a></td>
+                                    <td><a class="link--underlined js-crm-client-link" href="crm.php?<?= e(http_build_query(array_merge($listFilterParams, ['id' => (int) ($r['id'] ?? 0)]))) ?>"><?= e((string) ($r['fname'] ?? '')) ?></a></td>
                                     <td><?= e((string) ($r['mobile'] ?? '')) ?></td>
                                     <td><?= e(crm_format_last_visit((string) ($r['last_visit'] ?? ''))) ?></td>
                                     <td><?= e($slabel) ?></td>
+                                    <td<?= $remarkTitle !== '' ? ' title="' . e($remarkTitle) . '"' : '' ?>><?= e($remarkDisplay) ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -1006,6 +1361,29 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                         <?php endif; ?>
                     </nav>
                 <?php endif; ?>
+                <script>
+                (function () {
+                    document.querySelectorAll('.js-crm-client-link').forEach(function (link) {
+                        link.addEventListener('click', function (ev) {
+                            if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) {
+                                return;
+                            }
+                            var prev = document.querySelector('.crm-client-link-spinner');
+                            if (prev) {
+                                prev.remove();
+                            }
+                            document.querySelectorAll('.js-crm-client-link.is-loading').forEach(function (el) {
+                                el.classList.remove('is-loading');
+                            });
+                            var spinner = document.createElement('span');
+                            spinner.className = 'crm-client-link-spinner';
+                            spinner.setAttribute('aria-hidden', 'true');
+                            link.classList.add('is-loading');
+                            link.insertAdjacentElement('afterend', spinner);
+                        });
+                    });
+                })();
+                </script>
             <?php endif; ?>
         <?php endif; ?>
     </div>

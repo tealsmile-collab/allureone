@@ -43,6 +43,22 @@ function crm_truncate_list_remark(?string $remark, int $maxLen = 15): string
     return $cut . '...';
 }
 
+function crm_format_update_datetime(?string $utcDateTime): string
+{
+    $raw = trim((string) ($utcDateTime ?? ''));
+    if ($raw === '') {
+        return '—';
+    }
+    try {
+        $dt = new DateTime($raw, new DateTimeZone('UTC'));
+        $dt->setTimezone(new DateTimeZone('Asia/Kolkata'));
+
+        return $dt->format('d-M-y h:i');
+    } catch (Exception $e) {
+        return $raw;
+    }
+}
+
 function crm_format_utc_to_datetime_local_input(?string $utcDateTime): string
 {
     $raw = trim((string) ($utcDateTime ?? ''));
@@ -929,7 +945,7 @@ try {
             $orderBy = ($sortBy === 'name')
                 ? (' ORDER BY c.fname ' . ($nameDir === 'asc' ? 'ASC' : 'DESC') . ', c.id DESC')
                 : (' ORDER BY c.last_visit ' . ($visitDir === 'asc' ? 'ASC' : 'DESC') . ', c.id DESC');
-            $sql = "SELECT c.id, c.fname, c.`Mobile` AS mobile, c.last_visit, c.crm_status, c.remarks
+            $sql = "SELECT c.id, c.fname, c.`Mobile` AS mobile, c.last_visit, c.crm_status, c.remarks, c.update_datetime
                     FROM allureone_crm c" . $where . "
                     " . $orderBy . "
                     LIMIT " . $listPerPage . " OFFSET " . $offset;
@@ -1329,12 +1345,16 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                                 <th><a class="link--underlined" href="<?= e($visitSortUrl) ?>">Last Visit<?= e($visitArrow) ?></a></th>
                                 <th>Status</th>
                                 <th>Remark</th>
+                                <th>Update Date</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($rows as $r):
                                 $sid = (int) ($r['crm_status'] ?? 0);
                                 $slabel = $statusIdToLabel[$sid] ?? ($sid > 0 ? 'Status #' . $sid : '—');
+                                $skey = strtolower((string) ($statusIdToKey[$sid] ?? ''));
+                                $isNewStatus = ($skey === 'new' || strcasecmp($slabel, 'New') === 0);
+                                $updateDateDisplay = $isNewStatus ? '' : crm_format_update_datetime((string) ($r['update_datetime'] ?? ''));
                                 $remarkRaw = trim((string) ($r['remarks'] ?? ''));
                                 $remarkDisplay = crm_truncate_list_remark($remarkRaw);
                                 $remarkTitle = $remarkRaw !== '' && $remarkDisplay !== $remarkRaw ? $remarkRaw : '';
@@ -1345,6 +1365,7 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                                     <td><?= e(crm_format_last_visit((string) ($r['last_visit'] ?? ''))) ?></td>
                                     <td><?= e($slabel) ?></td>
                                     <td<?= $remarkTitle !== '' ? ' title="' . e($remarkTitle) . '"' : '' ?>><?= e($remarkDisplay) ?></td>
+                                    <td><?= e($updateDateDisplay) ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

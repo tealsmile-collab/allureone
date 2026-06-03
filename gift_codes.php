@@ -14,7 +14,8 @@ $listPage = max(1, (int) ($_GET['page'] ?? 1));
 $listTotal = 0;
 $listTotalPages = 1;
 $branchLocality = '';
-$redeemedLocationOptions = [];
+/** @var array<int, string> branch id => locality label */
+$redeemedLocationBranches = [];
 if ($userBranchId > 0) {
     try {
         $mainPdo = db();
@@ -31,17 +32,18 @@ if ($userBranchId > 0) {
 try {
     $mainPdo = db();
     $rls = $mainPdo->query(
-        'SELECT locality
+        'SELECT id, locality
          FROM allureone_branch
          WHERE isActive = 1
            AND locality IS NOT NULL
            AND TRIM(locality) <> \'\'
-         ORDER BY locality ASC'
+         ORDER BY locality ASC, id ASC'
     );
     foreach ($rls->fetchAll(PDO::FETCH_ASSOC) as $rlRow) {
+        $branchId = (int) ($rlRow['id'] ?? 0);
         $loc = trim((string) ($rlRow['locality'] ?? ''));
-        if ($loc !== '') {
-            $redeemedLocationOptions[$loc] = $loc;
+        if ($branchId > 0 && $loc !== '') {
+            $redeemedLocationBranches[$branchId] = $loc;
         }
     }
 } catch (PDOException $e) {
@@ -51,6 +53,7 @@ try {
 $giftRows = [];
 $giftDetail = null;
 $markRedeemedFlash = null;
+$showMarkRedeemedDinggPopup = false;
 $giftDebug = [
     'selected_item_id' => $selectedItemId,
     'branch_locality' => $branchLocality,
@@ -67,7 +70,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_redeemed'])) {
         }
         if ($markItemId <= 0) {
             $markRedeemedFlash = ['type' => 'error', 'text' => 'Invalid gift selected.'];
+        } elseif ($redeemedLocation === '') {
+            $markRedeemedFlash = ['type' => 'error', 'text' => 'Select a redeemed location.'];
         } else {
+            $syncItemData = gift_fetch_order_item_for_dingg_sync($markItemId);
+            if ($syncItemData === null) {
+                $markRedeemedFlash = ['type' => 'error', 'text' => 'Could not load gift code for Dingg sync.'];
+            } else {
+                $giftCodePriceForSync = gift_compute_code_price((int) round((float) ($syncItemData['amount'] ?? 0)));
+                $dinggSync = gift_run_dingg_sync_for_redeem(
+                    $redeemedLocation,
+                    (string) ($syncItemData['gift_code'] ?? ''),
+                    $giftCodePriceForSync
+                );
+                if (!($dinggSync['ok'] ?? false)) {
+                    $markRedeemedFlash = ['type' => 'error', 'text' => (string) ($dinggSync['error'] ?? 'Dingg sync failed.')];
+                } else {
             try {
                 $pdoMark = wp_db();
                 $wpPrefixMark = wp_table_prefix();
@@ -135,12 +153,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_redeemed'])) {
                         }
                     }
 
-                    $markRedeemedFlash = ['type' => 'ok', 'text' => 'Gift code marked as Redeemed.'];
+                    $flashText = 'Gift code marked as Redeemed.';
+                    $dinggMessages = $dinggSync['messages'] ?? [];
+                    if (is_array($dinggMessages) && $dinggMessages !== []) {
+                        $flashText .= ' ' . implode(' ', $dinggMessages);
+                    }
+                    $markRedeemedFlash = ['type' => 'ok', 'text' => $flashText];
+                    $showMarkRedeemedDinggPopup = true;
                     $selectedItemId = $markItemId;
                 }
             } catch (PDOException $e) {
                 error_log('AllureOne gift_codes mark redeemed failed: ' . $e->getMessage());
                 $markRedeemedFlash = ['type' => 'error', 'text' => 'Could not mark gift as Redeemed.'];
+            }
+                }
             }
         }
     }
@@ -386,9 +412,9 @@ require __DIR__ . '/includes/layout_start.php';
                                     <?php $selectedRedeemedLoc = trim((string) ($giftDetail['location'] ?? '')); ?>
                                     <select name="redeemed_location" id="redeemed_location" form="mark_redeemed_form" style="min-width:16rem;max-width:100%"<?= $detailOrderStatus === 'completed' ? ' disabled' : '' ?>>
                                         <option value="">Select location</option>
-                                        <?php foreach ($redeemedLocationOptions as $rlOpt): ?>
+                                        <?php foreach ($redeemedLocationBranches as $redeemedBranchId => $rlOpt): ?>
                                             <?php $isSel = (strcasecmp($selectedRedeemedLoc, $rlOpt) === 0); ?>
-                                            <option value="<?= e((string) $rlOpt) ?>"<?= $isSel ? ' selected' : '' ?>><?= e((string) $rlOpt) ?></option>
+                                            <option value="<?= e((string) $rlOpt) ?>" data-branch-id="<?= (int) $redeemedBranchId ?>"<?= $isSel ? ' selected' : '' ?>><?= e((string) $rlOpt) ?></option>
                                         <?php endforeach; ?>
                                     </select>
                                 </td>
@@ -451,6 +477,42 @@ require __DIR__ . '/includes/layout_start.php';
         <?php endif; ?>
     </div>
 </div>
+
+<div id="gift-dingg-redeemed-modal" class="gift-dingg-redeemed-modal" style="display:none" aria-hidden="true">
+    <div class="gift-dingg-redeemed-modal__backdrop js-gift-dingg-redeemed-close" role="presentation"></div>
+    <div class="gift-dingg-redeemed-modal__panel" role="dialog" aria-modal="true" aria-labelledby="gift-dingg-redeemed-modal-title">
+        <div class="gift-dingg-redeemed-modal__head">
+            <strong id="gift-dingg-redeemed-modal-title">Mark Redeemed</strong>
+            <button type="button" class="btn btn--ghost js-gift-dingg-redeemed-close" style="padding:0.3rem 0.65rem">Close</button>
+        </div>
+        <div class="gift-dingg-redeemed-modal__body">
+            <p style="margin:0 0 0.75rem;font-weight:600">Gift Code created in Dingg</p>
+            <p style="margin:0;color:var(--muted, #64748b)">Check link visit https://vendor.dingg.in/members/gift-card</p>
+        </div>
+    </div>
+</div>
+<style>
+.gift-dingg-redeemed-modal { position: fixed; inset: 0; z-index: 2100; }
+.gift-dingg-redeemed-modal__backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+.gift-dingg-redeemed-modal__panel {
+    position: relative;
+    margin: 10vh auto 1rem;
+    max-width: 480px;
+    width: calc(100% - 2rem);
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #d6dde6;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+.gift-dingg-redeemed-modal__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid #d6dde6;
+}
+.gift-dingg-redeemed-modal__body { padding: 1rem 1.25rem 1.25rem; }
+</style>
 
 <div id="rzp-status-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:center;justify-content:center;padding:1rem">
     <div style="background:#fff;border-radius:10px;max-width:640px;width:100%;max-height:80vh;overflow:auto;border:1px solid #d6dde6">
@@ -575,5 +637,25 @@ try {
     console.log('Gift Card Sale debug JSON:', JSON.stringify(giftCardSaleDebug));
 } catch (e) {}
 </script>
+<?php if ($showMarkRedeemedDinggPopup): ?>
+<script>
+(function () {
+    var modal = document.getElementById('gift-dingg-redeemed-modal');
+    if (!modal) return;
+    function showModal() {
+        modal.style.display = 'block';
+        modal.setAttribute('aria-hidden', 'false');
+    }
+    function hideModal() {
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+    }
+    document.querySelectorAll('.js-gift-dingg-redeemed-close').forEach(function (btn) {
+        btn.addEventListener('click', hideModal);
+    });
+    showModal();
+})();
+</script>
+<?php endif; ?>
 
 <?php require __DIR__ . '/includes/layout_end.php'; ?>

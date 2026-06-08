@@ -9,6 +9,7 @@
         "sort-packages": true,
         "platform": {
             "php": "8.0.0"
-        }
+        },
+        "platform-check": false
     }
 }

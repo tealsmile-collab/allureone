@@ -33,8 +33,40 @@ function pwa_vapid_subject(): string
     return $subject;
 }
 
+function pwa_ensure_vendor_autoload(): bool
+{
+    static $loaded = null;
+    if ($loaded === true) {
+        return true;
+    }
+    if ($loaded === false) {
+        return false;
+    }
+    $autoload = __DIR__ . '/../vendor/autoload.php';
+    if (!is_file($autoload)) {
+        $loaded = false;
+
+        return false;
+    }
+    try {
+        require_once $autoload;
+        $loaded = true;
+
+        return true;
+    } catch (Throwable $e) {
+        error_log('AllureOne vendor autoload failed: ' . $e->getMessage());
+        $loaded = false;
+
+        return false;
+    }
+}
+
 function pwa_web_push_available(): bool
 {
+    if (!pwa_ensure_vendor_autoload()) {
+        return false;
+    }
+
     return class_exists(\Minishlink\WebPush\WebPush::class)
         && pwa_vapid_public_key() !== ''
         && pwa_vapid_private_key() !== '';
@@ -65,7 +97,7 @@ function pwa_generate_vapid_keys(): array
         return ['ok' => false, 'error' => 'OpenSSL PHP extension is required. Enable extension=openssl in php.ini.'];
     }
 
-    if (class_exists(\Minishlink\WebPush\VAPID::class)) {
+    if (pwa_ensure_vendor_autoload() && class_exists(\Minishlink\WebPush\VAPID::class)) {
         try {
             pwa_prepare_openssl_for_ec_keys();
             $keys = \Minishlink\WebPush\VAPID::createVapidKeys();
@@ -252,8 +284,11 @@ function pwa_send_announcement(string $message, int $createdBy, string $createdB
     if ($message === '') {
         return ['ok' => false, 'error' => 'Announcement message is required.'];
     }
+    if (!pwa_ensure_vendor_autoload()) {
+        return ['ok' => false, 'error' => 'Web Push library missing. Ensure vendor/ is deployed on the server.'];
+    }
     if (!pwa_web_push_available()) {
-        return ['ok' => false, 'error' => 'Web Push is not configured. Run composer install and set VAPID keys in config.php.'];
+        return ['ok' => false, 'error' => 'Web Push is not configured. Set VAPID keys in config.php.'];
     }
 
     try {

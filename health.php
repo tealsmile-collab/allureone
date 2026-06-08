@@ -35,12 +35,24 @@ foreach (['openssl', 'mbstring', 'curl', 'json'] as $ext) {
 if (is_file($configPath)) {
     try {
         $config = require $configPath;
-        $checks[] = 'config pwa section: ' . (isset($config['pwa']) ? 'present' : 'missing (optional)');
+        $pwa = is_array($config['pwa'] ?? null) ? $config['pwa'] : [];
+        $checks[] = 'config pwa section: ' . (isset($config['pwa']) ? 'present' : 'missing');
+        $checks[] = 'vapid_public_key: ' . (trim((string) ($pwa['vapid_public_key'] ?? '')) !== '' ? 'set' : 'EMPTY');
+        $checks[] = 'vapid_private_key: ' . (trim((string) ($pwa['vapid_private_key'] ?? '')) !== '' ? 'set' : 'EMPTY');
         require_once __DIR__ . '/includes/database.php';
         db()->query('SELECT 1');
         $checks[] = 'database: OK';
     } catch (Throwable $e) {
         $checks[] = 'database FAILED: ' . $e->getMessage();
+    }
+}
+
+if (is_file(__DIR__ . '/includes/pwa.php')) {
+    require_once __DIR__ . '/includes/pwa.php';
+    $status = pwa_readiness_details();
+    $checks[] = 'pwa ready: ' . (!empty($status['ready']) ? 'yes' : 'no');
+    foreach ($status['issues'] as $issue) {
+        $checks[] = '  - ' . $issue;
     }
 }
 

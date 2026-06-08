@@ -16,6 +16,7 @@ $vapidSnippet = null;
 $announcementHistory = [];
 $activeDevices = 0;
 $pwaReady = pwa_web_push_available();
+$pwaStatus = pwa_readiness_details();
 $isSuperadmin = $roleId === ROLE_SUPERADMIN;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_vapid'])) {
@@ -86,15 +87,24 @@ require __DIR__ . '/includes/layout_start.php';
 
         <?php if (!$pwaReady): ?>
             <div class="alert alert--error" style="margin:1rem 1.25rem 0">
-                <p style="margin:0 0 0.5rem">Web Push is not ready. Add VAPID keys to <code>config.php</code> on the server under <code>pwa</code>.</p>
-                <?php if ($isSuperadmin): ?>
+                <p style="margin:0 0 0.5rem"><strong>Web Push is not ready.</strong></p>
+                <ul style="margin:0 0 0.75rem 1.25rem;padding:0;font-size:.9rem">
+                    <li>vendor/ on server: <?= !empty($pwaStatus['vendor']) ? 'OK' : 'missing' ?></li>
+                    <li>Web Push library: <?= !empty($pwaStatus['library']) ? 'OK' : 'not loaded' ?></li>
+                    <li>VAPID public key in config.php: <?= !empty($pwaStatus['public_key']) ? 'OK' : 'missing' ?></li>
+                    <li>VAPID private key in config.php: <?= !empty($pwaStatus['private_key']) ? 'OK' : 'missing' ?></li>
+                </ul>
+                <?php foreach (($pwaStatus['issues'] ?? []) as $issue): ?>
+                    <p style="margin:0 0 0.35rem;font-size:.9rem">• <?= e((string) $issue) ?></p>
+                <?php endforeach; ?>
+                <?php if ($isSuperadmin && empty($pwaStatus['public_key'])): ?>
                     <form method="post" action="Announcement.php" style="margin:0.75rem 0 0">
                         <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                         <button type="submit" name="generate_vapid" value="1" class="btn btn--secondary">Generate VAPID keys (on server)</button>
                     </form>
-                    <p style="margin:0.5rem 0 0;font-size:.85rem">Or run <code>php pwa_vapid_generate.php</code> on the server, or use <a href="https://vapidkeys.com/" target="_blank" rel="noopener">vapidkeys.com</a>.</p>
-                <?php else: ?>
-                    <p style="margin:0;font-size:.85rem">Ask a superadmin to generate keys or add them to server <code>config.php</code>.</p>
+                    <p style="margin:0.5rem 0 0;font-size:.85rem">Or use <a href="https://vapidkeys.com/" target="_blank" rel="noopener">vapidkeys.com</a> and paste keys into <strong>server</strong> <code>config.php</code> (not git — edit in Hostinger File Manager).</p>
+                <?php elseif ($isSuperadmin && empty($pwaStatus['vendor'])): ?>
+                    <p style="margin:0.75rem 0 0;font-size:.85rem">Push <code>vendor/</code> from your PC via git, or upload the <code>vendor</code> folder in Hostinger File Manager.</p>
                 <?php endif; ?>
             </div>
         <?php endif; ?>

@@ -61,15 +61,48 @@ function pwa_ensure_vendor_autoload(): bool
     }
 }
 
-function pwa_web_push_available(): bool
+/**
+ * @return array{ready:bool, vendor:bool, library:bool, public_key:bool, private_key:bool, issues:list<string>}
+ */
+function pwa_readiness_details(): array
 {
-    if (!pwa_ensure_vendor_autoload()) {
-        return false;
+    $vendorFile = __DIR__ . '/../vendor/autoload.php';
+    $vendor = is_file($vendorFile);
+    $library = false;
+    $issues = [];
+
+    if (!$vendor) {
+        $issues[] = 'vendor/ folder is missing on the server. Commit and deploy vendor/ (or run composer install on Hostinger).';
+    } elseif (!pwa_ensure_vendor_autoload()) {
+        $issues[] = 'Composer autoload failed. Check php_errors.log on the server.';
+    } elseif (!class_exists(\Minishlink\WebPush\WebPush::class)) {
+        $issues[] = 'Web Push library could not be loaded. Ensure vendor/minishlink/web-push exists on the server.';
+    } else {
+        $library = true;
     }
 
-    return class_exists(\Minishlink\WebPush\WebPush::class)
-        && pwa_vapid_public_key() !== ''
-        && pwa_vapid_private_key() !== '';
+    $publicKey = pwa_vapid_public_key();
+    $privateKey = pwa_vapid_private_key();
+    $hasPublic = $publicKey !== '';
+    $hasPrivate = $privateKey !== '';
+
+    if (!$hasPublic || !$hasPrivate) {
+        $issues[] = 'VAPID keys are missing in server config.php under the pwa section.';
+    }
+
+    return [
+        'ready' => $vendor && $library && $hasPublic && $hasPrivate,
+        'vendor' => $vendor,
+        'library' => $library,
+        'public_key' => $hasPublic,
+        'private_key' => $hasPrivate,
+        'issues' => $issues,
+    ];
+}
+
+function pwa_web_push_available(): bool
+{
+    return pwa_readiness_details()['ready'];
 }
 
 function pwa_prepare_openssl_for_ec_keys(): void

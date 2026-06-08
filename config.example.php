@@ -44,4 +44,11 @@ return [
         /** When true, gift lists only show orders whose billing_location matches the user's branch locality. Default false shows all. */
         'filter_gift_cards_by_branch_locality' => false,
     ],
+    'pwa' => [
+        /** mailto: or https:// URL for Web Push VAPID subject */
+        'vapid_subject' => 'mailto:support@allure.com',
+        /** Generate with: php pwa_vapid_generate.php */
+        'vapid_public_key' => '',
+        'vapid_private_key' => '',
+    ],
 ];

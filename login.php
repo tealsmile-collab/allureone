@@ -120,6 +120,7 @@ $rememberedLoginname = trim((string) ($_COOKIE[ALLUREONE_REMEMBER_LOGIN_COOKIE] 
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sign in · <?= htmlspecialchars($appName, ENT_QUOTES, 'UTF-8') ?></title>
     <link rel="stylesheet" href="assets/css/app.css">
+    <?php pwa_render_head_tags(); ?>
 </head>
 <body class="login-page">
     <div class="login-card">
@@ -144,5 +145,6 @@ $rememberedLoginname = trim((string) ($_COOKIE[ALLUREONE_REMEMBER_LOGIN_COOKIE] 
             <button class="btn btn--primary btn--block" type="submit">Sign in</button>
         </form>
     </div>
+    <script src="assets/js/pwa.js" defer></script>
 </body>
 </html>

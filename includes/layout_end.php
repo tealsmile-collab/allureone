@@ -54,5 +54,6 @@
         applyState();
     })();
     </script>
+    <?php pwa_render_register_script(true); ?>
 </body>
 </html>

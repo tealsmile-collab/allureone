@@ -181,6 +181,8 @@ SQL
     ,
 ];
 
+$pwaSqlFile = __DIR__ . '/sql/pwa_tables.sql';
+
 $lastSql = '';
 try {
     $pdo->exec('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci');
@@ -211,6 +213,17 @@ try {
     foreach ($statements as $step => $sql) {
         $lastSql = $sql;
         $pdo->exec($sql);
+    }
+
+    if (is_file($pwaSqlFile)) {
+        $pwaSql = (string) file_get_contents($pwaSqlFile);
+        foreach (array_filter(array_map('trim', explode(';', $pwaSql))) as $pwaStmt) {
+            if ($pwaStmt === '' || stripos($pwaStmt, 'SET NAMES') === 0) {
+                continue;
+            }
+            $lastSql = $pwaStmt;
+            $pdo->exec($pwaStmt);
+        }
     }
 
     $roles = [

@@ -18,6 +18,7 @@ $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Fra
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($pageTitle) ?> · <?= e($appName) ?></title>
     <link rel="stylesheet" href="assets/css/app.css">
+    <?php pwa_render_head_tags(); ?>
 </head>
 <body class="app" data-dingg-ls-key="<?= e(ALLUREONE_LS_DINGG_BEARER) ?>">
     <?php
@@ -71,6 +72,7 @@ $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Fra
             <?php endif; ?>
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && (((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN) || ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN))): ?>
                 <a class="sidebar__link<?= ($activeNav === 'crm_setup') ? ' is-active' : '' ?>" href="crmsetup.php">CRM Segments</a>
+                <a class="sidebar__link<?= ($activeNav === 'announcements') ? ' is-active' : '' ?>" href="Announcement.php">Announcements</a>
             <?php endif; ?>
             <a class="sidebar__link" href="logout.php">Logout</a>
             <?php if ($user && trim((string) ($user['full_name'] ?? '')) !== ''): ?>

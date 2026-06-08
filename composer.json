@@ -1,0 +1,11 @@
+{
+    "name": "allure/allureone",
+    "description": "AllureOne internal app",
+    "require": {
+        "php": ">=8.0",
+        "minishlink/web-push": "^9.0"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

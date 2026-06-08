@@ -3,9 +3,12 @@
     "description": "AllureOne internal app",
     "require": {
         "php": ">=8.0",
-        "minishlink/web-push": "^9.0"
+        "minishlink/web-push": "^8.0"
     },
     "config": {
-        "sort-packages": true
+        "sort-packages": true,
+        "platform": {
+            "php": "8.0.0"
+        }
     }
 }

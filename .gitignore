@@ -1,5 +1,8 @@
 # Local secrets — copy config.example.php to config.php
 /config.php
 
+# Composer (local helper only — vendor/ is committed for Hostinger auto-deploy)
+/composer.phar
+
 # PHP error log (local / may contain sensitive data)
 /php_errors.log

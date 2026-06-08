@@ -3,7 +3,7 @@
         'name' => 'allure/allureone',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '0fc2283082ea34ae21b5f582f86e06dc3a0edfdd',
+        'reference' => '283c16fc24ecc20f1c75288f06ef604e930120b6',
         'type' => 'library',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -13,7 +13,7 @@
         'allure/allureone' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '0fc2283082ea34ae21b5f582f86e06dc3a0edfdd',
+            'reference' => '283c16fc24ecc20f1c75288f06ef604e930120b6',
             'type' => 'library',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

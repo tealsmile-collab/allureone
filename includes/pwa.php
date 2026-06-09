@@ -33,6 +33,79 @@ function pwa_vapid_subject(): string
     return $subject;
 }
 
+function pwa_icon_path(string $key, string $default): string
+{
+    $path = trim((string) (pwa_config()[$key] ?? ''));
+
+    return $path !== '' ? $path : $default;
+}
+
+function pwa_icon_192_url(): string
+{
+    return pwa_icon_path('icon_192', 'assets/images/pwa-icon-192.png');
+}
+
+function pwa_icon_512_url(): string
+{
+    return pwa_icon_path('icon_512', 'assets/images/pwa-icon-512.png');
+}
+
+function pwa_apple_touch_icon_url(): string
+{
+    return pwa_icon_path('apple_touch_icon', pwa_icon_192_url());
+}
+
+function pwa_notification_icon_url(): string
+{
+    return pwa_icon_path('notification_icon', pwa_icon_192_url());
+}
+
+/**
+ * @return array<string,mixed>
+ */
+function pwa_manifest_data(): array
+{
+    $config = require __DIR__ . '/../config.php';
+    $appName = is_array($config['app'] ?? null) ? (string) ($config['app']['name'] ?? 'AllureOne') : 'AllureOne';
+    $pwa = pwa_config();
+    $themeColor = trim((string) ($pwa['theme_color'] ?? ''));
+    if ($themeColor === '') {
+        $themeColor = '#2f5f90';
+    }
+
+    return [
+        'name' => $appName,
+        'short_name' => $appName,
+        'description' => $appName . ' staff app',
+        'start_url' => './login.php',
+        'scope' => './',
+        'display' => 'standalone',
+        'orientation' => 'portrait-primary',
+        'background_color' => '#ffffff',
+        'theme_color' => $themeColor,
+        'icons' => [
+            [
+                'src' => pwa_icon_192_url(),
+                'sizes' => '192x192',
+                'type' => 'image/png',
+                'purpose' => 'any',
+            ],
+            [
+                'src' => pwa_icon_512_url(),
+                'sizes' => '512x512',
+                'type' => 'image/png',
+                'purpose' => 'any',
+            ],
+            [
+                'src' => pwa_icon_512_url(),
+                'sizes' => '512x512',
+                'type' => 'image/png',
+                'purpose' => 'maskable',
+            ],
+        ],
+    ];
+}
+
 function pwa_ensure_vendor_autoload(): bool
 {
     static $loaded = null;
@@ -525,6 +598,7 @@ function pwa_send_announcement(string $message, int $createdBy, string $createdB
                 'title' => 'AllureOne Announcement',
                 'body' => $message,
                 'url' => 'Announcement.php',
+                'icon' => pwa_notification_icon_url(),
                 'announcementId' => $announcementId,
                 'deliveryId' => 0,
                 'ackToken' => $ackToken,
@@ -699,12 +773,12 @@ function pwa_render_head_tags(): void
 {
     $vapidPublic = pwa_vapid_public_key();
     ?>
-    <link rel="manifest" href="assets/manifest.json">
+    <link rel="manifest" href="manifest.php">
     <meta name="theme-color" content="#2f5f90">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <link rel="apple-touch-icon" href="assets/images/allure-logo-small.png">
+    <link rel="apple-touch-icon" href="<?= e(pwa_apple_touch_icon_url()) ?>">
     <?php if ($vapidPublic !== ''): ?>
     <meta name="allureone-vapid-key" content="<?= e($vapidPublic) ?>">
     <?php endif; ?>

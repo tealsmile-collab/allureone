@@ -51,10 +51,11 @@ self.addEventListener('push', (event) => {
     }
     const title = data.title || 'AllureOne';
     const body = data.body || '';
+    const iconUrl = data.icon || 'assets/images/pwa-icon-192.png';
     const options = {
         body: body,
-        icon: 'assets/images/allure-logo-small.png',
-        badge: 'assets/images/allure-logo-small.png',
+        icon: iconUrl,
+        badge: iconUrl,
         tag: data.tag || ('announcement-' + (data.announcementId || '0')),
         data: {
             url: data.url || 'dashboard.php',

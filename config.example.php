@@ -50,5 +50,12 @@ return [
         /** Generate with: php pwa_vapid_generate.php */
         'vapid_public_key' => '',
         'vapid_private_key' => '',
+        /** PWA install / taskbar icons (PNG, paths from site root). Use 192x192 and 512x512 for best results. */
+        'icon_192' => 'assets/images/pwa-icon-192.png',
+        'icon_512' => 'assets/images/pwa-icon-512.png',
+        /** Shown when user adds to home screen on iOS */
+        'apple_touch_icon' => 'assets/images/pwa-icon-192.png',
+        /** Push notification icon (square PNG, e.g. 192x192) */
+        'notification_icon' => 'assets/images/pwa-icon-192.png',
     ],
 ];

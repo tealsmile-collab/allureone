@@ -16,11 +16,29 @@ window.AllureOnePwa = (function () {
         return outputArray;
     }
 
+    function basePath() {
+        var el = document.querySelector('meta[name="allureone-base"]');
+        var base = el ? String(el.getAttribute('content') || '').trim() : '/';
+        if (base === '') {
+            base = '/';
+        }
+        if (base.charAt(base.length - 1) !== '/') {
+            base += '/';
+        }
+        return base;
+    }
+
+    function appUrl(path) {
+        var p = String(path || '').replace(/^\//, '');
+        return basePath() + p;
+    }
+
     function registerServiceWorker() {
         if (!('serviceWorker' in navigator)) {
             return Promise.resolve(null);
         }
-        return navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {
+        var scope = basePath();
+        return navigator.serviceWorker.register(appUrl('sw.js'), { scope: scope }).catch(function () {
             return null;
         });
     }
@@ -58,7 +76,7 @@ window.AllureOnePwa = (function () {
                 }
                 var subJson = subscription.toJSON();
                 subJson.contentEncoding = contentEncoding;
-                return fetch('pwa_subscribe_api.php', {
+                return fetch(appUrl('pwa_subscribe_api.php'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',

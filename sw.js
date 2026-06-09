@@ -33,8 +33,13 @@ self.addEventListener('fetch', (event) => {
     }
 });
 
+function ackApiUrl() {
+    var scope = (self.registration && self.registration.scope) ? self.registration.scope : (self.location.origin + '/');
+    return new URL('pwa_push_ack_api.php', scope).href;
+}
+
 function postAck(payload) {
-    return fetch('pwa_push_ack_api.php', {
+    return fetch(ackApiUrl(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -51,7 +56,8 @@ self.addEventListener('push', (event) => {
     }
     const title = data.title || 'AllureOne';
     const body = data.body || '';
-    const iconUrl = data.icon || 'assets/images/pwa-icon-192.png';
+    const scope = (self.registration && self.registration.scope) ? self.registration.scope : (self.location.origin + '/');
+    const iconUrl = data.icon || new URL('assets/images/pwa-icon-192.png', scope).href;
     const options = {
         body: body,
         icon: iconUrl,
@@ -82,8 +88,9 @@ self.addEventListener('notificationclick', (event) => {
     if (data.ackToken) {
         postAck({ ack_token: data.ackToken, event: 'read' });
     }
+    const scope = (self.registration && self.registration.scope) ? self.registration.scope : (self.location.origin + '/');
     const targetPath = data.url || 'dashboard.php';
-    const targetUrl = new URL(targetPath, self.location.origin).href;
+    const targetUrl = new URL(targetPath, scope).href;
     event.waitUntil(
         self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
             for (let i = 0; i < clientList.length; i++) {

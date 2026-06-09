@@ -1,25 +1,21 @@
 {
   "name": "AllureOne",
   "short_name": "AllureOne",
-  "description": "AllureOne staff app",
-  "start_url": "./login.php",
-  "scope": "./",
+  "description": "Deprecated — use /manifest.php at site root. Kept for old installs.",
+  "start_url": "/login.php",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#ffffff",
   "theme_color": "#2f5f90",
   "icons": [
     {
-      "src": "images/pwa-icon-192.png",
+      "src": "/assets/images/pwa-icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
-      "src": "images/pwa-icon-512.png",
+      "src": "/assets/images/pwa-icon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/png"
     }
   ]
 }

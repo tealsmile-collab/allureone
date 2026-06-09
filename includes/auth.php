@@ -49,8 +49,7 @@ function is_invoice_cancellation_enabled(?array $user = null): bool
 function require_login(): void
 {
     if (current_user() === null) {
-        header('Location: login.php');
-        exit;
+        allureone_redirect('login.php');
     }
 }
 
@@ -78,7 +77,7 @@ function require_not_accounts_role(): void
 {
     require_login();
     if (is_accounts_role()) {
-        header('Location: gift_codes.php', true, 302);
+        allureone_redirect('gift_codes.php');
         exit;
     }
 }
@@ -97,7 +96,7 @@ function require_not_franchise_officer_role(): void
 {
     require_login();
     if (is_franchise_officer_role()) {
-        header('Location: Franchise-leads.php', true, 302);
+        allureone_redirect('Franchise-leads.php');
         exit;
     }
 }

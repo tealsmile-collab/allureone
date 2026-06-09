@@ -18,7 +18,7 @@ header('Content-Type: text/html; charset=utf-8');
         try {
             localStorage.removeItem(<?= json_encode(ALLUREONE_LS_DINGG_BEARER) ?>);
         } catch (e) {}
-        location.replace('login.php');
+        location.replace(<?= json_encode(allureone_url('login.php'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
     })();
     </script>
 </head>

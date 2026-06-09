@@ -13,8 +13,7 @@ if (current_user() !== null) {
     } elseif (is_franchise_officer_role($cu)) {
         $target = 'Franchise-leads.php';
     }
-    header('Location: ' . $target);
-    exit;
+    allureone_redirect($target);
 }
 
 $error = '';
@@ -102,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($roleId === ROLE_FRANCHISE_OFFICER) {
                     $target = 'Franchise-leads.php';
                 }
-                header('Location: ' . $target, true, 302);
+                allureone_redirect($target);
                 exit;
             }
         }

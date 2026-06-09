@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/includes/app_path.php';
 require_once __DIR__ . '/includes/pwa.php';
 
 header('Content-Type: application/manifest+json; charset=utf-8');

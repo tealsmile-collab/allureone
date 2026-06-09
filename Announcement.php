@@ -58,10 +58,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_announcement']))
             } else {
                 $sent = (int) ($result['sent'] ?? 0);
                 $failed = (int) ($result['failed'] ?? 0);
+                $errDetail = '';
+                $errors = is_array($result['errors'] ?? null) ? $result['errors'] : [];
+                if ($errors !== []) {
+                    $errDetail = ' Error: ' . (string) $errors[0];
+                }
                 $flash = [
-                    'type' => 'ok',
+                    'type' => $sent > 0 ? 'ok' : 'error',
                     'text' => 'Announcement sent to ' . $sent . ' device(s).'
-                        . ($failed > 0 ? ' Failed: ' . $failed . '.' : ''),
+                        . ($failed > 0 ? ' Failed: ' . $failed . '.' : '')
+                        . $errDetail,
                 ];
             }
         }
@@ -174,6 +180,7 @@ require __DIR__ . '/includes/layout_start.php';
                                                                 <th>User</th>
                                                                 <th>Device</th>
                                                                 <th>Push</th>
+                                                                <th>Error</th>
                                                                 <th>Shown</th>
                                                                 <th>Read</th>
                                                             </tr>
@@ -183,7 +190,8 @@ require __DIR__ . '/includes/layout_start.php';
                                                                 <tr>
                                                                     <td><?= e(trim((string) ($d['user_name'] ?? '')) !== '' ? (string) $d['user_name'] : ('User #' . (int) ($d['user_id'] ?? 0))) ?></td>
                                                                     <td style="max-width:220px;white-space:normal;font-size:.85rem"><?= e((string) ($d['device_label'] ?? '')) ?></td>
-                                                                    <td><?= (int) ($d['push_sent'] ?? 0) === 1 ? 'Yes' : e((string) ($d['push_error'] ?? 'No')) ?></td>
+                                                                    <td><?= (int) ($d['push_sent'] ?? 0) === 1 ? 'Yes' : 'No' ?></td>
+                                                                    <td style="max-width:220px;white-space:normal;font-size:.85rem"><?= (int) ($d['push_sent'] ?? 0) === 1 ? '—' : e((string) ($d['push_error'] ?? '')) ?></td>
                                                                     <td><?= !empty($d['delivered_at']) ? e((string) $d['delivered_at']) : '—' ?></td>
                                                                     <td><?= !empty($d['read_at']) ? e((string) $d['read_at']) : '—' ?></td>
                                                                 </tr>

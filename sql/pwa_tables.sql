@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS allureone_push_subscriptions (
   endpoint TEXT NOT NULL,
   p256dh VARCHAR(255) NOT NULL,
   auth_key VARCHAR(255) NOT NULL,
+  content_encoding VARCHAR(32) NOT NULL DEFAULT 'aes128gcm',
   user_agent VARCHAR(512) NULL,
   device_label VARCHAR(255) NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,

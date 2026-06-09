@@ -25,11 +25,19 @@ window.AllureOnePwa = (function () {
         });
     }
 
+    function pushContentEncoding() {
+        if ('PushManager' in window && PushManager.supportedContentEncodings && PushManager.supportedContentEncodings.length) {
+            return PushManager.supportedContentEncodings[0];
+        }
+        return 'aes128gcm';
+    }
+
     function subscribePush(csrf) {
         var publicKey = vapidKeyMeta();
         if (!publicKey || !('PushManager' in window) || !('Notification' in window)) {
             return Promise.resolve({ ok: false, skipped: true });
         }
+        var contentEncoding = pushContentEncoding();
         return Notification.requestPermission().then(function (perm) {
             if (perm !== 'granted') {
                 return { ok: false, permission: perm };
@@ -48,6 +56,8 @@ window.AllureOnePwa = (function () {
                 if (!subscription) {
                     return { ok: false };
                 }
+                var subJson = subscription.toJSON();
+                subJson.contentEncoding = contentEncoding;
                 return fetch('pwa_subscribe_api.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -55,7 +65,7 @@ window.AllureOnePwa = (function () {
                     body: JSON.stringify({
                         _csrf: csrf,
                         action: 'subscribe',
-                        subscription: subscription.toJSON(),
+                        subscription: subJson,
                     }),
                 }).then(function (r) { return r.json(); });
             });
@@ -64,13 +74,6 @@ window.AllureOnePwa = (function () {
 
     function initPush(csrf) {
         registerServiceWorker().then(function () {
-            var key = 'allureone_push_prompted';
-            try {
-                if (sessionStorage.getItem(key) === '1') {
-                    return;
-                }
-                sessionStorage.setItem(key, '1');
-            } catch (e) {}
             subscribePush(csrf);
         });
     }

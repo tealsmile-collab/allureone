@@ -212,9 +212,163 @@ function pwa_ensure_tables(): void
             }
             $pdo->exec($stmt);
         }
+        pwa_ensure_schema_columns($pdo);
     } catch (Throwable $e) {
         error_log('AllureOne PWA table ensure failed: ' . $e->getMessage());
     }
+}
+
+function pwa_ensure_schema_columns(PDO $pdo): void
+{
+    try {
+        $cols = $pdo->query('SHOW COLUMNS FROM allureone_push_subscriptions')->fetchAll(PDO::FETCH_COLUMN);
+        if (is_array($cols) && !in_array('content_encoding', $cols, true)) {
+            $pdo->exec(
+                "ALTER TABLE allureone_push_subscriptions
+                 ADD COLUMN content_encoding VARCHAR(32) NOT NULL DEFAULT 'aes128gcm' AFTER auth_key"
+            );
+        }
+    } catch (Throwable $e) {
+        error_log('AllureOne PWA schema upgrade failed: ' . $e->getMessage());
+    }
+}
+
+function pwa_normalize_content_encoding(?string $encoding): string
+{
+    $encoding = strtolower(trim((string) ($encoding ?? '')));
+    if (in_array($encoding, ['aesgcm', 'aes128gcm'], true)) {
+        return $encoding;
+    }
+
+    return 'aes128gcm';
+}
+
+/**
+ * @return list<string>
+ */
+function pwa_content_encoding_candidates(?string $preferred): array
+{
+    $preferred = pwa_normalize_content_encoding($preferred);
+    $candidates = [$preferred];
+    foreach (['aes128gcm', 'aesgcm'] as $enc) {
+        if (!in_array($enc, $candidates, true)) {
+            $candidates[] = $enc;
+        }
+    }
+
+    return $candidates;
+}
+
+function pwa_format_push_report_error(Minishlink\WebPush\MessageSentReport $report): string
+{
+    $reason = trim((string) $report->getReason());
+    $response = $report->getResponse();
+    if ($response !== null) {
+        $body = trim((string) $report->getResponseContent());
+        $reason = 'HTTP ' . $response->getStatusCode() . ($reason !== '' ? ': ' . $reason : '');
+        if ($body !== '') {
+            $reason .= ' — ' . substr($body, 0, 200);
+        }
+    }
+
+    return substr($reason !== '' ? $reason : 'Push failed.', 0, 512);
+}
+
+function pwa_create_web_push(): Minishlink\WebPush\WebPush
+{
+    $auth = [
+        'VAPID' => [
+            'subject' => pwa_vapid_subject(),
+            'publicKey' => pwa_vapid_public_key(),
+            'privateKey' => pwa_vapid_private_key(),
+        ],
+    ];
+
+    return new Minishlink\WebPush\WebPush($auth, [], 30, ['verify' => true]);
+}
+
+/**
+ * @param array<string,mixed> $sub
+ * @return array{ok:bool, push_sent:int, push_error:?string, encoding:?string}
+ */
+function pwa_send_push_to_subscription(Minishlink\WebPush\WebPush $webPush, array $sub, string $payload): array
+{
+    $endpoint = (string) ($sub['endpoint'] ?? '');
+    $p256dh = (string) ($sub['p256dh'] ?? '');
+    $authKey = (string) ($sub['auth_key'] ?? '');
+    $preferredEncoding = (string) ($sub['content_encoding'] ?? 'aes128gcm');
+    $lastError = 'Push failed.';
+
+    foreach (pwa_content_encoding_candidates($preferredEncoding) as $contentEncoding) {
+        try {
+            $pushSub = Minishlink\WebPush\Subscription::create([
+                'endpoint' => $endpoint,
+                'keys' => [
+                    'p256dh' => $p256dh,
+                    'auth' => $authKey,
+                ],
+                'contentEncoding' => $contentEncoding,
+            ]);
+            $report = $webPush->sendOneNotification($pushSub, $payload);
+            if ($report->isSuccess()) {
+                return [
+                    'ok' => true,
+                    'push_sent' => 1,
+                    'push_error' => null,
+                    'encoding' => $contentEncoding,
+                ];
+            }
+            $lastError = pwa_format_push_report_error($report);
+            if ($report->isSubscriptionExpired()) {
+                return [
+                    'ok' => false,
+                    'push_sent' => 0,
+                    'push_error' => $lastError,
+                    'encoding' => null,
+                    'expired' => true,
+                ];
+            }
+        } catch (Throwable $e) {
+            $lastError = substr($e->getMessage(), 0, 512);
+        }
+    }
+
+    // Hostinger sometimes fails HTTPS verify to Mozilla/FCM — retry once without verify.
+    try {
+        $insecurePush = new Minishlink\WebPush\WebPush([
+            'VAPID' => [
+                'subject' => pwa_vapid_subject(),
+                'publicKey' => pwa_vapid_public_key(),
+                'privateKey' => pwa_vapid_private_key(),
+            ],
+        ], [], 30, ['verify' => false]);
+        foreach (pwa_content_encoding_candidates($preferredEncoding) as $contentEncoding) {
+            $pushSub = Minishlink\WebPush\Subscription::create([
+                'endpoint' => $endpoint,
+                'keys' => ['p256dh' => $p256dh, 'auth' => $authKey],
+                'contentEncoding' => $contentEncoding,
+            ]);
+            $report = $insecurePush->sendOneNotification($pushSub, $payload);
+            if ($report->isSuccess()) {
+                return [
+                    'ok' => true,
+                    'push_sent' => 1,
+                    'push_error' => null,
+                    'encoding' => $contentEncoding,
+                ];
+            }
+            $lastError = pwa_format_push_report_error($report);
+        }
+    } catch (Throwable $e) {
+        $lastError = substr($e->getMessage(), 0, 512);
+    }
+
+    return [
+        'ok' => false,
+        'push_sent' => 0,
+        'push_error' => $lastError,
+        'encoding' => null,
+    ];
 }
 
 function pwa_device_label_from_user_agent(?string $userAgent): string
@@ -248,16 +402,18 @@ function pwa_save_push_subscription(int $userId, array $subscription, ?string $u
     }
     $endpointHash = hash('sha256', $endpoint);
     $deviceLabel = pwa_device_label_from_user_agent($userAgent);
+    $contentEncoding = pwa_normalize_content_encoding((string) ($subscription['contentEncoding'] ?? ''));
     try {
         $st = db()->prepare(
             'INSERT INTO allureone_push_subscriptions
-                (user_id, endpoint_hash, endpoint, p256dh, auth_key, user_agent, device_label, is_active)
+                (user_id, endpoint_hash, endpoint, p256dh, auth_key, content_encoding, user_agent, device_label, is_active)
              VALUES
-                (:user_id, :endpoint_hash, :endpoint, :p256dh, :auth_key, :user_agent, :device_label, 1)
+                (:user_id, :endpoint_hash, :endpoint, :p256dh, :auth_key, :content_encoding, :user_agent, :device_label, 1)
              ON DUPLICATE KEY UPDATE
                 user_id = VALUES(user_id),
                 p256dh = VALUES(p256dh),
                 auth_key = VALUES(auth_key),
+                content_encoding = VALUES(content_encoding),
                 user_agent = VALUES(user_agent),
                 device_label = VALUES(device_label),
                 is_active = 1,
@@ -269,6 +425,7 @@ function pwa_save_push_subscription(int $userId, array $subscription, ?string $u
             'endpoint' => $endpoint,
             'p256dh' => $p256dh,
             'auth_key' => $auth,
+            'content_encoding' => $contentEncoding,
             'user_agent' => $deviceLabel,
             'device_label' => $deviceLabel,
         ]);
@@ -338,7 +495,7 @@ function pwa_send_announcement(string $message, int $createdBy, string $createdB
         $announcementId = (int) $pdo->lastInsertId();
 
         $subs = $pdo->query(
-            'SELECT id, user_id, endpoint, p256dh, auth_key, device_label
+            'SELECT id, user_id, endpoint, p256dh, auth_key, content_encoding, device_label
              FROM allureone_push_subscriptions
              WHERE is_active = 1
              ORDER BY id ASC'
@@ -347,14 +504,8 @@ function pwa_send_announcement(string $message, int $createdBy, string $createdB
         $sent = 0;
         $failed = 0;
 
-        $auth = [
-            'VAPID' => [
-                'subject' => pwa_vapid_subject(),
-                'publicKey' => pwa_vapid_public_key(),
-                'privateKey' => pwa_vapid_private_key(),
-            ],
-        ];
-        $webPush = new Minishlink\WebPush\WebPush($auth);
+        $webPush = pwa_create_web_push();
+        $pushErrors = [];
 
         $deliveryIns = $pdo->prepare(
             'INSERT INTO allureone_announcement_deliveries
@@ -382,29 +533,30 @@ function pwa_send_announcement(string $message, int $createdBy, string $createdB
 
             $pushSent = 0;
             $pushError = null;
-            try {
-                $pushSub = Minishlink\WebPush\Subscription::create([
-                    'endpoint' => (string) ($sub['endpoint'] ?? ''),
-                    'keys' => [
-                        'p256dh' => (string) ($sub['p256dh'] ?? ''),
-                        'auth' => (string) ($sub['auth_key'] ?? ''),
-                    ],
-                ]);
-                $report = $webPush->sendOneNotification($pushSub, $payload === false ? '{}' : $payload);
-                if ($report->isSuccess()) {
-                    $pushSent = 1;
-                    $sent++;
-                } else {
-                    $pushError = substr((string) $report->getReason(), 0, 512);
-                    $failed++;
-                    if ($report->isSubscriptionExpired()) {
-                        $pdo->prepare('UPDATE allureone_push_subscriptions SET is_active = 0 WHERE id = :id')
-                            ->execute(['id' => $subscriptionId]);
-                    }
+            $sendResult = pwa_send_push_to_subscription(
+                $webPush,
+                $sub,
+                $payload === false ? '{}' : $payload
+            );
+            if (($sendResult['ok'] ?? false) && (int) ($sendResult['push_sent'] ?? 0) === 1) {
+                $pushSent = 1;
+                $sent++;
+                if (!empty($sendResult['encoding'])) {
+                    $pdo->prepare(
+                        'UPDATE allureone_push_subscriptions SET content_encoding = :enc WHERE id = :id'
+                    )->execute([
+                        'enc' => (string) $sendResult['encoding'],
+                        'id' => $subscriptionId,
+                    ]);
                 }
-            } catch (Throwable $e) {
-                $pushError = substr($e->getMessage(), 0, 512);
+            } else {
+                $pushError = (string) ($sendResult['push_error'] ?? 'Push failed.');
+                $pushErrors[] = $pushError;
                 $failed++;
+                if (!empty($sendResult['expired'])) {
+                    $pdo->prepare('UPDATE allureone_push_subscriptions SET is_active = 0 WHERE id = :id')
+                        ->execute(['id' => $subscriptionId]);
+                }
             }
 
             $deliveryIns->execute([
@@ -430,6 +582,7 @@ function pwa_send_announcement(string $message, int $createdBy, string $createdB
             'announcement_id' => $announcementId,
             'sent' => $sent,
             'failed' => $failed,
+            'errors' => $pushErrors,
         ];
     } catch (Throwable $e) {
         error_log('AllureOne PWA send announcement failed: ' . $e->getMessage());

@@ -526,6 +526,64 @@ table.data tbody tr:hover td {
 
 .check-label input {
   width: auto;
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.announcement-target-mode__label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+  color: var(--text);
+}
+
+.announcement-target-mode__option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  font-weight: normal;
+}
+
+.announcement-user-picker {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  background: #fbfcfe;
+}
+
+.announcement-user-picker__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 0.45rem;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.announcement-user-picker__item:last-child {
+  margin-bottom: 0;
+}
+
+.announcement-user-picker__text {
+  line-height: 1.35;
+}
+
+.announcement-user-picker__meta {
+  color: var(--muted, #64748b);
+}
+
+.announcement-target-mode input[type="radio"],
+.announcement-user-picker input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .form__actions {

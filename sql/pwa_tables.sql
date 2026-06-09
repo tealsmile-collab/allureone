@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS allureone_announcements (
   message TEXT NOT NULL,
   created_by INT NOT NULL,
   created_by_name VARCHAR(255) NOT NULL DEFAULT '',
+  target_type VARCHAR(16) NOT NULL DEFAULT 'all',
+  target_user_ids TEXT NULL,
+  source VARCHAR(16) NOT NULL DEFAULT 'ui',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_announcements_created (created_at)

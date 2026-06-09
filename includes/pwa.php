@@ -320,9 +320,168 @@ function pwa_ensure_schema_columns(PDO $pdo): void
                  ADD COLUMN content_encoding VARCHAR(32) NOT NULL DEFAULT 'aes128gcm' AFTER auth_key"
             );
         }
+        $annCols = $pdo->query('SHOW COLUMNS FROM allureone_announcements')->fetchAll(PDO::FETCH_COLUMN);
+        if (is_array($annCols) && !in_array('target_type', $annCols, true)) {
+            $pdo->exec(
+                "ALTER TABLE allureone_announcements
+                 ADD COLUMN target_type VARCHAR(16) NOT NULL DEFAULT 'all' AFTER created_by_name,
+                 ADD COLUMN target_user_ids TEXT NULL AFTER target_type,
+                 ADD COLUMN source VARCHAR(16) NOT NULL DEFAULT 'ui' AFTER target_user_ids"
+            );
+        }
     } catch (Throwable $e) {
         error_log('AllureOne PWA schema upgrade failed: ' . $e->getMessage());
     }
+}
+
+function pwa_announcement_api_key(): string
+{
+    return trim((string) (pwa_config()['announcement_api_key'] ?? ''));
+}
+
+function pwa_validate_announcement_api_key(?string $provided): bool
+{
+    $expected = pwa_announcement_api_key();
+    if ($expected === '') {
+        return false;
+    }
+    $provided = trim((string) ($provided ?? ''));
+
+    return $provided !== '' && hash_equals($expected, $provided);
+}
+
+function pwa_extract_announcement_api_key_from_request(): string
+{
+    $header = trim((string) ($_SERVER['HTTP_X_ANNOUNCEMENT_API_KEY'] ?? ''));
+    if ($header !== '') {
+        return $header;
+    }
+    $auth = trim((string) ($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
+    if (stripos($auth, 'Bearer ') === 0) {
+        return trim(substr($auth, 7));
+    }
+
+    return '';
+}
+
+/**
+ * @return list<int>
+ */
+function pwa_normalize_user_id_list(?array $userIds): array
+{
+    if (!is_array($userIds)) {
+        return [];
+    }
+    $out = [];
+    foreach ($userIds as $id) {
+        $id = (int) $id;
+        if ($id > 0) {
+            $out[$id] = $id;
+        }
+    }
+
+    return array_values($out);
+}
+
+/**
+ * @return array{ok:bool, user_ids?:list<int>, error?:string}
+ */
+function pwa_resolve_announcement_user(?int $userId, ?string $mobile): array
+{
+    if ($userId !== null && $userId > 0) {
+        try {
+            $st = db()->prepare('SELECT id FROM allureone_users WHERE id = :id AND isactive = 1 LIMIT 1');
+            $st->execute(['id' => $userId]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                return ['ok' => false, 'error' => 'User not found or inactive.'];
+            }
+
+            return ['ok' => true, 'user_ids' => [(int) $row['id']]];
+        } catch (PDOException $e) {
+            return ['ok' => false, 'error' => 'Could not resolve user.'];
+        }
+    }
+
+    $mobile = trim((string) ($mobile ?? ''));
+    if ($mobile === '') {
+        return ['ok' => false, 'error' => 'user_id or mobile is required.'];
+    }
+
+    if (!function_exists('auth_find_active_user_by_mobile_or_email')) {
+        require_once __DIR__ . '/auth.php';
+    }
+    $row = auth_find_active_user_by_mobile_or_email($mobile);
+    if ($row === null) {
+        return ['ok' => false, 'error' => 'No active user found for that mobile number.'];
+    }
+
+    return ['ok' => true, 'user_ids' => [(int) ($row['id'] ?? 0)]];
+}
+
+/**
+ * @return list<array<string,mixed>>
+ */
+function pwa_users_for_announcement_picker(): array
+{
+    pwa_ensure_tables();
+    try {
+        $st = db()->query(
+            'SELECT u.id, u.FullName AS full_name, u.loginname, u.MobileNo AS mobile_no,
+                    COUNT(s.id) AS device_count
+             FROM allureone_users u
+             LEFT JOIN allureone_push_subscriptions s ON s.user_id = u.id AND s.is_active = 1
+             WHERE u.isactive = 1
+             GROUP BY u.id, u.FullName, u.loginname, u.MobileNo
+             ORDER BY u.FullName ASC, u.loginname ASC'
+        );
+
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log('AllureOne PWA user picker failed: ' . $e->getMessage());
+
+        return [];
+    }
+}
+
+function pwa_format_announcement_target_label(array $row): string
+{
+    $type = strtolower(trim((string) ($row['target_type'] ?? 'all')));
+    if ($type === 'all') {
+        return 'All users';
+    }
+    $ids = json_decode((string) ($row['target_user_ids'] ?? ''), true);
+    if (!is_array($ids) || $ids === []) {
+        return 'Selected users';
+    }
+    $ids = pwa_normalize_user_id_list($ids);
+    if ($ids === []) {
+        return 'Selected users';
+    }
+    try {
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $st = db()->prepare(
+            "SELECT FullName, loginname FROM allureone_users WHERE id IN ({$placeholders}) ORDER BY FullName ASC"
+        );
+        $st->execute($ids);
+        $names = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $u) {
+            $name = trim((string) ($u['FullName'] ?? ''));
+            if ($name === '') {
+                $name = (string) ($u['loginname'] ?? '');
+            }
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+        if ($names !== []) {
+            return 'Selected: ' . implode(', ', $names);
+        }
+    } catch (PDOException $e) {
+        // fall through
+    }
+
+    return 'Selected: ' . count($ids) . ' user(s)';
 }
 
 function pwa_normalize_content_encoding(?string $encoding): string
@@ -557,14 +716,23 @@ function pwa_deactivate_push_subscription(int $userId, string $endpoint): array
 }
 
 /**
- * @return array{ok:bool, announcement_id?:int, error?:string, sent?:int, failed?:int}
+ * @param list<int>|null $targetUserIds null or empty = all subscribed devices
+ * @return array{ok:bool, announcement_id?:int, error?:string, sent?:int, failed?:int, errors?:list<string>, target_user_ids?:list<int>}
  */
-function pwa_send_announcement(string $message, int $createdBy, string $createdByName): array
-{
+function pwa_send_announcement(
+    string $message,
+    int $createdBy,
+    string $createdByName,
+    ?array $targetUserIds = null,
+    string $source = 'ui'
+): array {
     pwa_ensure_tables();
     $message = trim($message);
     if ($message === '') {
         return ['ok' => false, 'error' => 'Announcement message is required.'];
+    }
+    if (function_exists('mb_strlen') ? mb_strlen($message) > 500 : strlen($message) > 500) {
+        return ['ok' => false, 'error' => 'Announcement must be 500 characters or fewer.'];
     }
     if (!pwa_ensure_vendor_autoload()) {
         return ['ok' => false, 'error' => 'Web Push library missing. Ensure vendor/ is deployed on the server.'];
@@ -573,25 +741,46 @@ function pwa_send_announcement(string $message, int $createdBy, string $createdB
         return ['ok' => false, 'error' => 'Web Push is not configured. Set VAPID keys in config.php.'];
     }
 
+    $normalizedTargets = pwa_normalize_user_id_list($targetUserIds);
+    $targetType = $normalizedTargets === [] ? 'all' : 'selected';
+    $source = strtolower(trim($source)) === 'api' ? 'api' : 'ui';
+
     try {
         $pdo = db();
         $ins = $pdo->prepare(
-            'INSERT INTO allureone_announcements (message, created_by, created_by_name)
-             VALUES (:message, :created_by, :created_by_name)'
+            'INSERT INTO allureone_announcements
+                (message, created_by, created_by_name, target_type, target_user_ids, source)
+             VALUES
+                (:message, :created_by, :created_by_name, :target_type, :target_user_ids, :source)'
         );
         $ins->execute([
             'message' => $message,
             'created_by' => $createdBy,
             'created_by_name' => $createdByName,
+            'target_type' => $targetType,
+            'target_user_ids' => $normalizedTargets === [] ? null : json_encode($normalizedTargets, JSON_UNESCAPED_UNICODE),
+            'source' => $source,
         ]);
         $announcementId = (int) $pdo->lastInsertId();
 
-        $subs = $pdo->query(
-            'SELECT id, user_id, endpoint, p256dh, auth_key, content_encoding, device_label
-             FROM allureone_push_subscriptions
-             WHERE is_active = 1
-             ORDER BY id ASC'
-        )->fetchAll(PDO::FETCH_ASSOC);
+        if ($normalizedTargets === []) {
+            $subs = $pdo->query(
+                'SELECT id, user_id, endpoint, p256dh, auth_key, content_encoding, device_label
+                 FROM allureone_push_subscriptions
+                 WHERE is_active = 1
+                 ORDER BY id ASC'
+            )->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $placeholders = implode(',', array_fill(0, count($normalizedTargets), '?'));
+            $subSt = $pdo->prepare(
+                "SELECT id, user_id, endpoint, p256dh, auth_key, content_encoding, device_label
+                 FROM allureone_push_subscriptions
+                 WHERE is_active = 1 AND user_id IN ({$placeholders})
+                 ORDER BY id ASC"
+            );
+            $subSt->execute($normalizedTargets);
+            $subs = $subSt->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         $sent = 0;
         $failed = 0;
@@ -676,6 +865,7 @@ function pwa_send_announcement(string $message, int $createdBy, string $createdB
             'sent' => $sent,
             'failed' => $failed,
             'errors' => $pushErrors,
+            'target_user_ids' => $normalizedTargets,
         ];
     } catch (Throwable $e) {
         error_log('AllureOne PWA send announcement failed: ' . $e->getMessage());
@@ -728,14 +918,14 @@ function pwa_announcement_history(int $limit = 50): array
     $limit = max(1, min(100, $limit));
     try {
         $st = db()->prepare(
-            "SELECT a.id, a.message, a.created_by, a.created_by_name, a.created_at,
+            "SELECT a.id, a.message, a.created_by, a.created_by_name, a.target_type, a.target_user_ids, a.source, a.created_at,
                     COUNT(d.id) AS device_count,
                     SUM(CASE WHEN d.push_sent = 1 THEN 1 ELSE 0 END) AS push_sent_count,
                     SUM(CASE WHEN d.delivered_at IS NOT NULL THEN 1 ELSE 0 END) AS delivered_count,
                     SUM(CASE WHEN d.read_at IS NOT NULL THEN 1 ELSE 0 END) AS read_count
              FROM allureone_announcements a
              LEFT JOIN allureone_announcement_deliveries d ON d.announcement_id = a.id
-             GROUP BY a.id, a.message, a.created_by, a.created_by_name, a.created_at
+             GROUP BY a.id, a.message, a.created_by, a.created_by_name, a.target_type, a.target_user_ids, a.source, a.created_at
              ORDER BY a.created_at DESC, a.id DESC
              LIMIT {$limit}"
         );

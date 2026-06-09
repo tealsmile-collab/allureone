@@ -48,10 +48,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_announcement']))
         } elseif (function_exists('mb_strlen') ? mb_strlen($message) > 500 : strlen($message) > 500) {
             $flash = ['type' => 'error', 'text' => 'Announcement must be 500 characters or fewer.'];
         } else {
+            $targetMode = strtolower(trim((string) ($_POST['target_mode'] ?? 'all')));
+            $selectedUserIds = [];
+            if ($targetMode === 'selected') {
+                $selectedUserIds = pwa_normalize_user_id_list(
+                    is_array($_POST['target_user_ids'] ?? null) ? $_POST['target_user_ids'] : []
+                );
+                if ($selectedUserIds === []) {
+                    $flash = ['type' => 'error', 'text' => 'Select at least one user for a targeted announcement.'];
+                }
+            }
+            if (is_array($flash)) {
+                // validation failed above
+            } else {
             $result = pwa_send_announcement(
                 $message,
                 (int) ($user['id'] ?? 0),
-                trim((string) ($user['full_name'] ?? ''))
+                trim((string) ($user['full_name'] ?? '')),
+                $targetMode === 'selected' ? $selectedUserIds : null,
+                'ui'
             );
             if (!($result['ok'] ?? false)) {
                 $flash = ['type' => 'error', 'text' => (string) ($result['error'] ?? 'Could not send announcement.')];
@@ -63,12 +78,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_announcement']))
                 if ($errors !== []) {
                     $errDetail = ' Error: ' . (string) $errors[0];
                 }
+                $targetNote = $targetMode === 'selected'
+                    ? (' to ' . count($selectedUserIds) . ' selected user(s)')
+                    : '';
                 $flash = [
                     'type' => $sent > 0 ? 'ok' : 'error',
-                    'text' => 'Announcement sent to ' . $sent . ' device(s).'
+                    'text' => 'Announcement sent' . $targetNote . ' on ' . $sent . ' device(s).'
                         . ($failed > 0 ? ' Failed: ' . $failed . '.' : '')
+                        . ($sent === 0 && $targetMode === 'selected' ? ' Selected user(s) may have no PWA push subscription.' : '')
                         . $errDetail,
                 ];
+            }
             }
         }
     }
@@ -76,6 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_announcement']))
 
 $announcementHistory = pwa_announcement_history(50);
 $activeDevices = pwa_active_subscription_count();
+$announcementUsers = pwa_users_for_announcement_picker();
 
 $pageTitle = 'Announcements';
 $activeNav = 'announcements';
@@ -127,14 +148,76 @@ require __DIR__ . '/includes/layout_start.php';
                 Active PWA push devices: <strong><?= (int) $activeDevices ?></strong>
                 (users must allow notifications after installing/opening the app).
             </p>
-            <form method="post" action="Announcement.php" class="form" style="max-width:640px">
+            <form method="post" action="Announcement.php" class="form" style="max-width:720px" id="announcementForm">
                 <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                <div class="form__row announcement-target-mode">
+                    <span class="announcement-target-mode__label">Send to</span>
+                    <label class="check-label announcement-target-mode__option">
+                        <input type="radio" name="target_mode" value="all" checked data-announcement-target-toggle>
+                        <span>All users (all subscribed PWA devices)</span>
+                    </label>
+                    <label class="check-label announcement-target-mode__option">
+                        <input type="radio" name="target_mode" value="selected" data-announcement-target-toggle>
+                        <span>Selected users only</span>
+                    </label>
+                </div>
+                <div class="form__row announcement-user-picker" id="announcementUserPicker" hidden>
+                    <?php if ($announcementUsers === []): ?>
+                        <p class="empty" style="margin:0">No active users found.</p>
+                    <?php else: ?>
+                        <?php foreach ($announcementUsers as $pickUser):
+                            $pickId = (int) ($pickUser['id'] ?? 0);
+                            $pickName = trim((string) ($pickUser['full_name'] ?? ''));
+                            if ($pickName === '') {
+                                $pickName = (string) ($pickUser['loginname'] ?? ('User #' . $pickId));
+                            }
+                            $pickMobile = trim((string) ($pickUser['mobile_no'] ?? ''));
+                            $deviceCount = (int) ($pickUser['device_count'] ?? 0);
+                        ?>
+                            <label class="check-label announcement-user-picker__item">
+                                <input type="checkbox" name="target_user_ids[]" value="<?= $pickId ?>">
+                                <span class="announcement-user-picker__text">
+                                    <?= e($pickName) ?>
+                                    <?php if ($pickMobile !== ''): ?> · <?= e($pickMobile) ?><?php endif; ?>
+                                    <span class="announcement-user-picker__meta">(<?= $deviceCount ?> device<?= $deviceCount === 1 ? '' : 's' ?>)</span>
+                                </span>
+                            </label>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
                 <div class="form__row">
                     <label for="announcement_message">Announcement</label>
-                    <textarea id="announcement_message" name="message" rows="4" maxlength="500" required placeholder="Type announcement to send to all subscribed PWA devices…"></textarea>
+                    <textarea id="announcement_message" name="message" rows="4" maxlength="500" required placeholder="Type announcement message…"></textarea>
                 </div>
                 <button type="submit" name="send_announcement" value="1" class="btn btn--primary"<?= $pwaReady ? '' : ' disabled' ?>>Send announcement</button>
             </form>
+            <script>
+            (function () {
+                var form = document.getElementById('announcementForm');
+                if (!form) return;
+                var picker = document.getElementById('announcementUserPicker');
+                function syncPicker() {
+                    var selected = form.querySelector('input[name="target_mode"][value="selected"]');
+                    if (!picker || !selected) return;
+                    picker.hidden = !selected.checked;
+                }
+                form.querySelectorAll('[data-announcement-target-toggle]').forEach(function (el) {
+                    el.addEventListener('change', syncPicker);
+                });
+                syncPicker();
+            })();
+            </script>
+        </div>
+
+        <div style="padding:1rem 1.25rem 0;font-size:.9rem;color:var(--muted, #64748b)">
+            <details>
+                <summary class="link--underlined" style="cursor:pointer">External POST API</summary>
+                <div style="margin-top:0.5rem;padding:0.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;color:#334155">
+                    <p style="margin:0 0 0.5rem"><code>POST <?= e(allureone_url('pwa_announcement_api.php')) ?></code></p>
+                    <p style="margin:0 0 0.35rem">Header: <code>X-Announcement-Api-Key: &lt;secret&gt;</code> (set <code>pwa.announcement_api_key</code> in server config.php)</p>
+                    <p style="margin:0 0 0.35rem">Body (JSON): <code>{"message":"Hello","user_id":123}</code> or <code>{"message":"Hello","mobile":"9876543210"}</code></p>
+                </div>
+            </details>
         </div>
 
         <div style="padding:1.25rem">
@@ -149,6 +232,7 @@ require __DIR__ . '/includes/layout_start.php';
                                 <th>Date</th>
                                 <th>Message</th>
                                 <th>Sent by</th>
+                                <th>Target</th>
                                 <th>Devices</th>
                                 <th>Push sent</th>
                                 <th>Shown</th>
@@ -164,7 +248,8 @@ require __DIR__ . '/includes/layout_start.php';
                                 <tr>
                                     <td><?= e((string) ($row['created_at'] ?? '')) ?></td>
                                     <td style="max-width:280px;white-space:normal"><?= e((string) ($row['message'] ?? '')) ?></td>
-                                    <td><?= e((string) ($row['created_by_name'] ?? '')) ?></td>
+                                    <td><?= e((string) ($row['created_by_name'] ?? '')) ?><?= strtolower((string) ($row['source'] ?? '')) === 'api' ? ' (API)' : '' ?></td>
+                                    <td style="max-width:200px;white-space:normal;font-size:.85rem"><?= e(pwa_format_announcement_target_label($row)) ?></td>
                                     <td><?= (int) ($row['device_count'] ?? 0) ?></td>
                                     <td><?= (int) ($row['push_sent_count'] ?? 0) ?></td>
                                     <td><?= (int) ($row['delivered_count'] ?? 0) ?></td>

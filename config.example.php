@@ -57,5 +57,7 @@ return [
         'apple_touch_icon' => 'assets/images/pwa-icon-192.png',
         /** Push notification icon (square PNG, e.g. 192x192) */
         'notification_icon' => 'assets/images/pwa-icon-192.png',
+        /** Secret for POST pwa_announcement_api.php — header X-Announcement-Api-Key */
+        'announcement_api_key' => '',
     ],
 ];

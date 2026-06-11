@@ -26,9 +26,11 @@ if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDateInput) === 1) {
     $endDate = $startDate;
 }
 
+/** @var list<string> */
 $visitEvents = [
     'google-Ad-Visit-Powai',
     'google-Ad-Visit-Malad',
+    'google-Ad-Visit-Malad-NewPage',
     'google-Ad-Visit-BorivaliWest',
     'google-Ad-Visit-Marol',
     'google-Ad-Visit-AndheriWest',
@@ -36,6 +38,7 @@ $visitEvents = [
     'google-Ad-Visit-Mulund',
     'google-Ad-Visit-ThaneLodha',
     'google-Ad-Visit-Seawoods',
+    'Organic-Visit-Malad-NewPage',
 ];
 
 if (!function_exists('curl_init')) {
@@ -50,9 +53,28 @@ if ($apiKey === 'YOUR_API_KEY' || $secretKey === 'YOUR_SECRET_KEY') {
 }
 
 $credentials = base64_encode($apiKey . ':' . $secretKey);
-$results = [];
 
-foreach ($visitEvents as $event) {
+/**
+ * google-Ad-Visit-{Location} → google-ad-call-{Location}
+ */
+function google_ads_call_event_for_visit(string $visitEvent): ?string
+{
+    $prefix = 'google-Ad-Visit-';
+    if (strncmp($visitEvent, $prefix, strlen($prefix)) === 0) {
+        $location = substr($visitEvent, strlen($prefix));
+        if ($location !== '') {
+            return 'google-ad-call-' . $location;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * @return array{count:int, error:string}
+ */
+function google_ads_fetch_amplitude_event_count(string $event, string $startDate, string $endDate, string $credentials): array
+{
     $params = http_build_query([
         'e' => json_encode(['event_type' => $event]),
         'start' => $startDate,
@@ -102,32 +124,64 @@ foreach ($visitEvents as $event) {
     }
 
     if ($curlErr !== '') {
-        $results[] = ['event' => $event, 'count' => 0];
-        continue;
+        return ['count' => 0, 'error' => $curlErr];
     }
 
     $data = json_decode($response, true);
     if (!is_array($data) || $httpCode >= 400) {
-        $results[] = ['event' => $event, 'count' => 0];
-        continue;
+        return ['count' => 0, 'error' => 'HTTP ' . $httpCode];
     }
 
-    $count = (int) (($data['data']['series'][0][0] ?? 0));
-    $results[] = ['event' => $event, 'count' => $count];
+    return ['count' => (int) ($data['data']['series'][0][0] ?? 0), 'error' => ''];
+}
+
+/** @var array<string,int> */
+$callCountCache = [];
+$getCallCount = static function (?string $callEvent) use (&$callCountCache, $startDate, $endDate, $credentials): ?int {
+    if ($callEvent === null || $callEvent === '') {
+        return null;
+    }
+    if (!array_key_exists($callEvent, $callCountCache)) {
+        $callCountCache[$callEvent] = google_ads_fetch_amplitude_event_count($callEvent, $startDate, $endDate, $credentials)['count'];
+    }
+
+    return $callCountCache[$callEvent];
+};
+
+$results = [];
+foreach ($visitEvents as $event) {
+    $visitCount = google_ads_fetch_amplitude_event_count($event, $startDate, $endDate, $credentials)['count'];
+    $callEvent = google_ads_call_event_for_visit($event);
+    $callCount = $getCallCount($callEvent);
+
+    $results[] = [
+        'event' => $event,
+        'count' => $visitCount,
+        'call_event' => $callEvent,
+        'call_count' => $callCount,
+    ];
 }
 
 usort($results, static function (array $a, array $b): int {
     return (int) ($b['count'] ?? 0) <=> (int) ($a['count'] ?? 0);
 });
 
-$total = 0;
+$totalVisits = 0;
+$totalCalls = 0;
+$countedCallEvents = [];
 foreach ($results as $row) {
-    $total += (int) ($row['count'] ?? 0);
+    $totalVisits += (int) ($row['count'] ?? 0);
+    $callEventKey = (string) ($row['call_event'] ?? '');
+    if ($callEventKey !== '' && !isset($countedCallEvents[$callEventKey])) {
+        $totalCalls += (int) ($row['call_count'] ?? 0);
+        $countedCallEvents[$callEventKey] = true;
+    }
 }
 
 echo json_encode([
     'ok' => true,
     'date' => $selectedDateInput,
     'results' => $results,
-    'total' => $total,
+    'total' => $totalVisits,
+    'total_calls' => $totalCalls,
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

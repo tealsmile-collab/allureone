@@ -53,11 +53,12 @@ require __DIR__ . '/includes/layout_start.php';
                 <thead>
                     <tr>
                         <th>Event Name</th>
-                        <th>Count</th>
+                        <th>Visits</th>
+                        <th>Calls</th>
                     </tr>
                 </thead>
                 <tbody id="google-ads-view-body">
-                    <tr><td colspan="2" style="text-align:center"><span class="google-ads-spinner" aria-hidden="true"></span></td></tr>
+                    <tr><td colspan="3" style="text-align:center"><span class="google-ads-spinner" aria-hidden="true"></span></td></tr>
                 </tbody>
             </table>
         </div>
@@ -94,18 +95,23 @@ require __DIR__ . '/includes/layout_start.php';
         return d.innerHTML;
     }
 
-    function renderRows(results, total) {
+    function renderRows(results, total, totalCalls) {
         if (!bodyEl) return;
         if (!Array.isArray(results) || results.length === 0) {
-            bodyEl.innerHTML = '<tr><td colspan="2">No event data found.</td></tr>';
+            bodyEl.innerHTML = '<tr><td colspan="3">No event data found.</td></tr>';
             return;
         }
         var html = '';
         for (var i = 0; i < results.length; i++) {
             var row = results[i] || {};
-            html += '<tr><td>' + esc(row.event || '') + '</td><td>' + Number(row.count || 0) + '</td></tr>';
+            var callCell = '—';
+            if (row.call_event) {
+                callCell = String(Number(row.call_count || 0))
+                    + '<div style="font-size:.75rem;color:var(--muted,#64748b);margin-top:.15rem">' + esc(row.call_event) + '</div>';
+            }
+            html += '<tr><td>' + esc(row.event || '') + '</td><td>' + Number(row.count || 0) + '</td><td>' + callCell + '</td></tr>';
         }
-        html += '<tr><th>TOTAL</th><th>' + Number(total || 0) + '</th></tr>';
+        html += '<tr><th>TOTAL</th><th>' + Number(total || 0) + '</th><th>' + Number(totalCalls || 0) + '</th></tr>';
         bodyEl.innerHTML = html;
     }
 
@@ -113,7 +119,7 @@ require __DIR__ . '/includes/layout_start.php';
         if (!dateInput) return;
         var dateVal = String(dateInput.value || '').trim();
         if (statusEl) statusEl.innerHTML = loadingHtml;
-        if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="2" style="text-align:center">' + loadingHtml + '</td></tr>';
+        if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="3" style="text-align:center">' + loadingHtml + '</td></tr>';
         fetch('google-ads-view-api.php?date=' + encodeURIComponent(dateVal), {
             credentials: 'same-origin'
         })
@@ -126,16 +132,16 @@ require __DIR__ . '/includes/layout_start.php';
                 if (!x.ok || !x.j || x.j.ok !== true) {
                     var msg = (x.j && x.j.error) ? String(x.j.error) : 'Could not load Google Ads data.';
                     if (statusEl) statusEl.textContent = msg;
-                    if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="2">' + esc(msg) + '</td></tr>';
+                    if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="3">' + esc(msg) + '</td></tr>';
                     return;
                 }
                 if (statusEl) statusEl.textContent = '';
-                renderRows(x.j.results || [], Number(x.j.total || 0));
+                renderRows(x.j.results || [], Number(x.j.total || 0), Number(x.j.total_calls || 0));
             })
             .catch(function () {
                 var msg = 'Network error while loading Google Ads data.';
                 if (statusEl) statusEl.textContent = msg;
-                if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="2">' + esc(msg) + '</td></tr>';
+                if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="3">' + esc(msg) + '</td></tr>';
             });
     }
 

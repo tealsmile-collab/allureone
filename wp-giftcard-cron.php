@@ -3,8 +3,9 @@ declare(strict_types=1);
 
 /**
  * Gift card sale notification cron.
- * Sends push announcements only when there is at least one new gift card sale today.
- * Run twice daily on Hostinger, e.g.:
+ * Sends one push announcement per new gift card sale in the reporting window
+ * (default: previous day 9:00 PM IST through current run time).
+ * Run once daily on Hostinger at 9 PM IST, e.g.:
  *   php /home/.../public_html/wp-giftcard-cron.php
  * or:
  *   curl -sS "https://one.example.com/wp-giftcard-cron.php?key=YOUR_SECRET"
@@ -28,11 +29,9 @@ if (!$isCli) {
 }
 
 $tz = trim((string) ($appCfg['giftcard_cron_timezone'] ?? 'Asia/Kolkata'));
-if ($tz === '') {
-    $tz = 'Asia/Kolkata';
-}
+$runHour = (int) ($appCfg['giftcard_cron_run_hour'] ?? 21);
 try {
-    date_default_timezone_set($tz);
+    date_default_timezone_set($tz !== '' ? $tz : 'Asia/Kolkata');
 } catch (Throwable $e) {
     date_default_timezone_set('Asia/Kolkata');
 }
@@ -40,8 +39,8 @@ try {
 require_once __DIR__ . '/includes/database.php';
 require_once __DIR__ . '/includes/gift_helpers.php';
 
-$saleDate = date('Y-m-d');
-$rawSales = gift_fetch_wp_sales_for_date($saleDate);
+$window = gift_cron_reporting_window($tz !== '' ? $tz : 'Asia/Kolkata', $runHour);
+$rawSales = gift_fetch_wp_sales_between($window['start'], $window['end']);
 $sales = [];
 foreach ($rawSales as $sale) {
     if ((int) ($sale['order_item_id'] ?? 0) <= 0) {
@@ -52,8 +51,10 @@ foreach ($rawSales as $sale) {
 
 $summary = [
     'ok' => true,
-    'date' => $saleDate,
-    'timezone' => date_default_timezone_get(),
+    'window_start' => $window['start'],
+    'window_end' => $window['end'],
+    'timezone' => $window['timezone'],
+    'run_hour' => $window['run_hour'],
     'sales_found' => count($sales),
     'notifications_sent' => 0,
     'skipped_already_notified' => 0,
@@ -63,7 +64,7 @@ $summary = [
 ];
 
 if ($sales === []) {
-    $summary['message'] = 'No gift card sales for today. No notification sent.';
+    $summary['message'] = 'No gift card sales in reporting window. No notification sent.';
     echo json_encode($summary, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -85,13 +86,12 @@ if ($newSales === []) {
 
 require_once __DIR__ . '/bootstrap.php';
 
-$giftCodesUrl = allureone_url('gift_codes.php');
-
 foreach ($newSales as $sale) {
     $orderItemId = (int) ($sale['order_item_id'] ?? 0);
     $orderId = (int) ($sale['order_id'] ?? 0);
     $amount = (float) ($sale['amount'] ?? 0);
     $location = trim((string) ($sale['location'] ?? ''));
+    $giftCode = trim((string) ($sale['gift_code'] ?? ''));
 
     if ($orderItemId <= 0) {
         continue;
@@ -101,6 +101,7 @@ foreach ($newSales as $sale) {
         $summary['skipped_already_notified']++;
         $summary['details'][] = [
             'order_item_id' => $orderItemId,
+            'gift_code' => $giftCode,
             'status' => 'skipped',
             'reason' => 'already_notified',
         ];
@@ -112,6 +113,7 @@ foreach ($newSales as $sale) {
         $summary['skipped_no_recipients']++;
         $summary['details'][] = [
             'order_item_id' => $orderItemId,
+            'gift_code' => $giftCode,
             'status' => 'skipped',
             'reason' => 'no_recipients',
             'location' => $location,
@@ -120,13 +122,14 @@ foreach ($newSales as $sale) {
     }
 
     $message = gift_format_sale_notification_message($amount, $location);
+    $giftDetailUrl = allureone_url('gift_codes.php?gift=' . $orderItemId);
     $result = pwa_send_announcement(
         $message,
         0,
         'Gift Card Cron',
         $targetUserIds,
         'cron',
-        $giftCodesUrl,
+        $giftDetailUrl,
         'Gift Card Sale'
     );
 
@@ -134,6 +137,7 @@ foreach ($newSales as $sale) {
         $summary['failed']++;
         $summary['details'][] = [
             'order_item_id' => $orderItemId,
+            'gift_code' => $giftCode,
             'status' => 'failed',
             'error' => (string) ($result['error'] ?? 'Could not send announcement.'),
             'location' => $location,
@@ -147,6 +151,7 @@ foreach ($newSales as $sale) {
     $summary['notifications_sent']++;
     $summary['details'][] = [
         'order_item_id' => $orderItemId,
+        'gift_code' => $giftCode,
         'status' => 'sent',
         'announcement_id' => $announcementId,
         'location' => $location,
@@ -154,6 +159,7 @@ foreach ($newSales as $sale) {
         'recipients' => count($targetUserIds),
         'push_sent' => (int) ($result['sent'] ?? 0),
         'push_failed' => (int) ($result['failed'] ?? 0),
+        'url' => $giftDetailUrl,
     ];
 }
 

@@ -581,13 +581,49 @@ function gift_mark_sale_notified(int $orderItemId, int $orderId, int $announceme
 }
 
 /**
- * WooCommerce gift card line items for a calendar date (Y-m-d), same source as gift_codes.php.
+ * Reporting window for daily gift-card cron (default: previous day 9pm → now, IST).
  *
- * @return list<array{order_item_id:int, order_id:int, amount:float, location:string, post_date:string}>
+ * @return array{start:string, end:string, timezone:string, run_hour:int}
  */
-function gift_fetch_wp_sales_for_date(string $dateYmd): array
+function gift_cron_reporting_window(?string $timezone = null, int $runHour = 21): array
 {
-    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateYmd) !== 1) {
+    $tzName = trim((string) ($timezone ?? 'Asia/Kolkata'));
+    if ($tzName === '') {
+        $tzName = 'Asia/Kolkata';
+    }
+    if ($runHour < 0 || $runHour > 23) {
+        $runHour = 21;
+    }
+
+    try {
+        $tz = new DateTimeZone($tzName);
+    } catch (Exception $e) {
+        $tz = new DateTimeZone('Asia/Kolkata');
+        $tzName = 'Asia/Kolkata';
+    }
+
+    $now = new DateTime('now', $tz);
+    $periodStart = new DateTime('today', $tz);
+    $periodStart->setTime($runHour, 0, 0);
+    $periodStart->modify('-1 day');
+    $periodEnd = clone $now;
+
+    return [
+        'start' => $periodStart->format('Y-m-d H:i:s'),
+        'end' => $periodEnd->format('Y-m-d H:i:s'),
+        'timezone' => $tzName,
+        'run_hour' => $runHour,
+    ];
+}
+
+/**
+ * WooCommerce gift card line items between datetimes (inclusive), same source as gift_codes.php.
+ *
+ * @return list<array{order_item_id:int, order_id:int, gift_code:string, amount:float, location:string, post_date:string}>
+ */
+function gift_fetch_wp_sales_between(string $startDatetime, string $endDatetime): array
+{
+    if ($startDatetime === '' || $endDatetime === '') {
         return [];
     }
 
@@ -597,6 +633,7 @@ function gift_fetch_wp_sales_for_date(string $dateYmd): array
         $sql = "SELECT
                 oi.order_item_id,
                 oi.order_id,
+                MAX(CASE WHEN oim.meta_key = '_ywgc_gift_card_code' THEN oim.meta_value END) AS gift_card_code,
                 MAX(CASE WHEN oim.meta_key = '_line_total' THEN oim.meta_value END) AS amount,
                 p.post_date,
                 MAX(CASE WHEN pm.meta_key = 'billing_location' THEN pm.meta_value END) AS location
@@ -610,12 +647,16 @@ function gift_fetch_wp_sales_for_date(string $dateYmd): array
                   FROM wp_woocommerce_order_itemmeta
                   WHERE meta_key = '_ywgc_gift_card_code'
               )
-              AND DATE(p.post_date) = :sale_date
+              AND p.post_date >= :period_start
+              AND p.post_date <= :period_end
             GROUP BY oi.order_item_id, oi.order_id, p.post_date
             ORDER BY p.post_date ASC, oi.order_item_id ASC";
         $sql = str_replace('wp_', $wpPrefix, $sql);
         $st = $pdo->prepare($sql);
-        $st->execute(['sale_date' => $dateYmd]);
+        $st->execute([
+            'period_start' => $startDatetime,
+            'period_end' => $endDatetime,
+        ]);
         $rows = [];
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $orderItemId = (int) ($row['order_item_id'] ?? 0);
@@ -625,6 +666,7 @@ function gift_fetch_wp_sales_for_date(string $dateYmd): array
             $rows[] = [
                 'order_item_id' => $orderItemId,
                 'order_id' => (int) ($row['order_id'] ?? 0),
+                'gift_code' => extract_gift_code((string) ($row['gift_card_code'] ?? '')),
                 'amount' => (float) ($row['amount'] ?? 0),
                 'location' => trim((string) ($row['location'] ?? '')),
                 'post_date' => (string) ($row['post_date'] ?? ''),
@@ -633,7 +675,7 @@ function gift_fetch_wp_sales_for_date(string $dateYmd): array
 
         return $rows;
     } catch (PDOException $e) {
-        error_log('AllureOne gift_fetch_wp_sales_for_date failed: ' . $e->getMessage());
+        error_log('AllureOne gift_fetch_wp_sales_between failed: ' . $e->getMessage());
 
         return [];
     }

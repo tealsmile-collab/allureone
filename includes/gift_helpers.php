@@ -516,3 +516,186 @@ function gift_run_dingg_sync_for_redeem(string $redeemedLocation, string $giftCo
 
     return ['ok' => true, 'messages' => $messages, 'error' => ''];
 }
+
+function gift_ensure_sale_notification_table(): void
+{
+    try {
+        db()->exec(
+            'CREATE TABLE IF NOT EXISTS allureone_giftcard_sale_notifications (
+                order_item_id BIGINT NOT NULL,
+                order_id BIGINT NOT NULL,
+                announcement_id INT NULL,
+                notified_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (order_item_id),
+                KEY idx_gift_sale_notified_at (notified_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+    } catch (PDOException $e) {
+        error_log('AllureOne gift sale notification table ensure failed: ' . $e->getMessage());
+    }
+}
+
+function gift_sale_already_notified(int $orderItemId): bool
+{
+    if ($orderItemId <= 0) {
+        return true;
+    }
+    gift_ensure_sale_notification_table();
+    try {
+        $st = db()->prepare(
+            'SELECT 1 FROM allureone_giftcard_sale_notifications WHERE order_item_id = :id LIMIT 1'
+        );
+        $st->execute(['id' => $orderItemId]);
+
+        return (bool) $st->fetchColumn();
+    } catch (PDOException $e) {
+        error_log('AllureOne gift sale notified check failed: ' . $e->getMessage());
+
+        return false;
+    }
+}
+
+function gift_mark_sale_notified(int $orderItemId, int $orderId, int $announcementId): void
+{
+    if ($orderItemId <= 0) {
+        return;
+    }
+    gift_ensure_sale_notification_table();
+    try {
+        $st = db()->prepare(
+            'INSERT INTO allureone_giftcard_sale_notifications (order_item_id, order_id, announcement_id)
+             VALUES (:order_item_id, :order_id, :announcement_id)
+             ON DUPLICATE KEY UPDATE
+                order_id = VALUES(order_id),
+                announcement_id = VALUES(announcement_id),
+                notified_at = CURRENT_TIMESTAMP'
+        );
+        $st->execute([
+            'order_item_id' => $orderItemId,
+            'order_id' => $orderId,
+            'announcement_id' => $announcementId > 0 ? $announcementId : null,
+        ]);
+    } catch (PDOException $e) {
+        error_log('AllureOne gift sale notified insert failed: ' . $e->getMessage());
+    }
+}
+
+/**
+ * WooCommerce gift card line items for a calendar date (Y-m-d), same source as gift_codes.php.
+ *
+ * @return list<array{order_item_id:int, order_id:int, amount:float, location:string, post_date:string}>
+ */
+function gift_fetch_wp_sales_for_date(string $dateYmd): array
+{
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateYmd) !== 1) {
+        return [];
+    }
+
+    try {
+        $pdo = wp_db();
+        $wpPrefix = wp_table_prefix();
+        $sql = "SELECT
+                oi.order_item_id,
+                oi.order_id,
+                MAX(CASE WHEN oim.meta_key = '_line_total' THEN oim.meta_value END) AS amount,
+                p.post_date,
+                MAX(CASE WHEN pm.meta_key = 'billing_location' THEN pm.meta_value END) AS location
+            FROM wp_woocommerce_order_items oi
+            JOIN wp_woocommerce_order_itemmeta oim ON oi.order_item_id = oim.order_item_id
+            JOIN wp_posts p ON p.ID = oi.order_id
+            LEFT JOIN wp_postmeta pm ON p.ID = pm.post_id
+            WHERE oi.order_item_type = 'line_item'
+              AND oi.order_item_id IN (
+                  SELECT order_item_id
+                  FROM wp_woocommerce_order_itemmeta
+                  WHERE meta_key = '_ywgc_gift_card_code'
+              )
+              AND DATE(p.post_date) = :sale_date
+            GROUP BY oi.order_item_id, oi.order_id, p.post_date
+            ORDER BY p.post_date ASC, oi.order_item_id ASC";
+        $sql = str_replace('wp_', $wpPrefix, $sql);
+        $st = $pdo->prepare($sql);
+        $st->execute(['sale_date' => $dateYmd]);
+        $rows = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $orderItemId = (int) ($row['order_item_id'] ?? 0);
+            if ($orderItemId <= 0) {
+                continue;
+            }
+            $rows[] = [
+                'order_item_id' => $orderItemId,
+                'order_id' => (int) ($row['order_id'] ?? 0),
+                'amount' => (float) ($row['amount'] ?? 0),
+                'location' => trim((string) ($row['location'] ?? '')),
+                'post_date' => (string) ($row['post_date'] ?? ''),
+            ];
+        }
+
+        return $rows;
+    } catch (PDOException $e) {
+        error_log('AllureOne gift_fetch_wp_sales_for_date failed: ' . $e->getMessage());
+
+        return [];
+    }
+}
+
+function gift_format_sale_notification_message(float $amount, string $location): string
+{
+    $locationLabel = trim($location);
+    if ($locationLabel === '') {
+        $locationLabel = 'Unknown';
+    }
+
+    return 'New E-Gift Card sale - ' . format_amount($amount) . ' (' . $locationLabel . ')';
+}
+
+/**
+ * Branch users for locality plus superadmin, admin, and accounts roles.
+ *
+ * @return list<int>
+ */
+function gift_notification_user_ids_for_sale(string $location): array
+{
+    require_once __DIR__ . '/auth.php';
+    $locality = trim($location);
+    $ids = [];
+    try {
+        $pdo = db();
+        $sql = 'SELECT DISTINCT u.id
+                FROM allureone_users u
+                LEFT JOIN allureone_branch b ON b.id = u.BranchId
+                WHERE u.isactive = 1
+                  AND (
+                    u.RoleId IN (:role_superadmin, :role_admin, :role_accounts)';
+        $params = [
+            'role_superadmin' => ROLE_SUPERADMIN,
+            'role_admin' => ROLE_ADMIN,
+            'role_accounts' => ROLE_ACCOUNTS,
+        ];
+        if ($locality !== '') {
+            $sql .= '
+                    OR (
+                        b.isActive = 1
+                        AND b.locality IS NOT NULL
+                        AND TRIM(b.locality) <> \'\'
+                        AND LOWER(TRIM(b.locality)) = LOWER(TRIM(:locality))
+                    )';
+            $params['locality'] = $locality;
+        }
+        $sql .= '
+                  )
+                ORDER BY u.id ASC';
+        $st = $pdo->prepare($sql);
+        $st->execute($params);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $uid = (int) ($row['id'] ?? 0);
+            if ($uid > 0) {
+                $ids[] = $uid;
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('AllureOne gift_notification_user_ids_for_sale failed: ' . $e->getMessage());
+    }
+
+    return array_values(array_unique($ids));
+}

@@ -724,7 +724,9 @@ function pwa_send_announcement(
     int $createdBy,
     string $createdByName,
     ?array $targetUserIds = null,
-    string $source = 'ui'
+    string $source = 'ui',
+    ?string $clickUrl = null,
+    ?string $title = null
 ): array {
     pwa_ensure_tables();
     $message = trim($message);
@@ -743,7 +745,8 @@ function pwa_send_announcement(
 
     $normalizedTargets = pwa_normalize_user_id_list($targetUserIds);
     $targetType = $normalizedTargets === [] ? 'all' : 'selected';
-    $source = strtolower(trim($source)) === 'api' ? 'api' : 'ui';
+    $sourceNorm = strtolower(trim($source));
+    $source = in_array($sourceNorm, ['api', 'cron'], true) ? $sourceNorm : 'ui';
 
     try {
         $pdo = db();
@@ -803,9 +806,9 @@ function pwa_send_announcement(
             }
             $ackToken = bin2hex(random_bytes(32));
             $payload = json_encode([
-                'title' => 'AllureOne Announcement',
+                'title' => ($title !== null && trim($title) !== '') ? trim($title) : 'AllureOne Announcement',
                 'body' => $message,
-                'url' => allureone_url('Announcement.php'),
+                'url' => ($clickUrl !== null && trim($clickUrl) !== '') ? trim($clickUrl) : allureone_url('Announcement.php'),
                 'icon' => pwa_notification_icon_url(),
                 'announcementId' => $announcementId,
                 'deliveryId' => 0,

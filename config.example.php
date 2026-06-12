@@ -43,6 +43,10 @@ return [
         'debug' => false,
         /** When true, gift lists only show orders whose billing_location matches the user's branch locality. Default false shows all. */
         'filter_gift_cards_by_branch_locality' => false,
+        /** Secret for wp-giftcard-cron.php when invoked via HTTP (Hostinger cron wget/curl). CLI runs do not require this. */
+        'giftcard_cron_key' => '',
+        /** Timezone for gift card sale date filter in wp-giftcard-cron.php */
+        'giftcard_cron_timezone' => 'Asia/Kolkata',
     ],
     'pwa' => [
         /** mailto: or https:// URL for Web Push VAPID subject */

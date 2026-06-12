@@ -48,7 +48,7 @@ require __DIR__ . '/includes/layout_start.php';
         <div id="google-ads-view-status" class="main__meta" style="padding:0 1.25rem 1rem">
             <span class="google-ads-spinner" aria-hidden="true"></span>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" id="google-ads-view-table">
             <table class="data">
                 <thead>
                     <tr>
@@ -87,7 +87,19 @@ require __DIR__ . '/includes/layout_start.php';
     var dateInput = document.getElementById('google_ads_view_date');
     var bodyEl = document.getElementById('google-ads-view-body');
     var statusEl = document.getElementById('google-ads-view-status');
+    var tableEl = document.getElementById('google-ads-view-table');
+    var apiUrl = <?= json_encode(allureone_url('google-ads-view-api.php'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     var loadingHtml = '<span class="google-ads-spinner" aria-hidden="true"></span>';
+    var appliedDate = dateInput ? String(dateInput.value || '').trim() : '';
+
+    function showTable() {
+        if (tableEl) tableEl.style.display = '';
+    }
+
+    function hideTable() {
+        if (tableEl) tableEl.style.display = 'none';
+        if (statusEl) statusEl.textContent = '';
+    }
 
     function esc(s) {
         var d = document.createElement('div');
@@ -106,8 +118,7 @@ require __DIR__ . '/includes/layout_start.php';
             var row = results[i] || {};
             var callCell = '—';
             if (row.call_event) {
-                callCell = String(Number(row.call_count || 0))
-                    + '<div style="font-size:.75rem;color:var(--muted,#64748b);margin-top:.15rem">' + esc(row.call_event) + '</div>';
+                callCell = String(Number(row.call_count || 0));
             }
             html += '<tr><td>' + esc(row.event || '') + '</td><td>' + Number(row.count || 0) + '</td><td>' + callCell + '</td></tr>';
         }
@@ -118,13 +129,25 @@ require __DIR__ . '/includes/layout_start.php';
     function loadData() {
         if (!dateInput) return;
         var dateVal = String(dateInput.value || '').trim();
+        appliedDate = dateVal;
+        showTable();
         if (statusEl) statusEl.innerHTML = loadingHtml;
         if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="3" style="text-align:center">' + loadingHtml + '</td></tr>';
-        fetch('google-ads-view-api.php?date=' + encodeURIComponent(dateVal), {
+        fetch(apiUrl + '?date=' + encodeURIComponent(dateVal), {
             credentials: 'same-origin'
         })
             .then(function (r) {
-                return r.json().then(function (j) {
+                return r.text().then(function (text) {
+                    var j = null;
+                    try {
+                        j = text ? JSON.parse(text) : null;
+                    } catch (e) {
+                        var invalidMsg = 'Could not load Google Ads data';
+                        if (r.status) {
+                            invalidMsg += ' (HTTP ' + r.status + ')';
+                        }
+                        throw new Error(invalidMsg);
+                    }
                     return { ok: r.ok, j: j };
                 });
             })
@@ -138,11 +161,26 @@ require __DIR__ . '/includes/layout_start.php';
                 if (statusEl) statusEl.textContent = '';
                 renderRows(x.j.results || [], Number(x.j.total || 0), Number(x.j.total_calls || 0));
             })
-            .catch(function () {
-                var msg = 'Network error while loading Google Ads data.';
+            .catch(function (err) {
+                var msg = (err && err.message) ? String(err.message) : 'Network error while loading Google Ads data.';
                 if (statusEl) statusEl.textContent = msg;
                 if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="3">' + esc(msg) + '</td></tr>';
             });
+    }
+
+    if (dateInput) {
+        dateInput.addEventListener('change', function () {
+            var nextDate = String(dateInput.value || '').trim();
+            if (nextDate !== appliedDate) {
+                hideTable();
+            }
+        });
+        dateInput.addEventListener('input', function () {
+            var nextDate = String(dateInput.value || '').trim();
+            if (nextDate !== appliedDate) {
+                hideTable();
+            }
+        });
     }
 
     if (form) {

@@ -637,6 +637,7 @@ try {
                 LIMIT 1
             ) AS recipient_email,
             MAX(CASE WHEN oim.meta_key = '_ywgc_recipient_name' THEN oim.meta_value END) AS recipient_name,
+            MAX(CASE WHEN oim.meta_key = 'Recipient Mobile' THEN oim.meta_value END) AS recipient_mobile,
             MAX(CASE WHEN oim.meta_key = '_ywgc_sender_name' THEN oim.meta_value END) AS sender_name,
             MAX(CASE WHEN oim.meta_key = '_ywgc_message' THEN oim.meta_value END) AS message,
             MAX(CASE WHEN oim.meta_key = '_line_total' THEN oim.meta_value END) AS amount,
@@ -783,7 +784,12 @@ require __DIR__ . '/includes/layout_start.php';
 <?php $invoiceCancellationRequestMarkup = (string) ob_get_clean(); ?>
 
 <?php if ($canReviewCancellations): ?>
-<details class="card" open>
+<?php
+$cancellationReviewOpen = count($pendingCancellationRows) > 0
+    || $selectedReviewRow !== null
+    || $invoiceReviewFlash !== null;
+?>
+<details class="card"<?= $cancellationReviewOpen ? ' open' : '' ?>>
     <summary class="card__head card__toggle">
         <span class="card__toggle-inner">
             <span>Cancellation Review</span>
@@ -898,6 +904,7 @@ require __DIR__ . '/includes/layout_start.php';
                             <tr><th>Order ID</th><td><?= (int) ($giftDetail['order_id'] ?? 0) ?></td></tr>
                             <tr><th>Gift Code</th><td><?= e(extract_gift_code((string) ($giftDetail['gift_card_code'] ?? ''))) ?></td></tr>
                             <tr><th>Recipient Name</th><td><?= e((string) ($giftDetail['recipient_name'] ?? '')) ?></td></tr>
+                            <tr><th>Recipient Mobile</th><td><?= e((string) ($giftDetail['recipient_mobile'] ?? '')) ?></td></tr>
                             <tr><th>Recipient Email</th><td><?= e((string) ($giftDetail['recipient_email'] ?? '')) ?></td></tr>
                             <tr><th>Message</th><td><?= e((string) ($giftDetail['message'] ?? '')) ?></td></tr>
                             <tr><th>Buyer Name</th><td><?= e((string) ($giftDetail['sender_name'] ?? '')) ?></td></tr>

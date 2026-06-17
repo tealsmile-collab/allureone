@@ -32,10 +32,13 @@ $visitEvents = [
     'google-Ad-Visit-Marol',
     'google-Ad-Visit-AndheriWest',
     'google-Ad-Visit-BorivaliWest',
+    'google-Ad-Visit-BorivaliWest-NewPage',
     'google-Ad-Visit-Powai',
+    'google-Ad-Visit-Powai-NewPage',
     'google-Ad-Visit-Mulund',
     'google-Ad-Visit-Seawoods',
     'google-Ad-Visit-ThaneLodha',
+    'google-Ad-Visit-ThaneLodha-NewPage',
     'google-Ad-Visit-Malad-NewPage',
     'google-Ad-Visit-Franchise',
 ];

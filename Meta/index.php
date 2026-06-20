@@ -131,6 +131,22 @@ $formIdToBranchId = [
     "1202632042929207" => 4507  // lokhandwala
 ];
 
+$branchNameToBranchId = [
+    "andheri_east_marol" => 3000,
+    "malad" => 4185,
+    "andheri_west_lokhandwala" => 4507,
+    "borivali" => 2973,
+    "powai" => 2935,
+    "mulund" => 3781,
+    "thane" => 3780,
+    "navi_mumbai_-_seawoods" => 3782,
+    "navi_mumbai_-_kharghar" => 5000,
+    "palghar" => 5001,
+    "boisar" => 4456,
+    "gujrat_-_halol_vadodara" => 5002,
+    "ratnagiri" => 4274
+    ];
+
 
 // ================= WEBHOOK VERIFICATION =================
 
@@ -155,7 +171,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    global $branchPhones,$branchMothersDayFormId,$formIdToBranchId,$page_access_token,$api_url,$apiKey,$apiSecret,$logFile,$franchiseLogFile,$apiLogFile;
+    global $branchPhones,$branchMothersDayFormId,$branchNameToBranchId,$page_access_token,$api_url,$apiKey,$apiSecret,$logFile,$franchiseLogFile,$apiLogFile;
 
     $input = file_get_contents("php://input");
     $data = json_decode($input,true);
@@ -326,8 +342,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $recipientPhone = $branchPhones[$locationKey];
             }
 
-            if(isset($formIdToBranchId[$form_id])){
-                $mothersDayBranchId = (int)$formIdToBranchId[$form_id];
+            if(isset($branchNameToBranchId[$locationKey])){
+                $mothersDayBranchId = (int)$branchNameToBranchId[$locationKey];
             }
 
             $details = "Preferred Location - ".$preferredLocation;

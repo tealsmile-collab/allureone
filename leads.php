@@ -453,13 +453,15 @@ if (!$statusIsFollowUpForFilter) {
 /** GET `f_campaign` slug => exact value stored in meta leads campaign column (see Meta/index.php inserts). */
 $leadsCampaignFilterDbValue = [
     'mothers_day' => 'Mothers Day Campaign',
+    'fathers_day' => 'Fathers Day Campaign',
 ];
-$fCampaignSel = isset($_GET['f_campaign']) ? trim((string) $_GET['f_campaign']) : 'all';
+$leadsCampaignDefault = 'fathers_day';
+$fCampaignSel = isset($_GET['f_campaign']) ? trim((string) $_GET['f_campaign']) : $leadsCampaignDefault;
 if ($fCampaignSel === '') {
-    $fCampaignSel = 'all';
+    $fCampaignSel = $leadsCampaignDefault;
 }
 if ($fCampaignSel !== 'all' && !isset($leadsCampaignFilterDbValue[$fCampaignSel])) {
-    $fCampaignSel = 'all';
+    $fCampaignSel = $leadsCampaignDefault;
 }
 $fBranchSel = isset($_GET['f_branch']) ? trim((string) $_GET['f_branch']) : 'all';
 if ($fBranchSel === '') {
@@ -869,7 +871,9 @@ require __DIR__ . '/includes/layout_start.php';
                 <label for="f_campaign_summary">Campaign</label>
                 <select id="f_campaign_summary" name="f_campaign">
                     <option value="all"<?= $fCampaignSel === 'all' ? ' selected' : '' ?>>All</option>
-                    <option value="mothers_day"<?= $fCampaignSel === 'mothers_day' ? ' selected' : '' ?>>Mothers Day Campaign</option>
+                    <?php foreach ($leadsCampaignFilterDbValue as $campSlug => $campLabel): ?>
+                    <option value="<?= e($campSlug) ?>"<?= $fCampaignSel === $campSlug ? ' selected' : '' ?>><?= e($campLabel) ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
             <button type="submit" class="btn btn--primary">Apply</button>
@@ -1105,7 +1109,9 @@ require __DIR__ . '/includes/layout_start.php';
                     <label for="f_campaign">Campaign</label>
                     <select id="f_campaign" name="f_campaign">
                         <option value="all"<?= $fCampaignSel === 'all' ? ' selected' : '' ?>>All</option>
-                        <option value="mothers_day"<?= $fCampaignSel === 'mothers_day' ? ' selected' : '' ?>>Mothers Day Campaign</option>
+                        <?php foreach ($leadsCampaignFilterDbValue as $campSlug => $campLabel): ?>
+                        <option value="<?= e($campSlug) ?>"<?= $fCampaignSel === $campSlug ? ' selected' : '' ?>><?= e($campLabel) ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <?php endif; ?>

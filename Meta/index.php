@@ -84,8 +84,9 @@ function getLeadFieldValueByName($lead, $targetName){
 // ================= BRANCH PHONE MAP =================
 
 $branchPhones = [
-"andheri_east" => "917304455836",
-"malad_west" => "919920309399",
+"andheri_east_marol" => "917304455836",
+"malad" => "919920309399",
+"andheri_west_lokhandwala" => "917777049450",
 "borivali" => "918624020816",
 "powai" => "918652020816",
 "mulund" => "918080515738",
@@ -94,41 +95,40 @@ $branchPhones = [
 "navi_mumbai_-_kharghar" => "918424925346",
 "palghar" => "917875588844",
 "boisar" => "919325825052",
-"gujrat_-_vadodara" => "919274954980",
-"ratnagiri" => "918983188738",
-"lokhandwala" => "917777049450"
+"gujrat_-_halol_vadodara" => "919274954980",
+"ratnagiri" => "918983188738"
 ];
 
 $branchMothersDayFormId = [
-    "1508534954046117" => "andheri_east",
-    "2487701328330882" => "malad_west",
-    "995393993066642" => "borivali",
-    "1709933903363090" => "powai",
-    "867425536385232" => "mulund",
-    "1036686678682139" => "thane",
-    "1520691529730936" => "navi_mumbai_-_seawoods",
-    "957352689996372" => "navi_mumbai_-_kharghar",
-    "1501204131377174" => "palghar",
-    "1507142304094458" => "boisar",
-    "1489713305938086" => "gujrat_-_vadodara",
-    "2172143546972495" => "ratnagiri",
-    "4385524178369437" => "lokhandwala"
+    "1202632042929207" => "andheri_east_marol",
+    "1202632042929207" => "malad",
+    "1202632042929207" => "borivali",
+    "1202632042929207" => "powai",
+    "1202632042929207" => "mulund",
+    "1202632042929207" => "thane",
+    "1202632042929207" => "navi_mumbai_-_seawoods",
+    "1202632042929207" => "navi_mumbai_-_kharghar",
+    "1202632042929207" => "palghar",
+    "1202632042929207" => "boisar",
+    "1202632042929207" => "gujrat_-_halol_vadodara",
+    "1202632042929207" => "ratnagiri",
+    "1202632042929207" => "andheri_west_lokhandwala"
 ];
 
 $formIdToBranchId = [
-    "1508534954046117" => 3000, // andheri_east
-    "2487701328330882" => 4185, // malad_west
-    "995393993066642"  => 2973, // borivali
-    "1709933903363090" => 2935, // powai
-    "867425536385232"  => 3781, // mulund
-    "1036686678682139" => 3780, // thane
+    "1202632042929207" => 3000, // andheri_east
+    "1202632042929207" => 4185, // malad_west
+    "1202632042929207"  => 2973, // borivali
+    "1202632042929207" => 2935, // powai
+    "1202632042929207"  => 3781, // mulund
+    "1202632042929207" => 3780, // thane
     "1520691529730936" => 3782, // navi_mumbai_-_seawoods
-    "957352689996372"  => 5000,    // navi_mumbai_-_kharghar (not found)
-    "1501204131377174" => 5001,    // palghar (not found)
-    "1507142304094458" => 4456, // boisar
-    "1489713305938086" => 5002,    // gujrat_-_vadodara (not found)
-    "2172143546972495" => 4274,    // ratnagiri (not found)
-    "4385524178369437" => 4507  // lokhandwala
+    "1202632042929207"  => 5000,    // navi_mumbai_-_kharghar (not found)
+    "1202632042929207" => 5001,    // palghar (not found)
+    "1202632042929207" => 4456, // boisar
+    "1202632042929207" => 5002,    // gujrat_-_vadodara (not found)
+    "1202632042929207" => 4274,    // ratnagiri (not found)
+    "1202632042929207" => 4507  // lokhandwala
 ];
 
 
@@ -288,7 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         else{
 
-            $sourceName = "Insta-Fb Lead- Mothers Day Campaign";
+            $sourceName = "Insta-Fb Lead- Fathers Day Campaign";
             $isMothersDayLead = true;
 
             foreach($lead['field_data'] as $field){
@@ -360,7 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stMeta = $pdoMeta->prepare($sqlMeta);
                 $stMeta->execute([
                     'sourceName' => 'Insta-Fb',
-                    'campaign' => 'Mothers Day Campaign',
+                    'campaign' => 'Fathers Day Campaign',
                     'branch_id' => $mothersDayBranchId,
                     'branch_name' => $preferredLocation,
                     'lead_name' => $customerName,

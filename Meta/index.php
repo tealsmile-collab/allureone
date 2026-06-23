@@ -328,14 +328,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Preferred location is mapped by form_id for Mothers Day forms.
-            if(isset($branchMothersDayFormId[$form_id])){
-                $mappedLocationKey = strtolower(trim((string)$branchMothersDayFormId[$form_id]));
-                if($mappedLocationKey !== ''){
-                    $preferredLocation = escapeValue(normalizeValue(str_replace("_"," ",$mappedLocationKey)));
-                }
-            }
+            // if(isset($branchMothersDayFormId[$form_id])){
+            //     $mappedLocationKey = strtolower(trim((string)$branchMothersDayFormId[$form_id]));
+            //     if($mappedLocationKey !== ''){
+            //         $preferredLocation = escapeValue(normalizeValue(str_replace("_"," ",$mappedLocationKey)));
+            //     }
+            // }
 
-            $locationKey = strtolower(trim((string)(isset($branchMothersDayFormId[$form_id]) ? $branchMothersDayFormId[$form_id] : str_replace(" ","_",$preferredLocation))));
+            $locationKey = strtolower(trim(str_replace(" ", "_", $preferredLocation)));
 
             if( isset($branchPhones[$locationKey])){
                 $recipientName = $preferredLocation;

@@ -9,6 +9,8 @@ require_not_franchise_officer_role();
 
 $curY = (int) date('Y');
 $curM = (int) date('n');
+$user = current_user();
+$salesTargetShowProjection = ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN);
 
 $pageTitle = 'Sales target';
 $activeNav = 'sales_target';
@@ -59,12 +61,15 @@ require __DIR__ . '/includes/layout_start.php';
                     <tr>
                         <th>Branch</th>
                         <th>Monthly Target</th>
-                        <th>Expected Avg</th>
                         <th>MTD</th>
+                        <th>% of sales Vs Target</th>
+                        <th>Expected Avg</th>
                         <th>MTD Avg</th>
                         <th>Remaining Sale</th>
                         <th>Remaining Expected Avg.</th>
+                        <?php if ($salesTargetShowProjection): ?>
                         <th>Projection</th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
                 <tbody id="sales-target-body">
@@ -123,6 +128,8 @@ require __DIR__ . '/includes/layout_start.php';
     var appliedYear = '';
     var loadedRows = [];
     var loadedPeriod = null;
+    var showProjectionColumn = <?= $salesTargetShowProjection ? 'true' : 'false' ?>;
+    var tableColCount = showProjectionColumn ? 9 : 8;
 
     function esc(s) {
         var d = document.createElement('div');
@@ -130,7 +137,7 @@ require __DIR__ . '/includes/layout_start.php';
         return d.innerHTML;
     }
 
-    function formatMoney(val) {
+    function formatAmount(val) {
         if (val === null || val === undefined || val === '') {
             return '';
         }
@@ -138,7 +145,7 @@ require __DIR__ . '/includes/layout_start.php';
         if (!isFinite(n)) {
             return '';
         }
-        return 'Rs ' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     function formatInt(val) {
@@ -149,6 +156,50 @@ require __DIR__ . '/includes/layout_start.php';
         if (!isFinite(n)) {
             return '';
         }
+        return Math.trunc(n).toLocaleString('en-IN');
+    }
+
+    function formatPercentVsTarget(mtd, target, withSign) {
+        if (mtd === null || mtd === undefined || mtd === '' || target === null || target === undefined || target === '') {
+            return '';
+        }
+        var achieved = Number(mtd);
+        var monthlyTarget = Number(target);
+        if (!isFinite(achieved) || !isFinite(monthlyTarget) || monthlyTarget <= 0) {
+            return '';
+        }
+        var val = (achieved / monthlyTarget * 100).toFixed(2);
+        return withSign ? val + '%' : val;
+    }
+
+    function sortRowsByData(rows) {
+        if (!Array.isArray(rows)) {
+            return [];
+        }
+        var withData = [];
+        var withoutData = [];
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i] || {};
+            if (row.monthly_target != null || row.mtd != null) {
+                withData.push(row);
+            } else {
+                withoutData.push(row);
+            }
+        }
+        return withData.concat(withoutData);
+    }
+
+    function excelNumber(val, decimals) {
+        if (val === null || val === undefined || val === '') {
+            return '';
+        }
+        var n = Number(val);
+        if (!isFinite(n)) {
+            return '';
+        }
+        if (decimals !== undefined) {
+            return n.toFixed(decimals);
+        }
         return String(Math.trunc(n));
     }
 
@@ -156,8 +207,9 @@ require __DIR__ . '/includes/layout_start.php';
         if (!bodyEl) {
             return;
         }
+        rows = sortRowsByData(rows);
         if (!Array.isArray(rows) || rows.length === 0) {
-            bodyEl.innerHTML = '<tr><td colspan="8">No branches to display.</td></tr>';
+            bodyEl.innerHTML = '<tr><td colspan="' + tableColCount + '">No branches to display.</td></tr>';
             return;
         }
         var html = '';
@@ -165,13 +217,16 @@ require __DIR__ . '/includes/layout_start.php';
             var row = rows[i] || {};
             html += '<tr>';
             html += '<td>' + esc(row.branch_name || '') + '</td>';
-            html += '<td>' + esc(formatMoney(row.monthly_target)) + '</td>';
+            html += '<td>' + esc(formatAmount(row.monthly_target)) + '</td>';
+            html += '<td>' + esc(formatAmount(row.mtd)) + '</td>';
+            html += '<td>' + esc(formatPercentVsTarget(row.mtd, row.monthly_target, true)) + '</td>';
             html += '<td>' + esc(formatInt(row.expected_avg)) + '</td>';
-            html += '<td>' + esc(formatMoney(row.mtd)) + '</td>';
             html += '<td>' + esc(formatInt(row.mtd_avg)) + '</td>';
             html += '<td>' + esc(formatInt(row.remaining_sale)) + '</td>';
             html += '<td>' + esc(formatInt(row.remaining_expected_avg)) + '</td>';
-            html += '<td>' + esc(formatInt(row.projection)) + '</td>';
+            if (showProjectionColumn) {
+                html += '<td>' + esc(formatInt(row.projection)) + '</td>';
+            }
             html += '</tr>';
         }
         bodyEl.innerHTML = html;
@@ -212,26 +267,34 @@ require __DIR__ . '/includes/layout_start.php';
         var headers = [
             'Branch',
             'Monthly Target',
-            'Expected Avg',
             'MTD',
+            '% of sales Vs Target',
+            'Expected Avg',
             'MTD Avg',
             'Remaining Sale',
-            'Remaining Expected Avg.',
-            'Projection'
+            'Remaining Expected Avg.'
         ];
+        if (showProjectionColumn) {
+            headers.push('Projection');
+        }
         var lines = [headers.map(csvCell).join(',')];
-        for (var i = 0; i < loadedRows.length; i++) {
-            var row = loadedRows[i] || {};
-            lines.push([
+        var exportRows = sortRowsByData(loadedRows);
+        for (var i = 0; i < exportRows.length; i++) {
+            var row = exportRows[i] || {};
+            var cells = [
                 row.branch_name || '',
-                formatMoney(row.monthly_target),
-                formatInt(row.expected_avg),
-                formatMoney(row.mtd),
-                formatInt(row.mtd_avg),
-                formatInt(row.remaining_sale),
-                formatInt(row.remaining_expected_avg),
-                formatInt(row.projection)
-            ].map(csvCell).join(','));
+                excelNumber(row.monthly_target, 2),
+                excelNumber(row.mtd, 2),
+                formatPercentVsTarget(row.mtd, row.monthly_target),
+                excelNumber(row.expected_avg),
+                excelNumber(row.mtd_avg),
+                excelNumber(row.remaining_sale),
+                excelNumber(row.remaining_expected_avg)
+            ];
+            if (showProjectionColumn) {
+                cells.push(excelNumber(row.projection));
+            }
+            lines.push(cells.map(csvCell).join(','));
         }
         var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'application/vnd.ms-excel;charset=utf-8;' });
         var url = URL.createObjectURL(blob);
@@ -280,7 +343,7 @@ require __DIR__ . '/includes/layout_start.php';
             statusEl.innerHTML = loadingHtml;
         }
         if (bodyEl) {
-            bodyEl.innerHTML = '<tr><td colspan="8" style="text-align:center">' + loadingHtml + '</td></tr>';
+            bodyEl.innerHTML = '<tr><td colspan="' + tableColCount + '" style="text-align:center">' + loadingHtml + '</td></tr>';
         }
         if (periodEl) {
             periodEl.textContent = '';
@@ -311,7 +374,7 @@ require __DIR__ . '/includes/layout_start.php';
                         statusEl.textContent = msg;
                     }
                     if (bodyEl) {
-                        bodyEl.innerHTML = '<tr><td colspan="8">' + esc(msg) + '</td></tr>';
+                        bodyEl.innerHTML = '<tr><td colspan="' + tableColCount + '">' + esc(msg) + '</td></tr>';
                     }
                     hideReport();
                     appliedMonth = m;
@@ -323,7 +386,7 @@ require __DIR__ . '/includes/layout_start.php';
                 }
                 var period = x.j.period || {};
                 loadedPeriod = period;
-                loadedRows = Array.isArray(x.j.rows) ? x.j.rows.slice() : [];
+                loadedRows = sortRowsByData(Array.isArray(x.j.rows) ? x.j.rows.slice() : []);
                 appliedMonth = m;
                 appliedYear = y;
                 if (periodEl && period.start && period.end) {
@@ -347,7 +410,7 @@ require __DIR__ . '/includes/layout_start.php';
                     statusEl.textContent = msg;
                 }
                 if (bodyEl) {
-                    bodyEl.innerHTML = '<tr><td colspan="8">' + esc(msg) + '</td></tr>';
+                    bodyEl.innerHTML = '<tr><td colspan="' + tableColCount + '">' + esc(msg) + '</td></tr>';
                 }
                 hideReport();
                 appliedMonth = m;

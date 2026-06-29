@@ -247,6 +247,36 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
     ];
 }
 
+function sales_target_row_has_data(array $row): bool
+{
+    return ($row['monthly_target'] ?? null) !== null || ($row['mtd'] ?? null) !== null;
+}
+
+/**
+ * Rows with API data first; blank rows (no token / failed fetch) at the end.
+ *
+ * @param list<array<string, mixed>> $rows
+ *
+ * @return list<array<string, mixed>>
+ */
+function sales_target_partition_rows_by_data(array $rows): array
+{
+    $withData = [];
+    $withoutData = [];
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        if (sales_target_row_has_data($row)) {
+            $withData[] = $row;
+        } else {
+            $withoutData[] = $row;
+        }
+    }
+
+    return array_merge($withData, $withoutData);
+}
+
 $branches = [];
 try {
     $stmt = db()->query(
@@ -288,6 +318,8 @@ foreach ($branches as $branch) {
     }
     $rows[] = sales_target_build_row($branch, $startDate, $endDate, $daysInMonth, $daysPassed, $daysRemaining);
 }
+
+$rows = sales_target_partition_rows_by_data($rows);
 
 echo json_encode([
     'ok' => true,

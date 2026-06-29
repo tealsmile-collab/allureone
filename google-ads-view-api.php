@@ -41,6 +41,7 @@ $visitEvents = [
     'google-Ad-Visit-Seawoods',
     'google-Ad-Visit-ThaneLodha',
     'google-Ad-Visit-ThaneLodha-NewPage',
+    'google-Ad-Visit-VartakNagar',
     'google-Ad-Visit-Malad-NewPage',
     'google-Ad-Visit-Franchise',
 ];

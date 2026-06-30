@@ -247,34 +247,50 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
     ];
 }
 
-function sales_target_row_has_data(array $row): bool
+function sales_target_row_percent(array $row): ?float
 {
-    return ($row['monthly_target'] ?? null) !== null || ($row['mtd'] ?? null) !== null;
+    $target = $row['monthly_target'] ?? null;
+    $mtd = $row['mtd'] ?? null;
+    if ($target === null || $mtd === null) {
+        return null;
+    }
+    $t = (float) $target;
+    $m = (float) $mtd;
+    if ($t <= 0) {
+        return null;
+    }
+
+    return $m / $t * 100;
 }
 
 /**
- * Rows with API data first; blank rows (no token / failed fetch) at the end.
+ * Sort by % of sales vs target descending; rows with blank % at the end.
  *
  * @param list<array<string, mixed>> $rows
  *
  * @return list<array<string, mixed>>
  */
-function sales_target_partition_rows_by_data(array $rows): array
+function sales_target_sort_rows_by_percent_desc(array $rows): array
 {
-    $withData = [];
-    $withoutData = [];
+    $withPercent = [];
+    $withoutPercent = [];
     foreach ($rows as $row) {
         if (!is_array($row)) {
             continue;
         }
-        if (sales_target_row_has_data($row)) {
-            $withData[] = $row;
+        $pct = sales_target_row_percent($row);
+        if ($pct === null) {
+            $withoutPercent[] = $row;
         } else {
-            $withoutData[] = $row;
+            $withPercent[] = ['row' => $row, 'pct' => $pct];
         }
     }
 
-    return array_merge($withData, $withoutData);
+    usort($withPercent, static fn (array $a, array $b): int => $b['pct'] <=> $a['pct']);
+
+    $sorted = array_map(static fn (array $x): array => $x['row'], $withPercent);
+
+    return array_merge($sorted, $withoutPercent);
 }
 
 $branches = [];
@@ -319,7 +335,7 @@ foreach ($branches as $branch) {
     $rows[] = sales_target_build_row($branch, $startDate, $endDate, $daysInMonth, $daysPassed, $daysRemaining);
 }
 
-$rows = sales_target_partition_rows_by_data($rows);
+$rows = sales_target_sort_rows_by_percent_desc($rows);
 
 echo json_encode([
     'ok' => true,

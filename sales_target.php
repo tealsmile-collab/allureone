@@ -57,18 +57,18 @@ require __DIR__ . '/includes/layout_start.php';
         <p id="sales-target-status" class="main__meta" style="margin:0 0 1rem"></p>
         <div class="table-wrap sales-target-table-wrap" id="sales-target-table-wrap" style="display:none">
             <table class="data sales-target-table">
-                <thead>
+                <thead id="sales-target-head">
                     <tr>
-                        <th>Branch</th>
-                        <th>Monthly Target</th>
-                        <th>MTD</th>
-                        <th>% of sales Vs Target</th>
-                        <th>Expected Avg</th>
-                        <th>MTD Avg</th>
-                        <th>Remaining Sale</th>
-                        <th>Remaining Expected Avg.</th>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="branch_name">Branch<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="monthly_target">Monthly Target<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="mtd">MTD<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="percent_vs_target">% of sales Vs Target<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="expected_avg">Expected Avg<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="mtd_avg">MTD Avg<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="remaining_sale">Remaining Sale<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="remaining_expected_avg">Remaining Expected Avg.<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
                         <?php if ($salesTargetShowProjection): ?>
-                        <th>Projection</th>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="projection">Projection<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
                         <?php endif; ?>
                     </tr>
                 </thead>
@@ -104,6 +104,34 @@ require __DIR__ . '/includes/layout_start.php';
 .sales-target-table td {
     white-space: nowrap;
 }
+.sales-target-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-weight: 600;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+.sales-target-sort:hover,
+.sales-target-sort:focus-visible {
+    color: #2f5f90;
+    outline: none;
+    text-decoration: underline;
+}
+.sales-target-sort__icon {
+    font-size: 0.85em;
+    opacity: 0.35;
+}
+.sales-target-sort.is-sorted-asc .sales-target-sort__icon,
+.sales-target-sort.is-sorted-desc .sales-target-sort__icon {
+    opacity: 1;
+}
 .sales-target-actions {
     display: flex;
     flex-wrap: wrap;
@@ -121,6 +149,7 @@ require __DIR__ . '/includes/layout_start.php';
     var statusEl = document.getElementById('sales-target-status');
     var tableWrap = document.getElementById('sales-target-table-wrap');
     var bodyEl = document.getElementById('sales-target-body');
+    var headEl = document.getElementById('sales-target-head');
     var excelBtn = document.getElementById('sales-target-excel');
     var apiUrl = <?= json_encode(allureone_url('sales_target_api.php'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     var loadingHtml = '<span class="sales-target-spinner" aria-hidden="true"></span>';
@@ -130,6 +159,16 @@ require __DIR__ . '/includes/layout_start.php';
     var loadedPeriod = null;
     var showProjectionColumn = <?= $salesTargetShowProjection ? 'true' : 'false' ?>;
     var tableColCount = showProjectionColumn ? 9 : 8;
+    var sortState = { key: 'percent_vs_target', dir: 'desc' };
+
+    function defaultSortDir(key) {
+        return key === 'branch_name' ? 'asc' : 'desc';
+    }
+
+    function resetSortState() {
+        sortState = { key: 'percent_vs_target', dir: 'desc' };
+        updateSortHeaders();
+    }
 
     function esc(s) {
         var d = document.createElement('div');
@@ -172,21 +211,115 @@ require __DIR__ . '/includes/layout_start.php';
         return withSign ? val + '%' : val;
     }
 
-    function sortRowsByData(rows) {
+    function rowPercentVsTarget(row) {
+        if (!row) {
+            return null;
+        }
+        var mtd = row.mtd;
+        var target = row.monthly_target;
+        if (mtd === null || mtd === undefined || mtd === '' || target === null || target === undefined || target === '') {
+            return null;
+        }
+        var achieved = Number(mtd);
+        var monthlyTarget = Number(target);
+        if (!isFinite(achieved) || !isFinite(monthlyTarget) || monthlyTarget <= 0) {
+            return null;
+        }
+        return achieved / monthlyTarget * 100;
+    }
+
+    function rowSortValue(row, key) {
+        if (!row) {
+            return null;
+        }
+        if (key === 'percent_vs_target') {
+            return rowPercentVsTarget(row);
+        }
+        if (key === 'branch_name') {
+            var name = String(row.branch_name || '').trim();
+            return name === '' ? null : name.toLowerCase();
+        }
+        var val = row[key];
+        if (val === null || val === undefined || val === '') {
+            return null;
+        }
+        var n = Number(val);
+        if (!isFinite(n)) {
+            return null;
+        }
+        return n;
+    }
+
+    function compareSortValues(a, b, dir) {
+        if (typeof a === 'string' || typeof b === 'string') {
+            var cmp = String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+            return dir === 'desc' ? -cmp : cmp;
+        }
+        var diff = a - b;
+        return dir === 'desc' ? -diff : diff;
+    }
+
+    function sortRows(rows, key, dir) {
         if (!Array.isArray(rows)) {
             return [];
         }
-        var withData = [];
-        var withoutData = [];
+        var withValue = [];
+        var withoutValue = [];
         for (var i = 0; i < rows.length; i++) {
             var row = rows[i] || {};
-            if (row.monthly_target != null || row.mtd != null) {
-                withData.push(row);
+            var val = rowSortValue(row, key);
+            if (val === null) {
+                withoutValue.push(row);
             } else {
-                withoutData.push(row);
+                withValue.push({ row: row, val: val });
             }
         }
-        return withData.concat(withoutData);
+        withValue.sort(function (a, b) {
+            return compareSortValues(a.val, b.val, dir);
+        });
+        var result = [];
+        for (var j = 0; j < withValue.length; j++) {
+            result.push(withValue[j].row);
+        }
+        return result.concat(withoutValue);
+    }
+
+    function updateSortHeaders() {
+        if (!headEl) {
+            return;
+        }
+        var buttons = headEl.querySelectorAll('.sales-target-sort');
+        for (var i = 0; i < buttons.length; i++) {
+            var btn = buttons[i];
+            var btnKey = btn.getAttribute('data-sort-key') || '';
+            var icon = btn.querySelector('.sales-target-sort__icon');
+            btn.classList.remove('is-sorted-asc', 'is-sorted-desc');
+            btn.setAttribute('aria-sort', 'none');
+            if (icon) {
+                icon.textContent = '';
+            }
+            if (btnKey === sortState.key) {
+                btn.classList.add(sortState.dir === 'asc' ? 'is-sorted-asc' : 'is-sorted-desc');
+                btn.setAttribute('aria-sort', sortState.dir === 'asc' ? 'ascending' : 'descending');
+                if (icon) {
+                    icon.textContent = sortState.dir === 'asc' ? ' \u2191' : ' \u2193';
+                }
+            }
+        }
+    }
+
+    function onSortHeaderClick(key) {
+        if (!key) {
+            return;
+        }
+        if (sortState.key === key) {
+            sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortState.key = key;
+            sortState.dir = defaultSortDir(key);
+        }
+        updateSortHeaders();
+        renderRows(loadedRows);
     }
 
     function excelNumber(val, decimals) {
@@ -207,7 +340,7 @@ require __DIR__ . '/includes/layout_start.php';
         if (!bodyEl) {
             return;
         }
-        rows = sortRowsByData(rows);
+        rows = sortRows(rows, sortState.key, sortState.dir);
         if (!Array.isArray(rows) || rows.length === 0) {
             bodyEl.innerHTML = '<tr><td colspan="' + tableColCount + '">No branches to display.</td></tr>';
             return;
@@ -235,6 +368,7 @@ require __DIR__ . '/includes/layout_start.php';
     function hideReport() {
         loadedRows = [];
         loadedPeriod = null;
+        resetSortState();
         if (tableWrap) {
             tableWrap.style.display = 'none';
         }
@@ -278,7 +412,7 @@ require __DIR__ . '/includes/layout_start.php';
             headers.push('Projection');
         }
         var lines = [headers.map(csvCell).join(',')];
-        var exportRows = sortRowsByData(loadedRows);
+        var exportRows = sortRows(loadedRows, sortState.key, sortState.dir);
         for (var i = 0; i < exportRows.length; i++) {
             var row = exportRows[i] || {};
             var cells = [
@@ -386,7 +520,8 @@ require __DIR__ . '/includes/layout_start.php';
                 }
                 var period = x.j.period || {};
                 loadedPeriod = period;
-                loadedRows = sortRowsByData(Array.isArray(x.j.rows) ? x.j.rows.slice() : []);
+                loadedRows = Array.isArray(x.j.rows) ? x.j.rows.slice() : [];
+                resetSortState();
                 appliedMonth = m;
                 appliedYear = y;
                 if (periodEl && period.start && period.end) {
@@ -430,6 +565,16 @@ require __DIR__ . '/includes/layout_start.php';
     if (excelBtn) {
         excelBtn.addEventListener('click', downloadExcel);
     }
+    if (headEl) {
+        headEl.addEventListener('click', function (e) {
+            var btn = e.target.closest('.sales-target-sort');
+            if (!btn || !headEl.contains(btn)) {
+                return;
+            }
+            onSortHeaderClick(btn.getAttribute('data-sort-key'));
+        });
+    }
+    updateSortHeaders();
 
     if (form) {
         form.addEventListener('submit', function (e) {

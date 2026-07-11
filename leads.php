@@ -455,7 +455,7 @@ $leadsCampaignFilterDbValue = [
     'mothers_day' => 'Mothers Day Campaign',
     'fathers_day' => 'Fathers Day Campaign',
 ];
-$leadsCampaignDefault = 'fathers_day';
+$leadsCampaignDefault = 'all';
 $fCampaignSel = isset($_GET['f_campaign']) ? trim((string) $_GET['f_campaign']) : $leadsCampaignDefault;
 if ($fCampaignSel === '') {
     $fCampaignSel = $leadsCampaignDefault;

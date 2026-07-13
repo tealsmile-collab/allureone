@@ -306,6 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $sourceName = "Meta Insta-Fb Lead";
             $isMothersDayLead = true;
+            $locationFieldFound = false;
 
             foreach($lead['field_data'] as $field){
 
@@ -323,6 +324,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 if(stripos($fieldName, "location") !== false){
+                    $preferredLocation = escapeValue(normalizeValue($value));
+                    $locationFieldFound = true;
+                } elseif(!$locationFieldFound && stripos($fieldName, "branch") !== false){
                     $preferredLocation = escapeValue(normalizeValue($value));
                 }
             }

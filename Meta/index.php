@@ -18,6 +18,7 @@ $apiSecret = "002bdbfa12fb47ddb5d927bf6dfcc2d5";
 $logFile = "lead_activity.log";
 $franchiseLogFile = "franchise_leads.log";
 $apiLogFile = "api_log.txt";
+$rawLeadDataLogFile = "rawLeadData.log";
 
 // Franchise DB (standalone inline config for webhook file)
 $frDbHost = "82.25.121.179";
@@ -96,7 +97,8 @@ $branchPhones = [
 "palghar" => "917875588844",
 "boisar" => "919325825052",
 "gujrat_-_halol_vadodara" => "919274954980",
-"ratnagiri" => "918983188738"
+"ratnagiri" => "918983188738",
+"thanevartaknagar" => "919321852726",
 ];
 
 $branchMothersDayFormId = [
@@ -112,7 +114,8 @@ $branchMothersDayFormId = [
     "957571290636446" => "boisar",
     "1202632042929207" => "gujrat_-_halol_vadodara",
     "1202632042929207" => "ratnagiri",
-    "1202632042929207" => "andheri_west_lokhandwala"
+    "1202632042929207" => "andheri_west_lokhandwala",
+    "1000356342810563" => "thanevartaknagar"
 ];
 
 $formIdToBranchId = [
@@ -128,7 +131,8 @@ $formIdToBranchId = [
     "957571290636446" => 4456, // boisar
     "1202632042929207" => 5002,    // gujrat_-_vadodara (not found)
     "1202632042929207" => 4274,    // ratnagiri (not found)
-    "1202632042929207" => 4507  // lokhandwala
+    "1202632042929207" => 4507,  // lokhandwala
+    "1000356342810563" => 4651 // vartaknagar
 ];
 
 $branchNameToBranchId = [
@@ -144,7 +148,8 @@ $branchNameToBranchId = [
     "palghar" => 5001,
     "boisar" => 4456,
     "gujrat_-_halol_vadodara" => 5002,
-    "ratnagiri" => 4274
+    "ratnagiri" => 4274,
+    "vartaknagar" => 4651
     ];
 
 
@@ -175,6 +180,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $input = file_get_contents("php://input");
     $data = json_decode($input,true);
+
+    $rawLeadLog  = "\n=============================\n";
+    $rawLeadLog .= "Time: ".date("Y-m-d H:i:s")."\n";
+    $rawLeadLog .= ($input !== false && $input !== "" ? $input : "[empty body]")."\n";
+    file_put_contents($rawLeadDataLogFile, $rawLeadLog, FILE_APPEND);
 
 
     if(isset($data['entry'][0]['changes'][0]['value']['leadgen_id'])){
@@ -307,6 +317,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sourceName = "Meta Insta-Fb Lead";
             $isMothersDayLead = true;
             $locationFieldFound = false;
+            $branchFieldFound = false;
 
             foreach($lead['field_data'] as $field){
 
@@ -328,25 +339,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $locationFieldFound = true;
                 } elseif(!$locationFieldFound && stripos($fieldName, "branch") !== false){
                     $preferredLocation = escapeValue(normalizeValue($value));
+                    $branchFieldFound = true;
                 }
             }
 
-            // Preferred location is mapped by form_id for Mothers Day forms.
-            // if(isset($branchMothersDayFormId[$form_id])){
-            //     $mappedLocationKey = strtolower(trim((string)$branchMothersDayFormId[$form_id]));
-            //     if($mappedLocationKey !== ''){
-            //         $preferredLocation = escapeValue(normalizeValue(str_replace("_"," ",$mappedLocationKey)));
-            //     }
-            // }
+            // No location/branch field: resolve from form_id maps.
+            if(!$locationFieldFound && !$branchFieldFound && isset($branchMothersDayFormId[$form_id])){
+                $mappedLocationKey = strtolower(trim((string)$branchMothersDayFormId[$form_id]));
+                if($mappedLocationKey !== ''){
+                    $preferredLocation = escapeValue(normalizeValue(str_replace("_", " ", $mappedLocationKey)));
+                }
+            }
 
             $locationKey = strtolower(trim(str_replace(" ", "_", $preferredLocation)));
 
-            if( isset($branchPhones[$locationKey])){
+            if(isset($branchPhones[$locationKey])){
                 $recipientName = $preferredLocation;
                 $recipientPhone = $branchPhones[$locationKey];
             }
 
-            if(isset($branchNameToBranchId[$locationKey])){
+            if(!$locationFieldFound && !$branchFieldFound && isset($formIdToBranchId[$form_id])){
+                $mothersDayBranchId = (int)$formIdToBranchId[$form_id];
+            } elseif(isset($branchNameToBranchId[$locationKey])){
                 $mothersDayBranchId = (int)$branchNameToBranchId[$locationKey];
             }
 

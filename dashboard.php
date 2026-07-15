@@ -414,7 +414,10 @@ $invoiceCancellationEnabled = is_invoice_cancellation_enabled($user);
 $reviewScopeBranchId = $userRoleId === ROLE_ADMIN ? null : $userBranchId;
 $selectedReviewId = isset($_GET['review']) ? (int) $_GET['review'] : 0;
 $canReviewCancellations = $invoiceCancellationEnabled && ($userRoleId === ROLE_ADMIN || $userRoleId === ROLE_SUPERADMIN);
-$canShowInvoiceCancellationRequest = $invoiceCancellationEnabled && ($userRoleId !== ROLE_ADMIN);
+$canShowInvoiceCancellationRequest = $invoiceCancellationEnabled
+    && $userRoleId !== ROLE_ADMIN
+    && $userRoleId !== ROLE_SUPERADMIN;
+$canDailySale = ($userRoleId === ROLE_ADMIN || $userRoleId === ROLE_SUPERADMIN);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['invoice_review_action']) && $canReviewCancellations) {
     if (!csrf_validate($_POST['_csrf'] ?? null)) {
@@ -783,13 +786,115 @@ require __DIR__ . '/includes/layout_start.php';
 </details>
 <?php $invoiceCancellationRequestMarkup = (string) ob_get_clean(); ?>
 
+<?php if ($canDailySale): ?>
+<?php
+$dailySaleTodayYmd = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+?>
+<details class="card" id="daily-sale-card">
+    <summary class="card__head card__toggle">
+        <span class="card__toggle-inner">
+            <span>Daily Sale</span>
+            <span class="card__chevron" aria-hidden="true">▼</span>
+        </span>
+    </summary>
+    <div class="card__body" style="padding:1.25rem">
+        <div class="daily-sale-toolbar">
+            <div class="daily-sale-date-row">
+                <label for="daily-sale-date" class="daily-sale-date-label">Date</label>
+                <input type="date" id="daily-sale-date" class="daily-sale-date-input" value="<?= e($dailySaleTodayYmd) ?>" max="<?= e($dailySaleTodayYmd) ?>">
+                <button type="button" class="btn btn--primary daily-sale-view-btn" id="daily-sale-view" title="View">
+                    <svg class="daily-sale-view-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path fill="currentColor" d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+                    </svg>
+                    <span>View</span>
+                </button>
+            </div>
+        </div>
+        <div id="daily-sale-status" class="daily-sale-status" aria-live="polite"></div>
+        <div class="table-wrap" id="daily-sale-table-wrap" hidden>
+            <table class="data" id="daily-sale-table">
+                <thead>
+                    <tr>
+                        <th>Branch</th>
+                        <th>Total Sale (₹)</th>
+                        <th>Services (₹)</th>
+                        <th>Membership (₹)</th>
+                    </tr>
+                </thead>
+                <tbody id="daily-sale-body"></tbody>
+            </table>
+        </div>
+    </div>
+</details>
+<style>
+.daily-sale-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 0 0 0.75rem;
+}
+.daily-sale-date-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.daily-sale-date-label {
+    font-size: 0.9rem;
+    color: #475569;
+    margin: 0;
+}
+.daily-sale-date-input {
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--border, #d0d7de);
+    border-radius: 6px;
+    font: inherit;
+    min-width: 10.5rem;
+}
+.daily-sale-view-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.daily-sale-view-icon {
+    display: block;
+}
+.daily-sale-status {
+    display: none;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0 0 0.85rem;
+    min-height: 1.75rem;
+    color: #334155;
+    font-size: 0.9rem;
+}
+.daily-sale-status.is-visible {
+    display: flex;
+}
+.daily-sale-spinner {
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+    border: 3px solid #c9d8ea;
+    border-top-color: #2f5f90;
+    border-radius: 50%;
+    animation: dailySaleSpin 0.8s linear infinite;
+    flex: 0 0 auto;
+}
+@keyframes dailySaleSpin {
+    to { transform: rotate(360deg); }
+}
+</style>
+<?php endif; ?>
+
 <?php if ($canReviewCancellations): ?>
 <?php
 $cancellationReviewOpen = count($pendingCancellationRows) > 0
     || $selectedReviewRow !== null
     || $invoiceReviewFlash !== null;
 ?>
-<details class="card"<?= $cancellationReviewOpen ? ' open' : '' ?>>
+<details class="card<?= $canDailySale ? ' card--spaced-top' : '' ?>"<?= $cancellationReviewOpen ? ' open' : '' ?>>
     <summary class="card__head card__toggle">
         <span class="card__toggle-inner">
             <span>Cancellation Review</span>
@@ -1194,6 +1299,211 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
     });
 })();
 </script>
+<?php if ($canDailySale): ?>
+<script>
+(function () {
+    var card = document.getElementById('daily-sale-card');
+    if (!card) {
+        return;
+    }
+    var statusEl = document.getElementById('daily-sale-status');
+    var wrapEl = document.getElementById('daily-sale-table-wrap');
+    var bodyEl = document.getElementById('daily-sale-body');
+    var dateEl = document.getElementById('daily-sale-date');
+    var viewBtn = document.getElementById('daily-sale-view');
+    var apiUrl = <?= json_encode(allureone_url('daily_sale_api.php'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    var loading = false;
+    var loadedDate = '';
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = String(s == null ? '' : s);
+        return d.innerHTML;
+    }
+
+    function selectedDate() {
+        var v = dateEl ? String(dateEl.value || '').trim() : '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+            return '';
+        }
+        return v;
+    }
+
+    function formatAmount(val) {
+        if (val === null || val === undefined || val === '') {
+            return '—';
+        }
+        var n = Number(val);
+        if (!isFinite(n)) {
+            return '—';
+        }
+        return Math.round(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    }
+
+    function setStatus(html, withSpinner) {
+        if (!statusEl) {
+            return;
+        }
+        if (!html) {
+            statusEl.classList.remove('is-visible');
+            statusEl.innerHTML = '';
+            return;
+        }
+        statusEl.classList.add('is-visible');
+        statusEl.innerHTML = (withSpinner ? '<span class="daily-sale-spinner" aria-hidden="true"></span>' : '') + '<span>' + html + '</span>';
+    }
+
+    function hideTable() {
+        if (bodyEl) {
+            bodyEl.innerHTML = '';
+        }
+        if (wrapEl) {
+            wrapEl.hidden = true;
+        }
+        loadedDate = '';
+        setStatus('', false);
+    }
+
+    function appendRow(row) {
+        if (!bodyEl) {
+            return;
+        }
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td>' + esc(row.branch_name || '') + '</td>' +
+            '<td>' + esc(formatAmount(row.total_sale)) + '</td>' +
+            '<td>' + esc(formatAmount(row.services)) + '</td>' +
+            '<td>' + esc(formatAmount(row.membership)) + '</td>';
+        bodyEl.appendChild(tr);
+        if (wrapEl) {
+            wrapEl.hidden = false;
+        }
+    }
+
+    function fetchJson(url) {
+        return fetch(url, { credentials: 'same-origin' }).then(function (r) {
+            return r.text().then(function (text) {
+                var j = null;
+                try {
+                    j = text ? JSON.parse(text) : null;
+                } catch (e) {
+                    throw new Error('Invalid response' + (r.status ? ' (HTTP ' + r.status + ')' : ''));
+                }
+                if (!r.ok || !j || j.ok !== true) {
+                    throw new Error((j && j.error) ? String(j.error) : ('Request failed' + (r.status ? ' (HTTP ' + r.status + ')' : '')));
+                }
+                return j;
+            });
+        });
+    }
+
+    function loadDailySale() {
+        if (loading) {
+            return;
+        }
+        var date = selectedDate();
+        if (!date) {
+            setStatus('Please select a date.', false);
+            return;
+        }
+        loading = true;
+        if (viewBtn) {
+            viewBtn.disabled = true;
+        }
+        if (bodyEl) {
+            bodyEl.innerHTML = '';
+        }
+        if (wrapEl) {
+            wrapEl.hidden = true;
+        }
+        setStatus('Loading branches…', true);
+
+        fetchJson(apiUrl + '?action=branches&date=' + encodeURIComponent(date))
+            .then(function (j) {
+                var branches = Array.isArray(j.branches) ? j.branches : [];
+                var fetchDate = j.date || date;
+                if (branches.length === 0) {
+                    setStatus('No branches to display.', false);
+                    return Promise.resolve();
+                }
+
+                var i = 0;
+                function next() {
+                    if (i >= branches.length) {
+                        setStatus('', false);
+                        loadedDate = fetchDate;
+                        return Promise.resolve();
+                    }
+                    var b = branches[i] || {};
+                    var idx = i + 1;
+                    i += 1;
+                    setStatus('Loading ' + esc(String(idx)) + ' of ' + esc(String(branches.length)) + ': ' + esc(String(b.branch_name || '')), true);
+                    var url = apiUrl + '?action=fetch&branch_id=' + encodeURIComponent(String(b.branch_id || '')) + '&date=' + encodeURIComponent(fetchDate);
+                    return fetchJson(url).then(function (res) {
+                        appendRow(res.row || {
+                            branch_name: b.branch_name || '',
+                            total_sale: null,
+                            services: null,
+                            membership: null
+                        });
+                        return next();
+                    }).catch(function () {
+                        appendRow({
+                            branch_name: b.branch_name || '',
+                            total_sale: null,
+                            services: null,
+                            membership: null
+                        });
+                        return next();
+                    });
+                }
+                return next();
+            })
+            .catch(function (err) {
+                setStatus(esc((err && err.message) ? String(err.message) : 'Could not load daily sale data.'), false);
+            })
+            .finally(function () {
+                loading = false;
+                if (viewBtn) {
+                    viewBtn.disabled = false;
+                }
+            });
+    }
+
+    if (dateEl) {
+        dateEl.addEventListener('change', function () {
+            hideTable();
+        });
+        dateEl.addEventListener('input', function () {
+            hideTable();
+        });
+    }
+    if (viewBtn) {
+        viewBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!card.open) {
+                card.open = true;
+            }
+            loadDailySale();
+        });
+    }
+    card.addEventListener('toggle', function () {
+        if (!card.open) {
+            return;
+        }
+        var date = selectedDate();
+        if (!date) {
+            return;
+        }
+        // First expand (or after date change): load selected date (defaults to today).
+        if (loadedDate !== date && !loading) {
+            loadDailySale();
+        }
+    });
+})();
+</script>
+<?php endif; ?>
 <?php
 $invoiceReviewApiDebug = $GLOBALS['allureone_review_invoice_api_debug'] ?? null;
 if (is_array($invoiceReviewApiDebug) && $selectedReviewRow !== null):

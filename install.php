@@ -172,10 +172,16 @@ CREATE TABLE IF NOT EXISTS allureone_franchise_leads (
   DateTime DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   form_id BIGINT NULL,
   campaign_id BIGINT NULL,
+  status INT UNSIGNED NOT NULL DEFAULT 1,
+  remarks VARCHAR(100) NULL,
+  followup_datetime DATETIME NULL,
+  web_submission_id BIGINT NULL,
   PRIMARY KEY (id),
   KEY idx_franchise_leads_datetime (DateTime),
   KEY idx_franchise_leads_phone (PHONE_NUMBER),
-  KEY idx_franchise_leads_form_campaign (form_id, campaign_id)
+  KEY idx_franchise_leads_form_campaign (form_id, campaign_id),
+  KEY idx_franchise_leads_status (status),
+  UNIQUE KEY uq_franchise_leads_web_submission (web_submission_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL
     ,
@@ -299,6 +305,42 @@ try {
              ADD CONSTRAINT fk_allureone_gc_branch
              FOREIGN KEY (BranchId) REFERENCES allureone_branch (id)'
         );
+    }
+
+    $flCols = $pdo->query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'allureone_franchise_leads'"
+    )->fetchAll(PDO::FETCH_COLUMN);
+    $flColSet = is_array($flCols) ? array_flip(array_map('strval', $flCols)) : [];
+    if (!isset($flColSet['status'])) {
+        $pdo->exec('ALTER TABLE allureone_franchise_leads ADD COLUMN status INT UNSIGNED NOT NULL DEFAULT 1');
+    }
+    if (!isset($flColSet['remarks'])) {
+        $pdo->exec('ALTER TABLE allureone_franchise_leads ADD COLUMN remarks VARCHAR(100) NULL');
+    }
+    if (!isset($flColSet['followup_datetime'])) {
+        $pdo->exec('ALTER TABLE allureone_franchise_leads ADD COLUMN followup_datetime DATETIME NULL');
+    }
+    if (!isset($flColSet['web_submission_id'])) {
+        $pdo->exec('ALTER TABLE allureone_franchise_leads ADD COLUMN web_submission_id BIGINT NULL');
+    }
+    $flIndexes = $pdo->query(
+        "SELECT INDEX_NAME FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'allureone_franchise_leads'"
+    )->fetchAll(PDO::FETCH_COLUMN);
+    $flIndexSet = is_array($flIndexes) ? array_flip(array_map('strval', $flIndexes)) : [];
+    if (!isset($flIndexSet['idx_franchise_leads_status'])) {
+        $pdo->exec('ALTER TABLE allureone_franchise_leads ADD KEY idx_franchise_leads_status (status)');
+    }
+    if (!isset($flIndexSet['uq_franchise_leads_web_submission'])) {
+        $pdo->exec('ALTER TABLE allureone_franchise_leads ADD UNIQUE KEY uq_franchise_leads_web_submission (web_submission_id)');
+    }
+    $oldStatusTable = (int) $pdo->query(
+        "SELECT COUNT(*) FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'allureone_franchise_lead_status'"
+    )->fetchColumn();
+    if ($oldStatusTable > 0) {
+        $pdo->exec('DROP TABLE IF EXISTS allureone_franchise_lead_status');
     }
 
     $adminPass = password_hash('Allure@011225', PASSWORD_DEFAULT);

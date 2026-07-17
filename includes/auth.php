@@ -3,8 +3,45 @@ declare(strict_types=1);
 
 const ROLE_SUPERADMIN = 1;
 const ROLE_ADMIN = 2;
+const ROLE_MANAGER = 3;
+const ROLE_JR_MANAGER = 4;
+const ROLE_THERAPIST = 5;
+const ROLE_HOUSEKEEPING = 6;
 const ROLE_ACCOUNTS = 7;
 const ROLE_FRANCHISE_OFFICER = 9;
+
+function allureone_home_path_for_role(int $roleId): string
+{
+    if ($roleId === ROLE_ACCOUNTS) {
+        return 'gift_codes.php';
+    }
+    if ($roleId === ROLE_FRANCHISE_OFFICER) {
+        return 'Franchise-leads.php';
+    }
+    if ($roleId === ROLE_THERAPIST || $roleId === ROLE_HOUSEKEEPING) {
+        return 'appointment.php';
+    }
+
+    return 'dashboard.php';
+}
+
+function can_access_appointments(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+    $roleId = (int) ($u['role_id'] ?? 0);
+
+    return in_array($roleId, [
+        ROLE_SUPERADMIN,
+        ROLE_ADMIN,
+        ROLE_MANAGER,
+        ROLE_JR_MANAGER,
+        ROLE_THERAPIST,
+        ROLE_HOUSEKEEPING,
+    ], true);
+}
 
 function csrf_token(): string
 {

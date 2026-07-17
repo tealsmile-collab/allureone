@@ -8,6 +8,12 @@ require_login();
 require_not_accounts_role();
 require_not_franchise_officer_role();
 
+$userEarly = current_user();
+if (is_array($userEarly) && in_array((int) ($userEarly['role_id'] ?? 0), [ROLE_THERAPIST, ROLE_HOUSEKEEPING], true)) {
+    allureone_redirect('appointment.php');
+    exit;
+}
+
 /**
  * Save cancellation request metadata for admin review.
  *

@@ -9,7 +9,10 @@ $user = current_user();
 $isAccountsRole = is_accounts_role($user);
 $isFranchiseOfficerRole = is_franchise_officer_role($user);
 $isInvoiceCancellationEnabled = is_invoice_cancellation_enabled($user);
-$homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Franchise-leads.php' : 'dashboard.php');
+$userRoleId = (int) ($user['role_id'] ?? 0);
+$isAppointmentStaffRole = ($userRoleId === ROLE_THERAPIST || $userRoleId === ROLE_HOUSEKEEPING);
+$canAppointments = can_access_appointments($user);
+$homeHref = allureone_home_path_for_role($userRoleId);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -40,37 +43,40 @@ $homeHref = $isAccountsRole ? 'gift_codes.php' : ($isFranchiseOfficerRole ? 'Fra
         <button type="button" class="sidebar__close-btn" id="mobileMenuClose" aria-label="Close menu">×</button>
         <a class="sidebar__brand" href="<?= e($homeHref) ?>"><?= e($appName) ?></a>
         <nav class="sidebar__nav">
-            <?php if (!$isAccountsRole && !$isFranchiseOfficerRole): ?>
+            <?php if (!$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'dashboard') ? ' is-active' : '' ?>" href="dashboard.php">Dashboard</a>
                 <?php if ($isInvoiceCancellationEnabled): ?>
                     <a class="sidebar__link<?= ($activeNav === 'invoice_cancellation') ? ' is-active' : '' ?>" href="invoice_cancellation.php">Invoice Cancellation</a>
                 <?php endif; ?>
             <?php endif; ?>
-            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
+            <?php if ($canAppointments): ?>
+                <a class="sidebar__link<?= ($activeNav === 'appointments') ? ' is-active' : '' ?>" href="appointment.php">Appointments</a>
+            <?php endif; ?>
+            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'franchise_leads') ? ' is-active' : '' ?>" href="Franchise-leads.php">Franchise Leads</a>
             <?php endif; ?>
             <?php if ($isFranchiseOfficerRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'franchise_leads') ? ' is-active' : '' ?>" href="Franchise-leads.php">Franchise Leads</a>
             <?php endif; ?>
-            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN || (int) ($user['role_id'] ?? 0) === 3)): ?>
+            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN || (int) ($user['role_id'] ?? 0) === ROLE_MANAGER)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'leads') ? ' is-active' : '' ?>" href="leads.php">Leads</a>
                 <a class="sidebar__link<?= ($activeNav === 'crm') ? ' is-active' : '' ?>" href="crm.php">CRM</a>
             <?php endif; ?>
-            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
+            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'google_ads_view') ? ' is-active' : '' ?>" href="google-ads-view.php">Google Ads View</a>
             <?php endif; ?>
-            <?php if (!$isFranchiseOfficerRole): ?>
+            <?php if (!$isFranchiseOfficerRole && !$isAppointmentStaffRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'gift_codes') ? ' is-active' : '' ?>" href="gift_codes.php">Gift Card Sale</a>
                 <a class="sidebar__link<?= ($activeNav === 'utility') ? ' is-active' : '' ?>" href="utility.php">Utility</a>
             <?php endif; ?>
-            <?php if (!$isAccountsRole && !$isFranchiseOfficerRole && $isInvoiceCancellationEnabled): ?>
+            <?php if (!$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && $isInvoiceCancellationEnabled): ?>
                 <a class="sidebar__link<?= ($activeNav === 'sales_target') ? ' is-active' : '' ?>" href="sales_target.php">Sales target</a>
             <?php endif; ?>
-            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN)): ?>
+            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'branch') ? ' is-active' : '' ?>" href="branch_master.php">Branch Master</a>
                 <a class="sidebar__link<?= ($activeNav === 'user') ? ' is-active' : '' ?>" href="user_master.php">User Master</a>
             <?php endif; ?>
-            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && (((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN) || ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN))): ?>
+            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && (((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN) || ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN))): ?>
                 <a class="sidebar__link<?= ($activeNav === 'crm_setup') ? ' is-active' : '' ?>" href="crmsetup.php">CRM Segments</a>
                 <a class="sidebar__link<?= ($activeNav === 'announcements') ? ' is-active' : '' ?>" href="Announcement.php">Announcements</a>
             <?php endif; ?>

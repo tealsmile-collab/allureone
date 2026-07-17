@@ -7,13 +7,7 @@ const ALLUREONE_REMEMBER_LOGIN_COOKIE = 'allureone_remember_loginname';
 
 if (current_user() !== null) {
     $cu = current_user();
-    $target = 'dashboard.php';
-    if (is_accounts_role($cu)) {
-        $target = 'gift_codes.php';
-    } elseif (is_franchise_officer_role($cu)) {
-        $target = 'Franchise-leads.php';
-    }
-    allureone_redirect($target);
+    allureone_redirect(allureone_home_path_for_role((int) ($cu['role_id'] ?? 0)));
 }
 
 $error = '';
@@ -95,13 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['invoice_cancellation_disabled'] = $invoiceCancellationDisabled;
                 session_write_close();
                 $roleId = (int) ($row['RoleId'] ?? 0);
-                $target = 'dashboard.php';
-                if ($roleId === ROLE_ACCOUNTS) {
-                    $target = 'gift_codes.php';
-                } elseif ($roleId === ROLE_FRANCHISE_OFFICER) {
-                    $target = 'Franchise-leads.php';
-                }
-                allureone_redirect($target);
+                allureone_redirect(allureone_home_path_for_role($roleId));
                 exit;
             }
         }

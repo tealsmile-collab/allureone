@@ -10,6 +10,20 @@ require_not_franchise_officer_role();
 header('Content-Type: application/json; charset=utf-8');
 set_time_limit(180);
 
+$user = current_user();
+$roleId = (int) ($user['role_id'] ?? 0);
+if (!in_array($roleId, [ROLE_SUPERADMIN, ROLE_ADMIN, ROLE_MANAGER], true)) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'Access denied.']);
+    exit;
+}
+$canViewAllBranches = in_array($roleId, [ROLE_SUPERADMIN, ROLE_ADMIN], true);
+$userBranchId = isset($user['branch_id']) && (int) $user['branch_id'] > 0 ? (int) $user['branch_id'] : 0;
+if (!$canViewAllBranches && $userBranchId <= 0) {
+    echo json_encode(['ok' => false, 'error' => 'No branch linked to your account.']);
+    exit;
+}
+
 $curY = (int) date('Y');
 $curM = (int) date('n');
 
@@ -295,10 +309,21 @@ function sales_target_sort_rows_by_percent_desc(array $rows): array
 
 $branches = [];
 try {
-    $stmt = db()->query(
-        'SELECT id, business_name, locality FROM allureone_branch WHERE isActive = 1 ORDER BY business_name ASC'
-    );
-    $branches = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    if ($canViewAllBranches) {
+        $stmt = db()->query(
+            'SELECT id, business_name, locality FROM allureone_branch WHERE isActive = 1 ORDER BY business_name ASC'
+        );
+        $branches = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } else {
+        $stmt = db()->prepare(
+            'SELECT id, business_name, locality
+             FROM allureone_branch
+             WHERE isActive = 1 AND id = :id
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $userBranchId]);
+        $branches = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
     $branches = array_values(array_filter(
         $branches,
         static fn (array $branch): bool => !sales_target_branch_is_vadodara($branch)

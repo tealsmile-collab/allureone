@@ -7,10 +7,16 @@ require_login();
 require_not_accounts_role();
 require_not_franchise_officer_role();
 
+$user = current_user();
+$roleId = (int) ($user['role_id'] ?? 0);
+if (!in_array($roleId, [ROLE_SUPERADMIN, ROLE_ADMIN, ROLE_MANAGER], true)) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+
 $curY = (int) date('Y');
 $curM = (int) date('n');
-$user = current_user();
-$salesTargetShowProjection = ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN);
+$salesTargetShowProjection = ($roleId === ROLE_ADMIN);
 
 $pageTitle = 'Sales target';
 $activeNav = 'sales_target';

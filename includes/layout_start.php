@@ -52,6 +52,9 @@ $homeHref = allureone_home_path_for_role($userRoleId);
             <?php if ($canAppointments): ?>
                 <a class="sidebar__link<?= ($activeNav === 'appointments') ? ' is-active' : '' ?>" href="appointment.php">Appointments</a>
             <?php endif; ?>
+            <?php if ($userRoleId === ROLE_SUPERADMIN): ?>
+                <a class="sidebar__link<?= ($activeNav === 'invoice') ? ' is-active' : '' ?>" href="invoice.php">Invoice</a>
+            <?php endif; ?>
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'franchise_leads') ? ' is-active' : '' ?>" href="Franchise-leads.php">Franchise Leads</a>
             <?php endif; ?>

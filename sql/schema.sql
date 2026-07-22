@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS allureone_branch (
   locality VARCHAR(255) NULL,
   vendor_id INT NOT NULL,
   isActive TINYINT(1) NOT NULL DEFAULT 1,
+  isDingg TINYINT(1) NOT NULL DEFAULT 0,
+  enableSaleRecord TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_branch_vendor (vendor_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

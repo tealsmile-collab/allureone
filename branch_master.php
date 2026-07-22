@@ -20,7 +20,7 @@ if (isset($flash[$mk])) {
 $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $editRow = null;
 if ($editId > 0) {
-    $es = $pdo->prepare('SELECT id, business_name, locality, vendor_id, isActive FROM allureone_branch WHERE id = :id LIMIT 1');
+    $es = $pdo->prepare('SELECT id, business_name, locality, vendor_id, isActive, isDingg, enableSaleRecord FROM allureone_branch WHERE id = :id LIMIT 1');
     $es->execute(['id' => $editId]);
     $editRow = $es->fetch();
     if ($editRow === false) {
@@ -56,6 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messageType = 'error';
         } elseif ($action === 'update') {
             $isActive = isset($_POST['is_active']) ? 1 : 0;
+            $isDingg = isset($_POST['is_dingg']) ? 1 : 0;
+            $enableSaleRecord = isset($_POST['enable_sale_record']) ? 1 : 0;
             if ($id < 1) {
                 $message = 'Invalid branch.';
                 $messageType = 'error';
@@ -68,21 +70,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $upd = $pdo->prepare(
                         'UPDATE allureone_branch
-                         SET business_name = :n, locality = :l, vendor_id = :v, isActive = :a
+                         SET business_name = :n, locality = :l, vendor_id = :v, isActive = :a,
+                             isDingg = :d, enableSaleRecord = :s
                          WHERE id = :id'
                     );
-                    $upd->execute(['n' => $name, 'l' => $locality, 'v' => $vendorId, 'a' => $isActive, 'id' => $id]);
+                    $upd->execute([
+                        'n' => $name,
+                        'l' => $locality,
+                        'v' => $vendorId,
+                        'a' => $isActive,
+                        'd' => $isDingg,
+                        's' => $enableSaleRecord,
+                        'id' => $id,
+                    ]);
                     header('Location: branch_master.php?msg=branch_updated');
                     exit;
                 }
             }
         } else {
+            $isDingg = isset($_POST['is_dingg']) ? 1 : 0;
+            $enableSaleRecord = isset($_POST['enable_sale_record']) ? 1 : 0;
             try {
                 $ins = $pdo->prepare(
-                    'INSERT INTO allureone_branch (id, business_name, locality, vendor_id, isActive)
-                     VALUES (:id, :n, :l, :v, 1)'
+                    'INSERT INTO allureone_branch (id, business_name, locality, vendor_id, isActive, isDingg, enableSaleRecord)
+                     VALUES (:id, :n, :l, :v, 1, :d, :s)'
                 );
-                $ins->execute(['id' => $id, 'n' => $name, 'l' => $locality, 'v' => $vendorId]);
+                $ins->execute([
+                    'id' => $id,
+                    'n' => $name,
+                    'l' => $locality,
+                    'v' => $vendorId,
+                    'd' => $isDingg,
+                    's' => $enableSaleRecord,
+                ]);
                 header('Location: branch_master.php?msg=branch_created');
                 exit;
             } catch (PDOException $e) {
@@ -95,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $list = $pdo->query(
-    'SELECT id, business_name, locality, vendor_id, isActive FROM allureone_branch ORDER BY id ASC'
+    'SELECT id, business_name, locality, vendor_id, isActive, isDingg, enableSaleRecord FROM allureone_branch ORDER BY id ASC'
 )->fetchAll();
 
 $pageTitle = 'Branch Master';
@@ -136,6 +156,18 @@ require __DIR__ . '/includes/layout_start.php';
                     Active
                 </label>
             </div>
+            <div class="form__row form__row--check">
+                <label class="check-label">
+                    <input type="checkbox" name="is_dingg" value="1"<?= ((int) ($editRow['isDingg'] ?? 0) === 1) ? ' checked' : '' ?>>
+                    Dingg software
+                </label>
+            </div>
+            <div class="form__row form__row--check">
+                <label class="check-label">
+                    <input type="checkbox" name="enable_sale_record" value="1"<?= ((int) ($editRow['enableSaleRecord'] ?? 0) === 1) ? ' checked' : '' ?>>
+                    Enable sale record
+                </label>
+            </div>
             <div class="form__actions">
                 <button class="btn btn--primary" type="submit">Save changes</button>
                 <a class="btn btn--ghost" href="branch_master.php">Cancel</a>
@@ -171,6 +203,18 @@ require __DIR__ . '/includes/layout_start.php';
                 <input id="vendor_id" name="vendor_id" type="number" min="1" required
                        value="<?= (!$editId && isset($_POST['vendor_id']) && ($_POST['_action'] ?? '') === 'create') ? (int) $_POST['vendor_id'] : 11179 ?>">
             </div>
+            <div class="form__row form__row--check">
+                <label class="check-label">
+                    <input type="checkbox" name="is_dingg" value="1">
+                    Dingg software
+                </label>
+            </div>
+            <div class="form__row form__row--check">
+                <label class="check-label">
+                    <input type="checkbox" name="enable_sale_record" value="1">
+                    Enable sale record
+                </label>
+            </div>
             <button class="btn btn--primary" type="submit">Create branch</button>
         </form>
     </div>
@@ -191,6 +235,8 @@ require __DIR__ . '/includes/layout_start.php';
                             <th>Locality</th>
                             <th>Vendor ID</th>
                             <th>Active</th>
+                            <th>Dingg</th>
+                            <th>Sale record</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -202,6 +248,8 @@ require __DIR__ . '/includes/layout_start.php';
                                 <td><?= e((string) ($b['locality'] ?? '')) ?></td>
                                 <td><?= (int) $b['vendor_id'] ?></td>
                                 <td><?= ((int) $b['isActive'] === 1) ? 'Yes' : 'No' ?></td>
+                                <td><?= ((int) ($b['isDingg'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
+                                <td><?= ((int) ($b['enableSaleRecord'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
                                 <td class="table-actions"><a href="branch_master.php?edit=<?= (int) $b['id'] ?>">Edit</a></td>
                             </tr>
                         <?php endforeach; ?>

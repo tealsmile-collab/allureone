@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS allureone_branch (
   locality VARCHAR(255) NULL,
   vendor_id INT NOT NULL,
   isActive TINYINT(1) NOT NULL DEFAULT 1,
+  isDingg TINYINT(1) NOT NULL DEFAULT 0,
+  enableSaleRecord TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_branch_vendor (vendor_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -335,6 +337,28 @@ try {
     if (!isset($flIndexSet['uq_franchise_leads_web_submission'])) {
         $pdo->exec('ALTER TABLE allureone_franchise_leads ADD UNIQUE KEY uq_franchise_leads_web_submission (web_submission_id)');
     }
+
+    $branchCols = $pdo->query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'allureone_branch'"
+    )->fetchAll(PDO::FETCH_COLUMN);
+    $branchColSet = is_array($branchCols) ? array_flip(array_map('strval', $branchCols)) : [];
+    if (!isset($branchColSet['isDingg'])) {
+        $pdo->exec('ALTER TABLE allureone_branch ADD COLUMN isDingg TINYINT(1) NOT NULL DEFAULT 0');
+        $pdo->exec(
+            'UPDATE allureone_branch b
+             INNER JOIN (
+                 SELECT DISTINCT branch_id
+                 FROM allureone_session_data
+                 WHERE branch_id IS NOT NULL AND TRIM(session_key) <> ""
+             ) s ON s.branch_id = b.id
+             SET b.isDingg = 1'
+        );
+    }
+    if (!isset($branchColSet['enableSaleRecord'])) {
+        $pdo->exec('ALTER TABLE allureone_branch ADD COLUMN enableSaleRecord TINYINT(1) NOT NULL DEFAULT 0');
+    }
+
     $oldStatusTable = (int) $pdo->query(
         "SELECT COUNT(*) FROM information_schema.TABLES
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'allureone_franchise_lead_status'"

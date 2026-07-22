@@ -194,6 +194,37 @@ function sales_target_sort_branches(array $branches): array
 }
 
 /**
+ * Sum of manual sale records for a branch in [startDate, endDate].
+ */
+function sales_target_sale_record_mtd(int $branchId, string $startDate, string $endDate): float
+{
+    if ($branchId <= 0) {
+        return 0.0;
+    }
+    try {
+        $st = db()->prepare(
+            'SELECT COALESCE(SUM(TotalSale), 0)
+             FROM allureone_salerecord
+             WHERE BranchId = :b
+               AND IsActive = 1
+               AND SaleDate >= :s
+               AND SaleDate <= :e'
+        );
+        $st->execute([
+            'b' => $branchId,
+            's' => $startDate,
+            'e' => $endDate,
+        ]);
+
+        return (float) $st->fetchColumn();
+    } catch (PDOException $e) {
+        error_log('AllureOne sales_target sale record MTD failed: ' . $e->getMessage());
+    }
+
+    return 0.0;
+}
+
+/**
  *
  * @return array<string, mixed>
  */
@@ -203,6 +234,8 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
     $loc = trim((string) ($branch['locality'] ?? ''));
     $bn = trim((string) ($branch['business_name'] ?? ''));
     $label = $loc !== '' ? $loc : ($bn !== '' ? $bn : ('Branch #' . $bid));
+    $isDingg = (int) ($branch['isDingg'] ?? 0) === 1;
+    $enableSaleRecord = (int) ($branch['enableSaleRecord'] ?? 0) === 1;
 
     $blank = [
         'branch_id' => $bid,
@@ -218,35 +251,68 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
         'projection' => null,
     ];
 
-    $token = sales_target_branch_session_key($bid);
-    if ($token === '') {
+    if (!$isDingg && !$enableSaleRecord) {
         return $blank;
     }
 
-    $blank['has_token'] = true;
-    $resp = sales_target_fetch_for_branch($token, $startDate, $endDate);
-    $http = (int) ($resp['http'] ?? 0);
-    $body = (string) ($resp['body'] ?? '');
+    $apiTarget = null;
+    $apiAchieved = null;
+    $packageAchieved = null;
+    $hasToken = false;
 
-    if (!($resp['ok'] ?? false) || dingg_response_looks_unauthorized($http, $body) || $http < 200 || $http >= 300) {
-        error_log('AllureOne sales_target API branch ' . $bid . ' HTTP ' . $http);
+    if ($isDingg) {
+        $token = sales_target_branch_session_key($bid);
+        $hasToken = $token !== '';
+        $blank['has_token'] = $hasToken;
+        if ($hasToken) {
+            $resp = sales_target_fetch_for_branch($token, $startDate, $endDate);
+            $http = (int) ($resp['http'] ?? 0);
+            $body = (string) ($resp['body'] ?? '');
+
+            if (($resp['ok'] ?? false) && !dingg_response_looks_unauthorized($http, $body) && $http >= 200 && $http < 300) {
+                $metrics = sales_target_parse_response($body);
+                if ($metrics !== null) {
+                    $apiTarget = $metrics['total_sales'];
+                    $apiAchieved = $metrics['total_sales_achieved'];
+                    $packageAchieved = $metrics['package_sales_achieved'];
+                }
+            } else {
+                error_log('AllureOne sales_target API branch ' . $bid . ' HTTP ' . $http);
+            }
+        }
+    }
+
+    $saleRecordMtd = 0.0;
+    if ($enableSaleRecord) {
+        $saleRecordMtd = sales_target_sale_record_mtd($bid, $startDate, $endDate);
+    }
+
+    $achieved = null;
+    if ($isDingg && $enableSaleRecord) {
+        // API MTD + sale-record totals for the month
+        if ($apiAchieved === null && !$hasToken) {
+            // Dingg enabled but no usable API data — still show sale-record MTD
+            $achieved = $saleRecordMtd;
+        } else {
+            $achieved = (float) ($apiAchieved ?? 0.0) + $saleRecordMtd;
+        }
+    } elseif ($enableSaleRecord) {
+        $achieved = $saleRecordMtd;
+    } elseif ($apiAchieved !== null) {
+        $achieved = $apiAchieved;
+    } else {
         return $blank;
     }
 
-    $metrics = sales_target_parse_response($body);
-    if ($metrics === null) {
-        return $blank;
-    }
+    $totalSales = $apiTarget;
+    $remaining = ($totalSales !== null) ? max(0.0, (float) $totalSales - (float) $achieved) : null;
 
-    $totalSales = $metrics['total_sales'];
-    $achieved = $metrics['total_sales_achieved'];
-    $packageAchieved = $metrics['package_sales_achieved'];
-    $remaining = max(0.0, $totalSales - $achieved);
-
-    $expectedAvg = $daysInMonth > 0 ? (int) ceil($totalSales / $daysInMonth) : null;
-    $mtdAvg = $daysPassed > 0 ? (int) ceil($achieved / $daysPassed) : null;
-    $remainingSale = (int) ceil($remaining);
-    $remainingExpectedAvg = ($daysRemaining > 0)
+    $expectedAvg = ($totalSales !== null && $daysInMonth > 0)
+        ? (int) ceil((float) $totalSales / $daysInMonth)
+        : null;
+    $mtdAvg = $daysPassed > 0 ? (int) ceil((float) $achieved / $daysPassed) : null;
+    $remainingSale = $remaining !== null ? (int) ceil($remaining) : null;
+    $remainingExpectedAvg = ($remaining !== null && $daysRemaining > 0)
         ? (int) ceil($remaining / $daysRemaining)
         : null;
     $projection = ($mtdAvg !== null && $daysInMonth > 0) ? $mtdAvg * $daysInMonth : null;
@@ -254,7 +320,7 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
     return [
         'branch_id' => $bid,
         'branch_name' => $label,
-        'has_token' => true,
+        'has_token' => $hasToken,
         'monthly_target' => $totalSales,
         'expected_avg' => $expectedAvg,
         'mtd' => $achieved,
@@ -316,12 +382,13 @@ $branches = [];
 try {
     if ($canViewAllBranches) {
         $stmt = db()->query(
-            'SELECT id, business_name, locality FROM allureone_branch WHERE isActive = 1 ORDER BY business_name ASC'
+            'SELECT id, business_name, locality, isDingg, enableSaleRecord
+             FROM allureone_branch WHERE isActive = 1 ORDER BY business_name ASC'
         );
         $branches = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } else {
         $stmt = db()->prepare(
-            'SELECT id, business_name, locality
+            'SELECT id, business_name, locality, isDingg, enableSaleRecord
              FROM allureone_branch
              WHERE isActive = 1 AND id = :id
              LIMIT 1'

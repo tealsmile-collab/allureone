@@ -25,6 +25,36 @@ function allureone_home_path_for_role(int $roleId): string
     return 'dashboard.php';
 }
 
+function allureone_home_path_for_user(?array $user = null): string
+{
+    $u = $user ?? current_user();
+    if (is_array($u) && !empty($u['record_sale'])) {
+        return 'sale_record.php';
+    }
+
+    return allureone_home_path_for_role((int) ($u['role_id'] ?? 0));
+}
+
+function can_access_sale_record(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+
+    return !empty($u['record_sale']);
+}
+
+function require_sale_record_access(): void
+{
+    require_login();
+    if (!can_access_sale_record()) {
+        http_response_code(403);
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied. Sale Record permission required.</p><p><a href="' . htmlspecialchars(allureone_home_path_for_user(), ENT_QUOTES, 'UTF-8') . '">Home</a></p></body></html>';
+        exit;
+    }
+}
+
 function can_access_appointments(?array $user = null): bool
 {
     $u = $user ?? current_user();
@@ -69,6 +99,7 @@ function current_user(): ?array
         'full_name' => (string) $_SESSION['full_name'],
         'branch_id' => isset($_SESSION['branch_id']) ? (int) $_SESSION['branch_id'] : null,
         'role_id' => (int) $_SESSION['role_id'],
+        'record_sale' => !empty($_SESSION['record_sale']),
         'invoice_cancellation_disabled' => !empty($_SESSION['invoice_cancellation_disabled']),
     ];
 }
@@ -149,6 +180,8 @@ function login_user(array $row): void
     $_SESSION['branch_id'] = $branch !== null && $branch !== '' ? (int) $branch : null;
     $role = $row['role_id'] ?? $row['RoleId'] ?? 0;
     $_SESSION['role_id'] = (int) $role;
+    $recordSale = $row['record_sale'] ?? $row['RecordSale'] ?? 0;
+    $_SESSION['record_sale'] = ((int) $recordSale === 1);
 }
 
 /** Stable synthetic user id for Dingg-only login (no allureone_users row). */

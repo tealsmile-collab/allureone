@@ -32,12 +32,30 @@ CREATE TABLE IF NOT EXISTS allureone_users (
   BranchId INT NULL,
   RoleId INT NOT NULL,
   isactive TINYINT(1) NOT NULL DEFAULT 1,
+  RecordSale TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   UNIQUE KEY uq_allureone_login (loginname),
   KEY idx_user_branch (BranchId),
   KEY idx_user_role (RoleId),
   CONSTRAINT fk_allureone_user_branch FOREIGN KEY (BranchId) REFERENCES allureone_branch (id),
   CONSTRAINT fk_allureone_user_role FOREIGN KEY (RoleId) REFERENCES allureone_roles (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS allureone_salerecord (
+  id INT NOT NULL AUTO_INCREMENT,
+  BranchId INT NOT NULL,
+  SaleDate DATE NOT NULL,
+  TotalSale DECIMAL(20,2) NOT NULL,
+  CreatedBy INT NULL,
+  CreatedDate DATETIME NOT NULL,
+  UpdatedBy INT NULL,
+  UpdatedDate DATETIME NULL,
+  IsActive TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_salerecord_branch_date (BranchId, SaleDate),
+  KEY idx_salerecord_branch (BranchId),
+  KEY idx_salerecord_date (SaleDate),
+  CONSTRAINT fk_salerecord_branch FOREIGN KEY (BranchId) REFERENCES allureone_branch (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS allureone_giftcard (

@@ -6,8 +6,7 @@ require_once __DIR__ . '/bootstrap.php';
 const ALLUREONE_REMEMBER_LOGIN_COOKIE = 'allureone_remember_loginname';
 
 if (current_user() !== null) {
-    $cu = current_user();
-    allureone_redirect(allureone_home_path_for_role((int) ($cu['role_id'] ?? 0)));
+    allureone_redirect(allureone_home_path_for_user());
 }
 
 $error = '';
@@ -40,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $pdo = db();
             $st = $pdo->prepare(
-                'SELECT id, loginname, password, FullName, BranchId, RoleId, isactive
+                'SELECT id, loginname, password, FullName, BranchId, RoleId, isactive, RecordSale
                  FROM allureone_users
                  WHERE loginname = :login
                  LIMIT 1'
@@ -85,11 +84,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'full_name' => $displayName,
                     'branch_id' => $branchId,
                     'role_id' => (int) ($row['RoleId'] ?? 0),
+                    'RecordSale' => (int) ($row['RecordSale'] ?? 0),
                 ]);
                 $_SESSION['invoice_cancellation_disabled'] = $invoiceCancellationDisabled;
                 session_write_close();
-                $roleId = (int) ($row['RoleId'] ?? 0);
-                allureone_redirect(allureone_home_path_for_role($roleId));
+                allureone_redirect(allureone_home_path_for_user());
                 exit;
             }
         }

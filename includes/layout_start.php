@@ -12,7 +12,8 @@ $isInvoiceCancellationEnabled = is_invoice_cancellation_enabled($user);
 $userRoleId = (int) ($user['role_id'] ?? 0);
 $isAppointmentStaffRole = ($userRoleId === ROLE_THERAPIST || $userRoleId === ROLE_HOUSEKEEPING);
 $canAppointments = can_access_appointments($user);
-$homeHref = allureone_home_path_for_role($userRoleId);
+$canSaleRecord = can_access_sale_record($user);
+$homeHref = allureone_home_path_for_user($user);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -43,6 +44,9 @@ $homeHref = allureone_home_path_for_role($userRoleId);
         <button type="button" class="sidebar__close-btn" id="mobileMenuClose" aria-label="Close menu">×</button>
         <a class="sidebar__brand" href="<?= e($homeHref) ?>"><?= e($appName) ?></a>
         <nav class="sidebar__nav">
+            <?php if ($canSaleRecord): ?>
+                <a class="sidebar__link<?= ($activeNav === 'sale_record') ? ' is-active' : '' ?>" href="sale_record.php">Sale Record</a>
+            <?php endif; ?>
             <?php if (!$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'dashboard') ? ' is-active' : '' ?>" href="dashboard.php">Dashboard</a>
                 <?php if ($isInvoiceCancellationEnabled): ?>

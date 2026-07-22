@@ -37,7 +37,7 @@ $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $editRow = null;
 if ($editId > 0) {
     $es = $pdo->prepare(
-        'SELECT id, loginname, FullName, MobileNo, EmailId, BranchId, RoleId, isactive FROM allureone_users WHERE id = :id LIMIT 1'
+        'SELECT id, loginname, FullName, MobileNo, EmailId, BranchId, RoleId, isactive, RecordSale FROM allureone_users WHERE id = :id LIMIT 1'
     );
     $es->execute(['id' => $editId]);
     $editRow = $es->fetch();
@@ -66,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'update') {
             $userId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
             $isActive = isset($_POST['is_active']) ? 1 : 0;
+            $recordSale = isset($_POST['record_sale']) ? 1 : 0;
             if ($userId < 1) {
                 $message = 'Invalid user.';
                 $messageType = 'error';
@@ -125,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         $hash = password_hash($password, PASSWORD_DEFAULT);
                                         $upd = $pdo->prepare(
                                             'UPDATE allureone_users SET loginname = :l, password = :p, FullName = :f,
-                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a WHERE id = :id'
+                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a, RecordSale = :rs WHERE id = :id'
                                         );
                                         $upd->execute([
                                             'l' => $loginname,
@@ -136,12 +137,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             'b' => $branchForDb,
                                             'r' => $roleId,
                                             'a' => $isActive,
+                                            'rs' => $recordSale,
                                             'id' => $userId,
                                         ]);
                                     } else {
                                         $upd = $pdo->prepare(
                                             'UPDATE allureone_users SET loginname = :l, FullName = :f,
-                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a WHERE id = :id'
+                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a, RecordSale = :rs WHERE id = :id'
                                         );
                                         $upd->execute([
                                             'l' => $loginname,
@@ -151,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             'b' => $branchForDb,
                                             'r' => $roleId,
                                             'a' => $isActive,
+                                            'rs' => $recordSale,
                                             'id' => $userId,
                                         ]);
                                     }
@@ -186,6 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Please select a role.';
             $messageType = 'error';
         } else {
+            $recordSale = isset($_POST['record_sale']) ? 1 : 0;
             $branchForDb = null;
             if ($branchId > 0) {
                 $bchk = $pdo->prepare('SELECT COUNT(*) FROM allureone_branch WHERE id = :id AND isActive = 1');
@@ -209,8 +213,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $hash = password_hash($passwordForHash, PASSWORD_DEFAULT);
                     try {
                         $ins = $pdo->prepare(
-                            'INSERT INTO allureone_users (loginname, password, FullName, MobileNo, EmailId, BranchId, RoleId, isactive)
-                             VALUES (:l, :p, :f, :m, :e, :b, :r, 1)'
+                            'INSERT INTO allureone_users (loginname, password, FullName, MobileNo, EmailId, BranchId, RoleId, isactive, RecordSale)
+                             VALUES (:l, :p, :f, :m, :e, :b, :r, 1, :rs)'
                         );
                         $ins->execute([
                             'l' => $loginname,
@@ -220,6 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'e' => $emailId !== '' ? $emailId : null,
                             'b' => $branchForDb,
                             'r' => $roleId,
+                            'rs' => $recordSale,
                         ]);
                         header('Location: user_master.php?msg=user_created');
                         exit;
@@ -239,7 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $list = $pdo->query(
-    'SELECT u.id, u.loginname, u.FullName, u.MobileNo, u.EmailId, u.BranchId, u.RoleId, u.isactive,
+    'SELECT u.id, u.loginname, u.FullName, u.MobileNo, u.EmailId, u.BranchId, u.RoleId, u.isactive, u.RecordSale,
             b.business_name, b.locality, r.RoleName
      FROM allureone_users u
      LEFT JOIN allureone_branch b ON b.id = u.BranchId
@@ -320,6 +325,12 @@ require __DIR__ . '/includes/layout_start.php';
                     Active
                 </label>
             </div>
+            <div class="form__row form__row--check">
+                <label class="check-label">
+                    <input type="checkbox" name="record_sale" value="1"<?= ((int) ($editRow['RecordSale'] ?? 0) === 1) ? ' checked' : '' ?>>
+                    Record Sale
+                </label>
+            </div>
             <div class="form__actions">
                 <button class="btn btn--primary" type="submit">Save changes</button>
                 <a class="btn btn--ghost" href="user_master.php">Cancel</a>
@@ -384,6 +395,12 @@ require __DIR__ . '/includes/layout_start.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+            <div class="form__row form__row--check">
+                <label class="check-label">
+                    <input type="checkbox" name="record_sale" value="1"<?= (!$editId && isset($_POST['record_sale']) && ($_POST['_action'] ?? '') === 'create') ? ' checked' : '' ?>>
+                    Record Sale
+                </label>
+            </div>
             <button class="btn btn--primary" type="submit">Create user</button>
         </form>
     </div>
@@ -406,6 +423,7 @@ require __DIR__ . '/includes/layout_start.php';
                             <th>Branch</th>
                             <th>Role</th>
                             <th>Active</th>
+                            <th>Record Sale</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -424,6 +442,7 @@ require __DIR__ . '/includes/layout_start.php';
                                 </td>
                                 <td><?= e((string) $u['RoleName']) ?></td>
                                 <td><?= ((int) $u['isactive'] === 1) ? 'Yes' : 'No' ?></td>
+                                <td><?= ((int) ($u['RecordSale'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
                                 <td class="table-actions"><a href="user_master.php?edit=<?= (int) $u['id'] ?>">Edit</a></td>
                             </tr>
                         <?php endforeach; ?>

@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a2e24">
+  <meta name="description" content="Digital spa menu — Allure Thai Spa & Wellness, Ghodbunder Road, Thane. Book your wellness ritual.">
+  <title>Allure Thai Spa · Thane Menu</title>
+  <link rel="preconnect" href="https://allurethaispa.in" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #14241c;
+      --forest: #1a2e24;
+      --moss: #2f4a3a;
+      --gold: #c4a46a;
+      --gold-soft: #e8d5a8;
+      --sand: #f4efe6;
+      --cream: #faf7f1;
+      --mist: #e7efe8;
+      --card: #ffffff;
+      --muted: #5d6f66;
+      --line: rgba(26, 46, 36, 0.10);
+      --shadow: 0 18px 50px rgba(20, 36, 28, 0.12);
+      --radius: 22px;
+      --safe-b: env(safe-area-inset-bottom, 0px);
+      --safe-t: env(safe-area-inset-top, 0px);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Outfit, system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(196,164,106,.18), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(47,74,58,.10), transparent 45%),
+        linear-gradient(180deg, #f7f3eb 0%, var(--cream) 40%, #eef3ef 100%);
+      min-height: 100vh;
+      padding-bottom: calc(88px + var(--safe-b));
+    }
+    img { max-width: 100%; display: block; }
+    a { color: inherit; }
+    .wrap { width: min(720px, 100%); margin: 0 auto; padding: 0 1rem; }
+
+    .hero {
+      position: relative;
+      color: #fff;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .hero__media {
+      position: relative;
+      z-index: 0;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      min-height: 240px;
+      max-height: 380px;
+      background: #0f1c16;
+    }
+    .hero__media img {
+      width: 100%; height: 100%;
+      max-width: none;
+      object-fit: cover;
+      object-position: center 55%;
+      filter: saturate(1.08) contrast(1.06) brightness(.95);
+    }
+    .hero__veil {
+      position: absolute; inset: 0; z-index: 1; pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(10,18,14,.18) 0%, rgba(10,18,14,.28) 40%, rgba(10,18,14,.78) 100%),
+        radial-gradient(520px 220px at 72% 18%, rgba(196,164,106,.22), transparent 70%);
+    }
+    .hero__inner {
+      position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+      padding: calc(.75rem + var(--safe-t)) 1.15rem 1.2rem;
+      display: flex; flex-direction: column; justify-content: flex-end;
+      width: min(720px, 100%); margin: 0 auto;
+      box-sizing: border-box;
+    }
+    .brand-mark {
+      width: 48px; height: 48px; border-radius: 14px;
+      border: 1px solid rgba(232,213,168,.45);
+      background: rgba(255,255,255,.08);
+      backdrop-filter: blur(8px);
+      object-fit: cover; margin-bottom: .65rem;
+    }
+    .eyebrow {
+      letter-spacing: .22em; text-transform: uppercase;
+      font-size: .72rem; font-weight: 600; color: var(--gold-soft);
+      margin: 0 0 .55rem;
+    }
+    .hero h1 {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 600; font-size: clamp(1.85rem, 7vw, 3.2rem);
+      line-height: .98; margin: 0 0 .55rem; max-width: 12ch;
+    }
+    .hero p {
+      margin: 0; max-width: 34ch; font-weight: 300;
+      font-size: clamp(.9rem, 3.4vw, 1.02rem); line-height: 1.4;
+      color: rgba(255,255,255,.9);
+    }
+    @media (min-width: 720px) {
+      .hero__media {
+        aspect-ratio: 16 / 9;
+        min-height: 280px;
+        max-height: 420px;
+      }
+      .hero__media img { object-position: center 50%; }
+      .brand-mark { width: 56px; height: 56px; border-radius: 16px; }
+    }
+    .hero__meta {
+      display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.15rem;
+    }
+    .pill {
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .45rem .75rem; border-radius: 999px;
+      background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.18);
+      font-size: .78rem; font-weight: 500;
+    }
+
+    .branch {
+      margin: -1.35rem auto 1.1rem; position: relative; z-index: 2;
+      background: rgba(255,255,255,.86); backdrop-filter: blur(14px);
+      border: 1px solid rgba(196,164,106,.35); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 1rem 1.05rem;
+    }
+    .branch strong {
+      display: block; font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: 1.35rem; font-weight: 600; margin-bottom: .2rem;
+    }
+    .branch span { color: var(--muted); font-size: .92rem; line-height: 1.4; display: block; }
+    .branch__ext {
+      display: inline-flex !important; align-items: center; gap: .4rem;
+      margin-top: .2rem;
+    }
+    .branch__ext svg {
+      width: 1rem; height: 1rem; flex: 0 0 auto;
+      fill: var(--forest); opacity: .85;
+    }
+    .trust {
+      display: flex; flex-wrap: wrap; gap: .45rem;
+      margin: -.35rem auto .85rem;
+      padding-bottom: .95rem;
+      border-bottom: 1px solid rgba(196,164,106,.45);
+    }
+    .trust span {
+      display: inline-flex; align-items: center;
+      padding: .4rem .7rem; border-radius: 999px;
+      background: rgba(26,46,36,.05);
+      border: 1px solid rgba(196,164,106,.4);
+      color: var(--forest); font-size: .78rem; font-weight: 600;
+      line-height: 1.25;
+    }
+
+    .nav-cats {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(250,247,241,.92); backdrop-filter: blur(12px);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: .65rem 0; margin: .15rem 0 .35rem;
+    }
+    .nav-cats__wrap {
+      position: relative;
+    }
+    .nav-cats__wrap::before,
+    .nav-cats__wrap::after {
+      content: ""; position: absolute; top: 0; bottom: 0; width: 2rem;
+      pointer-events: none; z-index: 2; opacity: 0; transition: opacity .2s ease;
+    }
+    .nav-cats__wrap::before {
+      left: 0;
+      background: linear-gradient(90deg, rgba(250,247,241,.98), transparent);
+    }
+    .nav-cats__wrap::after {
+      right: 0;
+      background: linear-gradient(270deg, rgba(250,247,241,.98), transparent);
+    }
+    .nav-cats__wrap.has-more-right::after { opacity: 1; }
+    .nav-cats__wrap.has-more-left::before { opacity: 1; }
+    .nav-cats__arrow {
+      position: absolute; top: 50%; z-index: 3;
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 1px solid rgba(196,164,106,.45);
+      background: rgba(255,255,255,.94);
+      color: var(--forest);
+      display: grid; place-items: center;
+      box-shadow: 0 4px 12px rgba(20,36,28,.1);
+      cursor: pointer; padding: 0;
+      opacity: 0; visibility: hidden; pointer-events: none;
+      transform: translateY(-50%);
+      transition: opacity .2s ease, visibility .2s ease;
+    }
+    .nav-cats__arrow svg { width: 14px; height: 14px; fill: currentColor; }
+    .nav-cats__arrow--left { left: .35rem; }
+    .nav-cats__arrow--right { right: .35rem; }
+    .nav-cats__wrap.has-more-left .nav-cats__arrow--left,
+    .nav-cats__wrap.has-more-right .nav-cats__arrow--right {
+      opacity: 1; visibility: visible; pointer-events: auto;
+    }
+    .nav-cats__scroller {
+      display: flex; gap: .45rem; overflow-x: auto;
+      padding: 0 1rem;
+      scroll-padding-inline: 1rem;
+      scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    .nav-cats__scroller::-webkit-scrollbar { display: none; }
+    .nav-cats button {
+      flex: 0 0 auto; border: 1px solid var(--line); background: #fff;
+      color: var(--forest); border-radius: 999px; padding: .55rem .9rem;
+      font: 600 .82rem Outfit, sans-serif; white-space: nowrap; cursor: pointer;
+    }
+    .nav-cats button.is-active {
+      background: var(--forest); color: #fff; border-color: var(--forest);
+    }
+    .nav-cats button:last-child { margin-right: 1.25rem; }
+
+    .section { padding: 1.15rem 0 0.35rem; }
+    .section__head {
+      display: flex; align-items: end; justify-content: space-between;
+      gap: .75rem; margin: 0 0 .85rem;
+    }
+    .section__head h2 {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: clamp(1.7rem, 5vw, 2.2rem); margin: 0; line-height: 1;
+    }
+    .section__head p { margin: .25rem 0 0; color: var(--muted); font-size: .9rem; }
+
+    .cards { display: grid; gap: 1rem; }
+    .card {
+      background: var(--card); border-radius: var(--radius);
+      border: 1px solid var(--line); overflow: hidden;
+      box-shadow: 0 10px 30px rgba(20,36,28,.06);
+    }
+    .card__media {
+      position: relative; aspect-ratio: 16/10; background: var(--mist); overflow: hidden;
+    }
+    .card__media img {
+      width: 100%; height: 100%; object-fit: cover;
+      transform: scale(1.01); transition: transform .6s ease;
+    }
+    .card:hover .card__media img { transform: scale(1.05); }
+    .badge {
+      position: absolute; top: .8rem; left: .8rem;
+      background: linear-gradient(135deg, var(--gold), #a88545);
+      color: #1a150c; font-size: .68rem; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      padding: .38rem .6rem; border-radius: 999px;
+    }
+    .card__body { padding: 1rem 1rem 1.1rem; }
+    .card__body h3 {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: 1.55rem; margin: 0 0 .45rem; line-height: 1.1;
+    }
+    .desc {
+      margin: 0 0 .85rem; color: var(--muted); font-size: .94rem; line-height: 1.5;
+    }
+    .label {
+      margin: 0 0 .4rem; font-size: .68rem; font-weight: 700;
+      letter-spacing: .14em; text-transform: uppercase; color: var(--moss);
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 .85rem; }
+    .chip {
+      display: inline-flex; align-items: center; gap: .25rem;
+      padding: .42rem .65rem; border-radius: 999px; font-size: .82rem; font-weight: 600;
+      background: var(--sand); color: var(--forest); border: 1px solid rgba(196,164,106,.28);
+    }
+    .chip--price { background: var(--mist); }
+    .chip--addon {
+      background: rgba(196,164,106,.16);
+      border-color: rgba(196,164,106,.45);
+      color: #6b5324;
+    }
+    .addon-example {
+      margin: 0 0 1rem; padding: .75rem .85rem;
+      border-radius: 14px; background: var(--sand);
+      border: 1px solid rgba(196,164,106,.35);
+      font-size: .88rem; line-height: 1.45; color: var(--forest);
+    }
+    .addon-example strong { color: var(--ink); }
+    .benefits {
+      margin: 0 0 1rem; padding: 0; list-style: none;
+      display: grid; gap: .35rem;
+    }
+    .benefits li {
+      position: relative; padding-left: 1rem; color: var(--ink);
+      font-size: .88rem; line-height: 1.35;
+    }
+    .benefits li::before {
+      content: ""; position: absolute; left: 0; top: .55em;
+      width: .45rem; height: .45rem; border-radius: 50%;
+      background: var(--gold);
+    }
+    .card__cta {
+      width: 100%; min-height: 48px; border: 0; border-radius: 14px;
+      background: linear-gradient(135deg, var(--forest), var(--moss));
+      color: #fff; font: 700 .95rem Outfit, sans-serif; cursor: pointer;
+    }
+
+    .note {
+      margin: 1.4rem auto 0; padding: 1rem;
+      border-radius: 18px; background: rgba(26,46,36,.04);
+      border: 1px dashed rgba(196,164,106,.45);
+      color: var(--muted); font-size: .88rem; line-height: 1.45;
+      text-align: center;
+    }
+
+    .fab {
+      position: fixed; z-index: 60; width: 54px; height: 54px;
+      border-radius: 50%; display: grid; place-items: center;
+      text-decoration: none; border: 0; cursor: pointer;
+      box-shadow: 0 12px 28px rgba(0,0,0,.18);
+      bottom: calc(.85rem + var(--safe-b));
+    }
+    .fab--wa { left: .85rem; background: #25D366; color: #fff; }
+    .fab--call { right: .85rem; background: var(--forest); color: #fff; }
+    .fab--top {
+      right: .85rem;
+      bottom: calc(4.4rem + var(--safe-b));
+      background: rgba(255,255,255,.94);
+      color: var(--forest);
+      border: 1px solid rgba(196,164,106,.45);
+      opacity: 0; visibility: hidden; pointer-events: none;
+      transform: translateY(8px);
+      transition: opacity .22s ease, transform .22s ease, visibility .22s ease;
+    }
+    .fab--top.is-on {
+      opacity: 1; visibility: visible; pointer-events: auto;
+      transform: translateY(0);
+    }
+    .fab svg { width: 24px; height: 24px; fill: currentColor; }
+
+    .toast {
+      position: fixed; left: 50%; bottom: calc(4.2rem + var(--safe-b));
+      transform: translateX(-50%) translateY(12px); opacity: 0;
+      background: var(--ink); color: #fff; padding: .7rem 1rem;
+      border-radius: 12px; font-size: .85rem; pointer-events: none;
+      transition: .25s ease; z-index: 70; width: max-content; max-width: 90vw;
+    }
+    .toast.is-on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (min-width: 720px) {
+      .cards { grid-template-columns: 1fr 1fr; }
+      .card--wide { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero__media">
+      <img src="https://allurethaispa.in/wp-content/uploads/2026/07/spa-06.png" alt="" fetchpriority="high" decoding="async">
+    </div>
+    <div class="hero__veil"></div>
+    <div class="hero__inner">
+      <img class="brand-mark" src="https://allurethaispa.in/wp-content/uploads/2026/01/cropped-alo-192x192.png" alt="Allure Thai Spa" width="64" height="64" decoding="async">
+      <h1>Allure Thai Spa &amp; Wellness</h1>
+      <p>Discover signature therapies, authentic Thai massages, and holistic wellness experiences tailored for total relaxation</p>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <section class="branch" aria-label="Branch details">
+      <span>7th Floor, The Byke Hotel, Ghodbunder Road · Thane</span>
+      <span style="margin-top:.35rem">Phone &amp; WhatsApp · <a href="tel:+919325994738">+91 93259 94738</a></span>
+      <span class="branch__ext" style="margin-top:.2rem" title="Phone Extension">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1.1-.2 1.2.4 2.5.6 3.8.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.7 21 3 13.3 3 3.9c0-.5.4-1 1-1H7c.6 0 1 .4 1 1 0 1.3.2 2.6.6 3.8.1.4 0 .8-.3 1.1l-2.2 2z"/></svg>
+        Extension · 350
+      </span>
+    </section>
+    <div class="trust" aria-label="Why guests choose us">
+      <span>Experienced Northeast Therapist</span>
+      <span>Personalized Wellness Experience</span>
+    </div>
+  </div>
+
+  <nav class="nav-cats" aria-label="Menu categories">
+    <div class="nav-cats__wrap" id="catNavWrap">
+      <button type="button" class="nav-cats__arrow nav-cats__arrow--left" id="catArrowLeft" aria-label="Scroll categories left">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 4.8l1.4 1.4L6.2 10H20v2H6.2l3.8 3.8-1.4 1.4L2.4 11l6.2-6.2z"/></svg>
+      </button>
+      <div class="nav-cats__scroller" id="catNav"></div>
+      <button type="button" class="nav-cats__arrow nav-cats__arrow--right" id="catArrowRight" aria-label="Scroll categories right">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 4.8L14 6.2 17.8 10H4v2h13.8L14 15.8l1.4 1.4 6.2-6.2-6.2-6.2z"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <main class="wrap" id="menuRoot"></main>
+
+  <p class="wrap note">
+    Taxes &amp; therapist availability may vary — our host will confirm your preferred ritual when you book.
+  </p>
+
+  <a class="fab fab--wa" id="waFab" href="https://wa.me/919325994738?text=Hello%2C%20I%20would%20like%20to%20book%20an%20appointment%20at%20Allure%20Thai%20Spa%20Ghodbunder%20Road%2C%20Thane." aria-label="WhatsApp">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5A11 11 0 0 0 2.1 17.3L1 23l5.9-1.5A11 11 0 1 0 20.5 3.5zm-8.5 17a9.1 9.1 0 0 1-4.6-1.3l-.3-.2-3.5.9.9-3.4-.2-.3a9.1 9.1 0 1 1 7.7 4.3zm5-6.8c-.3-.1-1.6-.8-1.9-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5c.1-.2.2-.3.3-.5s0-.4 0-.5-.6-1.5-.8-2-.2-.5-.5-.5h-.5c-.2 0-.5.1-.7.3a2.4 2.4 0 0 0-.8 1.8 4.2 4.2 0 0 0 .9 2.2 9.6 9.6 0 0 0 3.7 3.4 12 12 0 0 0 1.4.5 3.3 3.3 0 0 0 1.5.1 2.5 2.5 0 0 0 1.7-1.1 2 2 0 0 0 .1-1.1c-.1-.1-.3-.2-.6-.3z"/></svg>
+  </a>
+  <button type="button" class="fab fab--top" id="topBtn" aria-label="Back to top" title="Back to top">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5l7 7-1.4 1.4L13 8.3V20h-2V8.3L6.4 12.9 5 11.5l7-7z"/></svg>
+  </button>
+  <a class="fab fab--call" href="tel:+919325994738" aria-label="Call">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1.1-.2 1.2.4 2.5.6 3.8.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.7 21 3 13.3 3 3.9c0-.5.4-1 1-1H7c.6 0 1 .4 1 1 0 1.3.2 2.6.6 3.8.1.4 0 .8-.3 1.1l-2.2 2z"/></svg>
+  </a>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+  (function () {
+    var WA_BASE = 'https://wa.me/919325994738?text=';
+    var WA_DEFAULT = 'Hello, I would like to book an appointment at Allure Thai Spa Ghodbunder Road, Thane.';
+    /* Set true to show these services again */
+    var SHOW_BAMBOO_MASSAGE = false;
+    var SHOW_LULUR = false;
+    var SHOW_LYMPHATIC = false;
+    var SHOW_FACIAL_REFLEXOLOGY = false;
+    var SHOW_CANDLE_OIL = false;
+    var SHOW_LOMI_LOMI = false;
+    var SHOW_BODY_PAIN_RELIEF = false;
+    var SHOW_FRUIT_SCRUB = false;
+    var SHOW_CHOCOLATE_SCRUB = false;
+    var SHOW_COFFEE_SCRUB = false;
+    var SHOW_FOOT_SCRUB = false;
+    var SHOW_ALLURE_SIGNATURE = false;
+    var SHOW_SIGNATURE_WELLNESS = false;
+
+    function money(n) {
+      return '₹' + Number(n).toLocaleString('en-IN');
+    }
+    function minsLabel(raw) {
+      var n = String(raw).replace(/[^0-9]/g, '');
+      return n ? (n + ' Min') : String(raw);
+    }
+    function waLink(msg) {
+      return WA_BASE + encodeURIComponent(msg || WA_DEFAULT);
+    }
+    function toast(msg) {
+      var el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('is-on');
+      clearTimeout(toast._t);
+      toast._t = setTimeout(function () { el.classList.remove('is-on'); }, 2200);
+    }
+
+    var categories = [
+      {
+        id: 'classics',
+        title: 'Timeless Classic Therapies',
+        blurb: 'Full-body massages crafted for lasting calm, ease, and renewal.',
+        items: [
+          {
+            title: 'Swedish Massage',
+            desc: 'Soothing massage featuring long, gliding strokes and light-to-medium pressure to relax the body, ease tension and enhance overall circulation.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2025/01/Swedish-Massage-In-Mumbai--600x300.png',
+            durations: ['45 Min', '60 Min', '90 Min', '120 Min'],
+            prices: [{ d: '45 Min', p: 2500 }, { d: '60 Min', p: 2800 }, { d: '90 Min', p: 4000 }, { d: '120 Min', p: 4500 }],
+            benefits: ['Gentle full-body unwind', 'Improves circulation', 'Ideal first spa ritual'],
+            recommended: true,
+            herbalAddon: true
+          },
+          {
+            title: 'Deep Tissue Massage',
+            desc: 'Deeper pressure is beneficial in relaxation of chronic muscle tension of the body.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2025/03/Deep-Tissue-Massage.png',
+            durations: ['45 Min', '60 Min', '90 Min', '120 Min'],
+            prices: [{ d: '45 Min', p: 3000 }, { d: '60 Min', p: 3500 }, { d: '90 Min', p: 4799 }, { d: '120 Min', p: 5999 }],
+            benefits: ['Releases stubborn knots', 'Supports posture relief', 'Therapist favourite for tension'],
+            recommended: true,
+            herbalAddon: true
+          },
+          {
+            title: 'Balinese Massage',
+            desc: 'Combination of gentle stretches, acupressure, reflexology and aromatherapy that stimulate the flow of blood bringing a sense of calm and well being.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2025/04/Balinese-Massage-600x400.jpeg',
+            durations: ['45 Min', '60 Min', '90 Min', '120 Min'],
+            prices: [{ d: '45 Min', p: 3000 }, { d: '60 Min', p: 3500 }, { d: '90 Min', p: 4799 }, { d: '120 Min', p: 5999 }],
+            benefits: ['Stretch + pressure blend', 'Calms mind & body', 'Aromatic wellness finish'],
+            herbalAddon: true
+          },
+          {
+            title: 'Aromatherapy Massage',
+            desc: 'Indulge in a holistic ritual that nurtures body, mind, and spirit, guiding you into a profound state of relaxation with a curated blend of potent essential oils.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2024/02/essential-oils-oil-fragrance-2918183-768x511.jpg',
+            durations: ['45 Min', '60 Min', '90 Min', '120 Min'],
+            prices: [{ d: '45 Min', p: 2500 }, { d: '60 Min', p: 2800 }, { d: '90 Min', p: 3999 }, { d: '120 Min', p: 4799 }],
+            benefits: ['Essential oil immersion', 'Emotional reset', 'Sensorial luxury'],
+            herbalAddon: true
+          },
+          {
+            title: 'Thai Dry Massage',
+            desc: 'Traditional dry massage combining acupressure, assisted stretching and deep compression techniques inspired by yoga and Shiatsu to relieve tension and improve flexibility.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2026/07/thai-dry-massage.jpg',
+            durations: ['45 Min', '60 Min', '90 Min'],
+            prices: [{ d: '45 Min', p: 2500 }, { d: '60 Min', p: 3200 }, { d: '90 Min', p: 4500 }],
+            benefits: ['No oil required', 'Improves flexibility', 'Yoga-inspired stretches'],
+            herbalAddon: true
+          }
+        ]
+      },
+      {
+        id: 'enhancements',
+        title: 'Enhancements',
+        blurb: 'Elevate Timeless Classic Therapies with a powerful herbal finish.',
+        items: [
+          {
+            title: 'Thai Herbal Balm',
+            desc: 'Powerful herbal formulation that penetrates deep into muscles to relieve stiffness, stubborn knots and chronic pain. Add-on enhancement available with Timeless Classic Therapies.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/08/pexels-cottonbro-studio-3997983-768x1152.jpg',
+            durations: [],
+            prices: [{ d: 'Add-on', p: 999 }],
+            benefits: ['Pairs with Classic Therapies', 'Relieves stubborn knots', 'Deep herbal penetration'],
+            recommended: true,
+            wide: true,
+            isAddon: true,
+            addonExample: 'Example: Swedish Massage 45 Min ₹2,500 + Thai Herbal Balm ₹999 = ₹3,499'
+          }
+        ]
+      },
+      {
+        id: 'sudarshan',
+        title: 'Sudarshan Chikitsa',
+        blurb: 'Signature journeys for radiant renewal.',
+        items: [
+          {
+            title: 'Hot Stone Therapy',
+            desc: 'Indulgent therapy that promotes deep muscular relaxation through the strategic placement of smooth, water-heated basalt stones, melting away tension and restoring inner balance.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2024/02/stones-spa-massage-3184610-768x512.jpg',
+            durations: ['90 Min', '120 Min'],
+            prices: [{ d: '90 Min', p: 5499 }, { d: '120 Min', p: 6999 }],
+            benefits: ['Melt-away muscle ease', 'Warmth-led balance', 'Deep restorative calm'],
+            recommended: true,
+            herbalAddon: true
+          },
+          {
+            title: 'Potli Therapy',
+            desc: 'Herb-infused potli therapy helps reduce stiffness and soreness associated with conditions like spondylosis, frozen shoulder & arthritis. It also helps rejuvenate overall body functions.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/07/closeup-man-getting-back-massage-with-detox-herbal-balls-health-spa-768x512.jpg',
+            durations: ['90 Min', '120 Min'],
+            prices: [{ d: '90 Min', p: 5499 }, { d: '120 Min', p: 6999 }],
+            benefits: ['Herb-packed warmth', 'Joint & muscle comfort', 'Whole-body rejuvenation'],
+            herbalAddon: true
+          },
+          {
+            title: 'Lulur Javanese Body Spa',
+            desc: 'A traditional body polishing treatment that purifies the skin and promotes cell regeneration using a blend of natural spices, virgin coconut oil and yogurt.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/08/Untitled-design-12-768x320.jpg',
+            durations: ['90 Min'],
+            prices: [{ d: '90 Min', p: 7999 }],
+            benefits: ['Polished radiance', 'Natural spice ritual', 'Skin cell renewal'],
+            recommended: true,
+            wide: true,
+            hidden: !SHOW_LULUR
+          },
+          {
+            title: 'Abhyanga Therapy',
+            desc: 'Warm ayurvedic oil is applied to entire body using long, rhythmic strokes. Special techniques stimulate energy points & release blockages, helping to balance body and mind.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/07/masseur-does-back-massage-young-guy-beauty-salon-768x539.jpg',
+            durations: ['120 Min', '190 Min'],
+            prices: [{ d: '120 Min', p: 5499 }, { d: '190 Min', p: 7499 }],
+            benefits: ['Warm oil immersion', 'Energy point balance', 'Mind-body harmony'],
+            herbalAddon: true
+          },
+          {
+            title: 'Snehanam Therapy',
+            desc: 'Primary benefits are of four hand massage is to give a heightened stage of relaxation & release stress throughtout the body',
+            image: 'https://allurethaispa.in/wp-content/uploads/elementor/thumbs/Four-Hand-Massage-q8za1216vxds3uo0adusz4aghe2t4pvt06b7edpiwg.jpg',
+            durations: ['120 Min', '180 Min'],
+            prices: [{ d: '120 Min', p: 10199 }, { d: '180 Min', p: 17599 }],
+            benefits: ['Four-hand synchrony', 'Elevated relaxation', 'Full-body stress release'],
+            recommended: true,
+            herbalAddon: true
+          },
+          {
+            title: 'Candle Oil Massage',
+            desc: 'Experience the gentle warmth of melted candle oil that deeply nourishes the skin, promotes inner calm, and leaves you feeling relaxed, refreshed, and glowing.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/07/closeup-portrait-adult-beautiful-woman-relaxing-spa-salon-768x576.jpg',
+            durations: ['90 Min', '120 Min'],
+            prices: [{ d: '90 Min', p: 6499 }, { d: '120 Min', p: 8499 }],
+            benefits: ['Warm candle oil', 'Skin nourishment', 'Soft glowing finish'],
+            hidden: !SHOW_CANDLE_OIL
+          },
+          {
+            title: 'Allure Signature Massage',
+            desc: 'Experience the essence of Allure with this luxurious ritual featuring an invigorating exfoliation, seamlessly followed by a curated four-step massage journey that melts tension, enhances radiance, and leaves you in a state of pure relaxation',
+            image: 'https://allurethaispa.in/wp-content/uploads/2024/04/balinese-massage.jpg',
+            durations: ['90 Min', '120 Min'],
+            prices: [{ d: '90 Min', p: 6499 }, { d: '120 Min', p: 7499 }],
+            benefits: ['Exfoliate + massage journey', 'House signature ritual', 'Radiance & release'],
+            recommended: true,
+            hidden: !SHOW_ALLURE_SIGNATURE
+          },
+          {
+            title: 'Couple Massage',
+            desc: 'Two souls, one serene journey featuring synchronized therapies that melt away tension, creating a deeply relaxing escape for two, elevated with an exclusive gift to enhance your shared experience',
+            image: 'https://allurethaispa.in/wp-content/uploads/2026/05/spa-in-andheri-west-collage.webp',
+            durations: ['60 Min', '90 Min', '120 Min'],
+            prices: [{ d: '60 Min', p: 7999 }, { d: '90 Min', p: 8999 }, { d: '120 Min', p: 9999 }],
+            benefits: ['Side-by-side serenity', 'Shared escape for two', 'Exclusive gift included'],
+            recommended: true,
+            wide: true
+          }
+        ]
+      },
+      {
+        id: 'signature',
+        title: 'Signature Wellness',
+        blurb: 'Targeted therapies with global inspiration.',
+        hidden: !SHOW_SIGNATURE_WELLNESS,
+        items: [
+          {
+            title: 'Medical Massage (Lymphatic Drainage)',
+            desc: "Soothing, light-pressure treatment that encourages lymphatic flow, aiding in detoxification, reducing swelling, and restoring the body's natural balance. Perfect for relieving bloating and enhancing overall well-being",
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/08/WhatsApp-Image-2023-08-23-at-2.04.55-PM-1200x500.jpeg',
+            durations: ['60 Min', '90 Min'],
+            prices: [{ d: '60 Min', p: 4000 }, { d: '90 Min', p: 5000 }],
+            benefits: ['Supports detox flow', 'Reduces puffiness', 'Gentle restorative touch'],
+            hidden: !SHOW_LYMPHATIC
+          },
+          {
+            title: 'Lomi Lomi Massage (Hawaiian Therapy)',
+            desc: "Deeply relaxing Hawaiian healing massage known for its long, flowing, rhythmic strokes like ocean waves. It's not just a massage, it's a full mind & body experience",
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/08/pexels-anna-tarazevich-6560304-768x1152.jpg',
+            durations: ['60 Min', '90 Min'],
+            prices: [{ d: '60 Min', p: 4000 }, { d: '90 Min', p: 5000 }],
+            benefits: ['Ocean-wave strokes', 'Mind-body immersion', 'Profound softness'],
+            hidden: !SHOW_LOMI_LOMI
+          },
+          {
+            title: 'Bamboo Massage',
+            desc: 'Unique therapy using warm bamboo sticks to deeply relax muscles, boost blood circulation and enhance oxygen flow',
+            image: 'https://allurethaispa.in/wp-content/uploads/2024/04/balinese-massage-300x300.jpg',
+            durations: ['60 Min', '90 Min'],
+            prices: [{ d: '60 Min', p: 4000 }, { d: '90 Min', p: 5000 }],
+            benefits: ['Warm bamboo tools', 'Circulation boost', 'Deep muscle ease'],
+            hidden: !SHOW_BAMBOO_MASSAGE
+          },
+          {
+            title: 'Facial Reflexology',
+            desc: 'Rejuvenating therapy that stimulates key pressure points on the face to naturally lift and tone facial muscles. It supports lymphatic drainage, improves blood circulation, enhances radiance, and helps reduce the appearance of fine lines and wrinkles',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/07/closeup-portrait-adult-beautiful-woman-relaxing-spa-salon-768x576.jpg',
+            durations: ['30 Min', '60 Min'],
+            prices: [{ d: '30 Min', p: 2000 }, { d: '60 Min', p: 3500 }],
+            benefits: ['Natural face lift feel', 'Lymphatic glow', 'Fine-line support'],
+            hidden: !SHOW_FACIAL_REFLEXOLOGY
+          }
+        ]
+      },
+      {
+        id: 'holistic',
+        title: 'Holistic Healing',
+        blurb: 'Essential-oil therapies for mind & muscle.',
+        items: [
+          {
+            title: 'Tranquility Essential Oil Therapy',
+            desc: 'Recommended for anxiety and stress-related concerns. Essential oils: Lemongrass and Lavender. Soothing blend of lemongrass and lavender oils, known for their natural anxiety-reducing properties. This calming therapy promotes a sense of contentment and reassurance, helping you feel more at ease while easing emotional overwhelm and restoring a deep sense of well-being',
+            image: 'https://allurethaispa.in/wp-content/uploads/2024/02/essential-oils-oil-fragrance-2918183-768x511.jpg',
+            durations: ['90 Min'],
+            prices: [{ d: '90 Min', p: 6000 }],
+            benefits: ['Anxiety-soothing blend', 'Lavender + lemongrass', 'Emotional ease'],
+            recommended: true,
+            wide: true
+          },
+          {
+            title: 'Body Pain Relief Therapy',
+            desc: 'Recommended for body pain & inflammation. Essential oils: Lemongrass, Lavender, Eucalyptus, Clove, Chamomile, Ginger. Therapeutic massage designed to relieve muscle pain, stiffness and tension using targeted techniques with healing oils',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/07/masseur-does-back-massage-young-guy-beauty-salon-600x421.jpg',
+            durations: ['90 Min'],
+            prices: [{ d: '90 Min', p: 6000 }],
+            benefits: ['Pain & inflammation focus', 'Healing oil blend', 'Targeted relief'],
+            recommended: true,
+            wide: true,
+            hidden: !SHOW_BODY_PAIN_RELIEF
+          }
+        ]
+      },
+      {
+        id: 'body',
+        title: 'Body Treatments',
+        blurb: 'Polish, nourish and revive the skin.',
+        items: [
+          {
+            title: 'Fruit Scrub',
+            desc: 'GLOW | EXFOLIATION | REFRESH - Rich in natural enzymes and vitamins, this rejuvenating scrub gently exfoliates to improve skin texture, unclog pores and refresh dull, tired skin complexion revealing a brighter, smoother complexion',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/08/Untitled-design-10-768x320.jpg',
+            durations: ['45 Min'],
+            prices: [{ d: '45 Min', p: 4500 }],
+            benefits: ['Enzyme glow', 'Smoother texture', 'Fresh radiance'],
+            hidden: !SHOW_FRUIT_SCRUB
+          },
+          {
+            title: 'Chocolate Scrub',
+            desc: 'GLOW | HYDRATION | ANTI-AGING - Antioxidant-rich treatment that deeply nourishes and hydrates the skin, enhances radiance, reduces dullness and helps combat early signs of aging',
+            image: 'https://allurethaispa.in/wp-content/uploads/2024/04/WhatsApp-Image-2024-04-20-at-3.59.29-PM-300x300.jpeg',
+            durations: ['45 Min'],
+            prices: [{ d: '45 Min', p: 4500 }],
+            benefits: ['Antioxidant hydrate', 'Anti-aging nourish', 'Cocoa indulgence'],
+            hidden: !SHOW_CHOCOLATE_SCRUB
+          },
+          {
+            title: 'Body Wrap + Scrub',
+            desc: 'DETOX | HYDRATION | NOURISH - Detoxifying treatment that draws out impurities while improving skin tone and firmness. Deeply hydrates and nourishes the skin, leaving it soft, smooth and revitalized',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/08/WhatsApp-Image-2023-08-23-at-2.04.55-PM-1-1200x500.jpeg',
+            durations: ['45 Min'],
+            prices: [{ d: '45 Min', p: 4000 }],
+            benefits: ['Detox wrap', 'Firms & hydrates', 'Soft revitalized skin']
+          },
+          {
+            title: 'Full Back Polishing',
+            desc: 'GLOW | EXFOLIATION | SMOOTH SKIN - Revitalizing treatment that exfoliates and refines the skin, helping to lighten tan and improve texture - leaving your back soft, smooth, and radiant',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/07/masseur-does-back-massage-young-guy-beauty-salon-300x211.jpg',
+            durations: ['45 Min'],
+            prices: [{ d: '45 Min', p: 4000 }],
+            benefits: ['Back radiance', 'Tan-lightening polish', 'Silky smooth finish']
+          },
+          {
+            title: 'Coffee Exfolier Scrub',
+            desc: 'ANTI-INFLAMMATORY | EXFOLIATION | ANTI-AGING - Refreshing exfoliation to remove dead skin and leave your feet soft and smooth',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/08/WhatsApp-Image-2023-08-23-at-2.04.55-PM-2-1200x500.jpeg',
+            durations: ['45 Min'],
+            prices: [{ d: '45 Min', p: 4500 }],
+            benefits: ['Coffee polish', 'Anti-inflammatory feel', 'Soft renewed skin'],
+            hidden: !SHOW_COFFEE_SCRUB
+          }
+        ]
+      },
+      {
+        id: 'mindsole',
+        title: 'Mind & Sole Rituals',
+        blurb: 'Quick resets for feet, head, neck & back.',
+        items: [
+          {
+            title: 'Foot Scrub',
+            desc: 'It helps relieve tired and achy feet. It removes and exfoliates dry, rough areas of your feet.',
+            image: 'https://allurethaispa.in/wp-content/uploads/elementor/thumbs/Foot-Reflexology-q8za1zvdpyo3ptausshdgvr1v9g0ttm54tsoocbcog.jpg',
+            durations: ['30 Min'],
+            prices: [{ d: '30 Min', p: 1200 }],
+            benefits: ['Tired feet relief', 'Exfoliates rough skin', 'Instant refresh'],
+            hidden: !SHOW_FOOT_SCRUB
+          },
+          {
+            title: 'Foot Reflexology',
+            desc: 'Therapeutic pressure-point foot massage designed to relax the body, improve circulation, and restore natural balance.',
+            image: 'https://allurethaispa.in/wp-content/uploads/elementor/thumbs/Foot-Reflexology-q8za1zvdpyo3ptausshdgvr1v9g0ttm54tsoocbcog.jpg',
+            durations: ['30 Min'],
+            prices: [{ d: '30 Min', p: 1200 }],
+            benefits: ['Pressure-point balance', 'Circulation support', 'Whole-body calm']
+          },
+          {
+            title: 'Foot Massage',
+            desc: 'Deep relaxation for your tired feet',
+            image: 'https://allurethaispa.in/wp-content/uploads/2026/07/spa-06.png',
+            durations: ['30 Min', '60 Min'],
+            prices: [{ d: '30 Min', p: 1200 }, { d: '60 Min', p: 2400 }],
+            benefits: ['Deep foot ease', 'Travel recovery', 'Quick luxury pause']
+          },
+          {
+            title: 'Head, Neck & Back Massage',
+            desc: 'Targeted therapeutic massage to release tension in the head, neck, and back areas.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2023/07/masseur-does-back-massage-young-guy-beauty-salon-300x300.jpg',
+            durations: ['30 Min', '45 Min'],
+            prices: [{ d: '30 Min', p: 1500 }, { d: '45 Min', p: 2000 }],
+            benefits: ['Desk-day reset', 'Neck tension relief', 'Upper-body ease']
+          },
+          {
+            title: 'Traditional Indian Head Massage',
+            desc: 'Traditional Indian scalp massage designed to relieve mental stress and promote circulation.',
+            image: 'https://allurethaispa.in/wp-content/uploads/2024/01/Untitled-design-1-1-300x300.png',
+            durations: ['15 Min', '30 Min'],
+            prices: [{ d: '15 Min', p: 600 }, { d: '30 Min', p: 1200 }],
+            benefits: ['Mental stress relief', 'Scalp circulation', 'Express calm']
+          }
+        ]
+      }
+    ];
+
+    function cardHtml(item, catTitle) {
+      var img = item.imageFallback || item.image;
+      var prices = item.prices || [];
+      var benefits = item.benefits || [];
+      var msg = item.isAddon
+        ? 'Hello, I would like to add Thai Herbal Balm (+₹999) to my massage at Allure Thai Spa Ghodbunder Road, Thane.'
+        : 'Hello, I would like to book ' + item.title + ' at Allure Thai Spa Ghodbunder Road, Thane.';
+      var priceBlock = '<p class="label">' + (item.isAddon ? 'Add-on price' : 'Price') + '</p>' +
+        '<div class="chips">' + (
+          prices.length
+            ? prices.map(function (row) {
+                return '<span class="chip chip--price">' + minsLabel(row.d) + ' · ' + money(row.p) + '</span>';
+              }).join('')
+            : '<span class="chip chip--price">' + (item.priceNote || 'Confirm rate on booking') + '</span>'
+        ) + '</div>';
+      var addonHint = (catTitle === 'Timeless Classic Therapies' && !item.isAddon)
+        ? '<span class="chip chip--addon">Optional · Thai Herbal Balm +₹999</span>'
+        : '';
+      var addonExample = item.addonExample
+        ? '<p class="addon-example">' + item.addonExample + '</p>'
+        : '';
+      return '' +
+        '<article class="card' + (item.wide ? ' card--wide' : '') + '">' +
+          '<div class="card__media">' +
+            (item.recommended ? '<span class="badge">' + (item.isAddon ? 'Add-on' : 'Recommended') + '</span>' : '') +
+            '<img src="' + img + '" alt="' + item.title.replace(/"/g, '&quot;') + '" loading="lazy" decoding="async" onerror="this.onerror=null;this.src=\'' + (item.image || img) + '\'">' +
+          '</div>' +
+          '<div class="card__body">' +
+            '<h3>' + item.title + '</h3>' +
+            '<p class="desc">' + item.desc + '</p>' +
+            priceBlock +
+            (addonHint ? '<div class="chips" style="margin-top:.55rem">' + addonHint + '</div>' : '') +
+            addonExample +
+            '<p class="label">Benefits</p>' +
+            '<ul class="benefits">' + benefits.map(function (b) { return '<li>' + b + '</li>'; }).join('') + '</ul>' +
+            '<button type="button" class="card__cta" data-wa="' + encodeURIComponent(msg) + '" data-title="' + item.title.replace(/"/g, '&quot;') + '">Book ' + item.title + '</button>' +
+          '</div>' +
+        '</article>';
+    }
+
+    var nav = document.getElementById('catNav');
+    var navWrap = document.getElementById('catNavWrap');
+    var root = document.getElementById('menuRoot');
+    var visibleCategories = categories.filter(function (c) { return !c.hidden; });
+    nav.innerHTML = visibleCategories.map(function (c, i) {
+      return '<button type="button" data-target="' + c.id + '"' + (i === 0 ? ' class="is-active"' : '') + '>' + c.title + '</button>';
+    }).join('');
+
+    function syncCatScrollHints() {
+      if (!navWrap || !nav) return;
+      var max = nav.scrollWidth - nav.clientWidth;
+      var left = nav.scrollLeft;
+      navWrap.classList.toggle('has-more-left', left > 6);
+      navWrap.classList.toggle('has-more-right', max - left > 6);
+    }
+    function scrollCats(dir) {
+      nav.scrollBy({ left: dir * Math.max(160, nav.clientWidth * 0.55), behavior: 'smooth' });
+    }
+    var catArrowLeft = document.getElementById('catArrowLeft');
+    var catArrowRight = document.getElementById('catArrowRight');
+    if (catArrowLeft) catArrowLeft.addEventListener('click', function () { scrollCats(-1); });
+    if (catArrowRight) catArrowRight.addEventListener('click', function () { scrollCats(1); });
+    nav.addEventListener('scroll', syncCatScrollHints, { passive: true });
+    window.addEventListener('resize', syncCatScrollHints);
+    setTimeout(syncCatScrollHints, 60);
+
+    root.innerHTML = visibleCategories.map(function (c) {
+      return '<section class="section" id="' + c.id + '">' +
+        '<div class="section__head"><div><h2>' + c.title + '</h2><p>' + c.blurb + '</p></div></div>' +
+        '<div class="cards">' + c.items.filter(function (item) { return !item.hidden; }).map(function (item) { return cardHtml(item, c.title); }).join('') + '</div>' +
+      '</section>';
+    }).join('');
+
+    nav.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-target]');
+      if (!btn) return;
+      nav.querySelectorAll('button').forEach(function (b) { b.classList.toggle('is-active', b === btn); });
+      var target = document.getElementById(btn.getAttribute('data-target'));
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    root.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-wa]');
+      if (!btn) return;
+      var msg = decodeURIComponent(btn.getAttribute('data-wa') || WA_DEFAULT);
+      window.open(waLink(msg), '_blank', 'noopener');
+      toast('Opening WhatsApp to book…');
+    });
+
+    // Keep sticky category highlight while scrolling
+    var sections = visibleCategories.map(function (c) { return document.getElementById(c.id); });
+    var buttons = [].slice.call(nav.querySelectorAll('button[data-target]'));
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          var id = entry.target.id;
+          buttons.forEach(function (b) {
+            b.classList.toggle('is-active', b.getAttribute('data-target') === id);
+          });
+        });
+      }, { rootMargin: '-35% 0px -55% 0px', threshold: 0.01 });
+      sections.forEach(function (s) { if (s) io.observe(s); });
+    }
+
+    var topBtn = document.getElementById('topBtn');
+    function syncTopBtn() {
+      var docH = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+      var mid = Math.max(window.innerHeight * 0.55, (docH - window.innerHeight) * 0.35);
+      topBtn.classList.toggle('is-on', window.scrollY >= mid);
+    }
+    topBtn.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    window.addEventListener('scroll', syncTopBtn, { passive: true });
+    window.addEventListener('resize', syncTopBtn);
+    syncTopBtn();
+  })();
+  </script>
+</body>
+</html>

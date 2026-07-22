@@ -78,7 +78,7 @@ function sales_target_branch_session_key(int $branchId): string
 }
 
 /**
- * @return array{total_sales: float, total_sales_achieved: float}|null
+ * @return array{total_sales: float, total_sales_achieved: float, package_sales_achieved: float}|null
  */
 function sales_target_parse_response(string $body): ?array
 {
@@ -96,13 +96,15 @@ function sales_target_parse_response(string $body): ?array
     }
     $ts = $row['total_sales'] ?? null;
     $ta = $row['total_sales_achieved'] ?? null;
-    if (!is_numeric($ts) && !is_numeric($ta)) {
+    $pa = $row['package_sales_achieved'] ?? null;
+    if (!is_numeric($ts) && !is_numeric($ta) && !is_numeric($pa)) {
         return null;
     }
 
     return [
         'total_sales' => is_numeric($ts) ? (float) $ts : 0.0,
         'total_sales_achieved' => is_numeric($ta) ? (float) $ta : 0.0,
+        'package_sales_achieved' => is_numeric($pa) ? (float) $pa : 0.0,
     ];
 }
 
@@ -209,6 +211,7 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
         'monthly_target' => null,
         'expected_avg' => null,
         'mtd' => null,
+        'package_sales_achieved' => null,
         'mtd_avg' => null,
         'remaining_sale' => null,
         'remaining_expected_avg' => null,
@@ -237,6 +240,7 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
 
     $totalSales = $metrics['total_sales'];
     $achieved = $metrics['total_sales_achieved'];
+    $packageAchieved = $metrics['package_sales_achieved'];
     $remaining = max(0.0, $totalSales - $achieved);
 
     $expectedAvg = $daysInMonth > 0 ? (int) ceil($totalSales / $daysInMonth) : null;
@@ -254,6 +258,7 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
         'monthly_target' => $totalSales,
         'expected_avg' => $expectedAvg,
         'mtd' => $achieved,
+        'package_sales_achieved' => $packageAchieved,
         'mtd_avg' => $mtdAvg,
         'remaining_sale' => $remainingSale,
         'remaining_expected_avg' => $remainingExpectedAvg,

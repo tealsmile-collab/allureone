@@ -27,7 +27,7 @@ require __DIR__ . '/includes/layout_start.php';
     <div class="card__head">
         <span>Sales target report</span>
     </div>
-    <div class="card__body" style="padding:1.25rem">
+    <div class="card__body sales-target-card-body">
         <form class="form form--inline-sales-period" id="sales-target-form" method="get" action="sales_target.php">
             <div class="form__row form__row--month">
                 <label for="sales_m">Month</label>
@@ -76,6 +76,7 @@ require __DIR__ . '/includes/layout_start.php';
                         <?php if ($salesTargetShowProjection): ?>
                         <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="projection">Projection<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
                         <?php endif; ?>
+                        <th scope="col"><button type="button" class="sales-target-sort" data-sort-key="package_sales_achieved">Membership Sale<span class="sales-target-sort__icon" aria-hidden="true"></span></button></th>
                     </tr>
                 </thead>
                 <tbody id="sales-target-body">
@@ -86,6 +87,9 @@ require __DIR__ . '/includes/layout_start.php';
 </div>
 
 <style>
+.sales-target-card-body {
+    padding: 0.85rem 0.65rem 1rem;
+}
 .sales-target-spinner {
     display: inline-block;
     width: 24px;
@@ -102,13 +106,22 @@ require __DIR__ . '/includes/layout_start.php';
 .sales-target-table-wrap {
     overflow-x: auto;
     max-width: 100%;
+    margin-left: -0.35rem;
 }
 .sales-target-table {
-    min-width: 960px;
+    min-width: 920px;
+    width: 100%;
+    border-collapse: collapse;
 }
 .sales-target-table th,
 .sales-target-table td {
     white-space: nowrap;
+    padding: 0.35rem 0.45rem;
+    font-size: 0.88rem;
+}
+.sales-target-table th:first-child,
+.sales-target-table td:first-child {
+    padding-left: 0.35rem;
 }
 .sales-target-sort {
     display: inline-flex;
@@ -164,7 +177,7 @@ require __DIR__ . '/includes/layout_start.php';
     var loadedRows = [];
     var loadedPeriod = null;
     var showProjectionColumn = <?= $salesTargetShowProjection ? 'true' : 'false' ?>;
-    var tableColCount = showProjectionColumn ? 9 : 8;
+    var tableColCount = showProjectionColumn ? 10 : 9;
     var sortState = { key: 'percent_vs_target', dir: 'desc' };
 
     function defaultSortDir(key) {
@@ -366,6 +379,7 @@ require __DIR__ . '/includes/layout_start.php';
             if (showProjectionColumn) {
                 html += '<td>' + esc(formatInt(row.projection)) + '</td>';
             }
+            html += '<td>' + esc(formatAmount(row.package_sales_achieved)) + '</td>';
             html += '</tr>';
         }
         bodyEl.innerHTML = html;
@@ -417,6 +431,7 @@ require __DIR__ . '/includes/layout_start.php';
         if (showProjectionColumn) {
             headers.push('Projection');
         }
+        headers.push('Membership Sale');
         var lines = [headers.map(csvCell).join(',')];
         var exportRows = sortRows(loadedRows, sortState.key, sortState.dir);
         for (var i = 0; i < exportRows.length; i++) {
@@ -434,6 +449,7 @@ require __DIR__ . '/includes/layout_start.php';
             if (showProjectionColumn) {
                 cells.push(excelNumber(row.projection));
             }
+            cells.push(excelNumber(row.package_sales_achieved, 2));
             lines.push(cells.map(csvCell).join(','));
         }
         var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'application/vnd.ms-excel;charset=utf-8;' });

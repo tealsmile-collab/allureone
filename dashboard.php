@@ -803,7 +803,7 @@ $dailySaleTodayYmd = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->fo
             <span class="card__chevron" aria-hidden="true">▼</span>
         </span>
     </summary>
-    <div class="card__body" style="padding:1.25rem">
+    <div class="card__body daily-sale-card-body">
         <div class="daily-sale-toolbar">
             <div class="daily-sale-date-row">
                 <label for="daily-sale-date" class="daily-sale-date-label">Date</label>
@@ -823,8 +823,8 @@ $dailySaleTodayYmd = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->fo
                     <tr>
                         <th>Branch</th>
                         <th>Total Sale (₹)</th>
-                        <th>Services (₹)</th>
                         <th>Membership (₹)</th>
+                        <th>Services (₹)</th>
                     </tr>
                 </thead>
                 <tbody id="daily-sale-body"></tbody>
@@ -833,6 +833,9 @@ $dailySaleTodayYmd = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->fo
     </div>
 </details>
 <style>
+.daily-sale-card-body {
+    padding: 0.85rem 0.65rem 1rem;
+}
 .daily-sale-toolbar {
     display: flex;
     align-items: center;
@@ -890,6 +893,28 @@ $dailySaleTodayYmd = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->fo
 }
 @keyframes dailySaleSpin {
     to { transform: rotate(360deg); }
+}
+#daily-sale-table-wrap {
+    overflow-x: auto;
+    max-width: 100%;
+    margin-left: -0.2rem;
+}
+#daily-sale-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+#daily-sale-table th,
+#daily-sale-table td {
+    white-space: nowrap;
+    padding: 0.35rem 0.45rem;
+    font-size: 0.88rem;
+}
+#daily-sale-table th:first-child,
+#daily-sale-table td:first-child {
+    padding-left: 0.35rem;
+}
+#daily-sale-table th {
+    letter-spacing: 0.02em;
 }
 </style>
 <?php endif; ?>
@@ -1378,8 +1403,8 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         tr.innerHTML =
             '<td>' + esc(row.branch_name || '') + '</td>' +
             '<td>' + esc(formatAmount(row.total_sale)) + '</td>' +
-            '<td>' + esc(formatAmount(row.services)) + '</td>' +
-            '<td>' + esc(formatAmount(row.membership)) + '</td>';
+            '<td>' + esc(formatAmount(row.membership)) + '</td>' +
+            '<td>' + esc(formatAmount(row.services)) + '</td>';
         bodyEl.appendChild(tr);
         if (wrapEl) {
             wrapEl.hidden = false;

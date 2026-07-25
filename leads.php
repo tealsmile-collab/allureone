@@ -470,8 +470,6 @@ if ($fBranchSel === '') {
 if ($fBranchSel !== 'all' && !isset($branchFilterOptions[$fBranchSel])) {
     $fBranchSel = 'all';
 }
-$leadsSummaryCollapsedByPageNav = isset($_GET['ls_collapsed']) && (string) $_GET['ls_collapsed'] === '1';
-
 $listFilterParams = ['f_status' => $fStatusSel];
 if ($statusIsFollowUpForFilter) {
     $listFilterParams['f_fu'] = $fFuSel;
@@ -850,7 +848,7 @@ require __DIR__ . '/includes/layout_start.php';
 <?php endif; ?>
 
 <?php if ($loadError === '' && $detailId <= 0 && ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $leadsBranchSummary !== []): ?>
-<details id="leads-summary-section" class="card leads-branch-summary-card"<?= $leadsSummaryCollapsedByPageNav ? '' : ' open' ?>>
+<details id="leads-summary-section" class="card leads-branch-summary-card">
     <summary class="card__head card__toggle">
         <span class="card__toggle-inner">
             <span>Leads Summary</span>
@@ -1227,11 +1225,11 @@ require __DIR__ . '/includes/layout_start.php';
                 <?php if ($listTotalFiltered > $listPerPage): ?>
                     <nav class="leads-pagination" style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem 0.85rem;padding:1rem 1.25rem 1.15rem;margin:0;justify-content:center">
                         <?php if ($listPage > 1): ?>
-                            <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['page' => $listPage - 1, 'ls_collapsed' => 1]))) ?>">Previous</a>
+                            <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['page' => $listPage - 1]))) ?>">Previous</a>
                         <?php endif; ?>
                         <span style="font-size:.9rem;color:var(--muted, #64748b)">Page <?= (int) $listPage ?> of <?= (int) $listTotalPages ?></span>
                         <?php if ($listPage < $listTotalPages): ?>
-                            <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['page' => $listPage + 1, 'ls_collapsed' => 1]))) ?>">Next</a>
+                            <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['page' => $listPage + 1]))) ?>">Next</a>
                         <?php endif; ?>
                     </nav>
                 <?php endif; ?>

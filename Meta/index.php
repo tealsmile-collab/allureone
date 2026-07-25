@@ -82,75 +82,73 @@ function getLeadFieldValueByName($lead, $targetName){
 
 
 
-// ================= BRANCH PHONE MAP =================
+// ================= BRANCH + FORM MAPS =================
+// Rule: many form_ids → one branch; one form_id → exactly one branch (never multiple branches).
 
-$branchPhones = [
-"andheri_east_marol" => "917304455836",
-"malad" => "919920309399",
-"andheri_west_lokhandwala" => "917777049450",
-"borivali" => "918624020816",
-"powai" => "918652020816",
-"mulund" => "918080515738",
-"thane" => "919987799720",
-"navi_mumbai_-_seawoods" => "919324525471",
-"navi_mumbai_-_kharghar" => "918424925346",
-"palghar" => "917875588844",
-"boisar" => "919325825052",
-"gujrat_-_halol_vadodara" => "919274954980",
-"ratnagiri" => "918983188738",
-"thanevartaknagar" => "919321852726",
+$branchConfig = [
+    "andheri_east_marol" => ["phone" => "917304455836", "branch_id" => 3000],
+    "malad" => ["phone" => "919920309399", "branch_id" => 4185],
+    "andheri_west_lokhandwala" => ["phone" => "917777049450", "branch_id" => 4507],
+    "borivali" => ["phone" => "918624020816", "branch_id" => 2973],
+    "powai" => ["phone" => "918652020816", "branch_id" => 2935],
+    "mulund" => ["phone" => "918080515738", "branch_id" => 3781],
+    "thane" => ["phone" => "919987799720", "branch_id" => 3780],
+    "navi_mumbai_-_seawoods" => ["phone" => "919324525471", "branch_id" => 3782],
+    "navi_mumbai_-_kharghar" => ["phone" => "918424925346", "branch_id" => 5000],
+    "palghar" => ["phone" => "917875588844", "branch_id" => 5001],
+    "boisar" => ["phone" => "919325825052", "branch_id" => 4456],
+    "gujrat_-_halol_vadodara" => ["phone" => "919274954980", "branch_id" => 5002],
+    "ratnagiri" => ["phone" => "918983188738", "branch_id" => 4274],
+    "thanevartaknagar" => ["phone" => "919321852726", "branch_id" => 4651],
 ];
 
-$branchMothersDayFormId = [
-    "1202632042929207" => "andheri_east_marol",
-    "1202632042929207" => "malad",
-    "1202632042929207" => "borivali",
-    "1202632042929207" => "powai",
-    "1202632042929207" => "mulund",
-    "1202632042929207" => "thane",
-    "1202632042929207" => "navi_mumbai_-_seawoods",
-    "1202632042929207" => "navi_mumbai_-_kharghar",
-    "1202632042929207" => "palghar",
+// form_id => branch key (add more form ids under the same branch key as needed)
+$formIdToBranchKey = [
+    "1069208812451626" => "navi_mumbai_-_seawoods",
     "957571290636446" => "boisar",
-    "1202632042929207" => "gujrat_-_halol_vadodara",
-    "1202632042929207" => "ratnagiri",
-    "1202632042929207" => "andheri_west_lokhandwala",
-    "1000356342810563" => "thanevartaknagar"
+    "1000356342810563" => "thanevartaknagar",
+    "1036833275598874" => "thanevartaknagar",
+    "2487128015124199" => "andheri_west_lokhandwala",
+    // Add each branch's unique Meta form id(s) below, e.g.:
+    // "FORM_ID_1" => "andheri_east_marol",
+    // "FORM_ID_2" => "andheri_east_marol",
 ];
 
-$formIdToBranchId = [
-    "1202632042929207" => 3000, // andheri_east
-    "1202632042929207" => 4185, // malad_west
-    "1202632042929207"  => 2973, // borivali
-    "1202632042929207" => 2935, // powai
-    "1202632042929207"  => 3781, // mulund
-    "1202632042929207" => 3780, // thane
-    "1520691529730936" => 3782, // navi_mumbai_-_seawoods
-    "1202632042929207"  => 5000,    // navi_mumbai_-_kharghar (not found)
-    "1202632042929207" => 5001,    // palghar (not found)
-    "957571290636446" => 4456, // boisar
-    "1202632042929207" => 5002,    // gujrat_-_vadodara (not found)
-    "1202632042929207" => 4274,    // ratnagiri (not found)
-    "1202632042929207" => 4507,  // lokhandwala
-    "1000356342810563" => 4651 // vartaknagar
-];
+// Derived lookups (kept for location-name matching when lead has location/branch field)
+$branchPhones = [];
+$branchNameToBranchId = [];
+foreach ($branchConfig as $branchKey => $cfg) {
+    $branchPhones[$branchKey] = (string) ($cfg["phone"] ?? "");
+    $branchNameToBranchId[$branchKey] = (int) ($cfg["branch_id"] ?? 0);
+}
+// Alias used in older maps
+$branchNameToBranchId["vartaknagar"] = (int) ($branchConfig["thanevartaknagar"]["branch_id"] ?? 4651);
 
-$branchNameToBranchId = [
-    "andheri_east_marol" => 3000,
-    "malad" => 4185,
-    "andheri_west_lokhandwala" => 4507,
-    "borivali" => 2973,
-    "powai" => 2935,
-    "mulund" => 3781,
-    "thane" => 3780,
-    "navi_mumbai_-_seawoods" => 3782,
-    "navi_mumbai_-_kharghar" => 5000,
-    "palghar" => 5001,
-    "boisar" => 4456,
-    "gujrat_-_halol_vadodara" => 5002,
-    "ratnagiri" => 4274,
-    "vartaknagar" => 4651
+function meta_branch_key_for_form_id($formId, array $formIdToBranchKey): string
+{
+    $formId = trim((string) $formId);
+    if ($formId === "" || !isset($formIdToBranchKey[$formId])) {
+        return "";
+    }
+
+    return strtolower(trim((string) $formIdToBranchKey[$formId]));
+}
+
+function meta_branch_info_for_key($branchKey, array $branchConfig): ?array
+{
+    $branchKey = strtolower(trim((string) $branchKey));
+    if ($branchKey === "" || !isset($branchConfig[$branchKey])) {
+        return null;
+    }
+    $cfg = $branchConfig[$branchKey];
+
+    return [
+        "key" => $branchKey,
+        "phone" => (string) ($cfg["phone"] ?? ""),
+        "branch_id" => (int) ($cfg["branch_id"] ?? 0),
+        "label" => trim(str_replace("_", " ", $branchKey)),
     ];
+}
 
 
 // ================= WEBHOOK VERIFICATION =================
@@ -176,7 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    global $branchPhones,$branchMothersDayFormId,$branchNameToBranchId,$page_access_token,$api_url,$apiKey,$apiSecret,$logFile,$franchiseLogFile,$apiLogFile;
+    global $branchConfig,$formIdToBranchKey,$branchPhones,$branchNameToBranchId,$page_access_token,$api_url,$apiKey,$apiSecret,$logFile,$franchiseLogFile,$apiLogFile;
 
     $input = file_get_contents("php://input");
     $data = json_decode($input,true);
@@ -343,11 +341,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // No location/branch field: resolve from form_id maps.
-            if(!$locationFieldFound && !$branchFieldFound && isset($branchMothersDayFormId[$form_id])){
-                $mappedLocationKey = strtolower(trim((string)$branchMothersDayFormId[$form_id]));
-                if($mappedLocationKey !== ''){
-                    $preferredLocation = escapeValue(normalizeValue(str_replace("_", " ", $mappedLocationKey)));
+            // No location/branch field: resolve from form_id → branch key (many forms may share one branch).
+            $mappedBranchKey = "";
+            if(!$locationFieldFound && !$branchFieldFound){
+                $mappedBranchKey = meta_branch_key_for_form_id($form_id, $formIdToBranchKey);
+                $mappedInfo = meta_branch_info_for_key($mappedBranchKey, $branchConfig);
+                if(is_array($mappedInfo)){
+                    $preferredLocation = escapeValue(normalizeValue($mappedInfo["label"]));
                 }
             }
 
@@ -358,8 +358,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $recipientPhone = $branchPhones[$locationKey];
             }
 
-            if(!$locationFieldFound && !$branchFieldFound && isset($formIdToBranchId[$form_id])){
-                $mothersDayBranchId = (int)$formIdToBranchId[$form_id];
+            if($mappedBranchKey !== ""){
+                $mappedInfo = meta_branch_info_for_key($mappedBranchKey, $branchConfig);
+                if(is_array($mappedInfo) && (int)$mappedInfo["branch_id"] > 0){
+                    $mothersDayBranchId = (int)$mappedInfo["branch_id"];
+                    if($mappedInfo["phone"] !== ""){
+                        $recipientName = $preferredLocation !== "" ? $preferredLocation : $mappedInfo["label"];
+                        $recipientPhone = $mappedInfo["phone"];
+                    }
+                }
             } elseif(isset($branchNameToBranchId[$locationKey])){
                 $mothersDayBranchId = (int)$branchNameToBranchId[$locationKey];
             }

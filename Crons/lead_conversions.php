@@ -2,16 +2,18 @@
 declare(strict_types=1);
 
 /**
- * Hostinger cron: lead conversion check via Dingg client + bill APIs.
+ * Hostinger cron: mark Meta leads converted from yesterday's Dingg bills.
  *
- * CLI example:
- *   php Croms/lead_conversions.php
+ * CLI:
+ *   php Crons/lead_conversions.php
  *
- * HTTP cron (Hostinger):
- *   https://your-domain/Croms/lead_conversions.php
+ * HTTP:
+ *   https://your-domain/Crons/lead_conversions.php
  *
- * Processes allureone_meta_leads with status: new, contacted, follow_up, booked.
- * Skips: lost, no_show, converted.
+ * For each active branch with isDingg = 1:
+ *   GET vendor/bills for yesterday (branch session key)
+ *   For each invoice user.mobile, find allureone_meta_leads by lead_phone_number
+ *   If lead exists and status is not converted → set converted + amount = paid
  */
 
 $isCli = PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg';
@@ -35,6 +37,7 @@ if (!is_dir($logDir) && !mkdir($logDir, 0755, true) && !is_dir($logDir)) {
 
 $logFile = $logDir . '/lead_conversions_' . date('Y-m-d') . '.log';
 $runStarted = date('Y-m-d H:i:s');
+$yesterday = date('Y-m-d', strtotime('-1 day'));
 
 /**
  * @param mixed $value
@@ -48,9 +51,9 @@ function lc_log_line(string $logFile, string $line): void
 }
 
 /**
- * Strip non-digits, then remove leading country code 91 when present.
+ * Normalize phone to last 10 digits (strip leading 91 when present).
  */
-function lc_search_mobile(string $rawPhone): string
+function lc_mobile_tail(string $rawPhone): string
 {
     $digits = preg_replace('/\D+/', '', $rawPhone) ?? '';
     if ($digits === '') {
@@ -59,7 +62,6 @@ function lc_search_mobile(string $rawPhone): string
     if (strlen($digits) > 10 && str_starts_with($digits, '91')) {
         $digits = substr($digits, 2);
     }
-    // Keep last 10 for typical India numbers if still longer
     if (strlen($digits) > 10) {
         $digits = substr($digits, -10);
     }
@@ -122,138 +124,147 @@ function lc_dingg_get(string $url, string $token): array
     return ['ok' => true, 'http' => $http, 'json' => $json, 'body' => $body];
 }
 
-/**
- * Find Dingg client id from user_list response for the search mobile.
- *
- * @return array{id:int,name:string}|null
- */
-function lc_find_client_from_search(array $json, string $searchMobile): ?array
+function lc_converted_status_id(PDO $pdo): int
 {
-    $needle = $searchMobile;
-    $needleTail = strlen($needle) > 10 ? substr($needle, -10) : $needle;
-
-    $candidates = [];
-    $data = $json['data'] ?? null;
-
-    // Shape A: data is list of clients
-    if (is_array($data) && array_is_list($data)) {
-        $candidates = $data;
-    } elseif (is_array($data)) {
-        // Shape B: data.user or nested users list
-        if (isset($data['user']) && is_array($data['user'])) {
-            $candidates[] = $data['user'];
+    try {
+        $st = $pdo->query(
+            "SELECT id
+             FROM allureone_leads_status
+             WHERE LOWER(TRIM(status_key)) = 'converted'
+             LIMIT 1"
+        );
+        $id = (int) ($st->fetchColumn() ?: 0);
+        if ($id > 0) {
+            return $id;
         }
-        if (isset($data['users']) && is_array($data['users'])) {
-            foreach ($data['users'] as $u) {
-                if (is_array($u)) {
-                    $candidates[] = $u;
-                }
-            }
-        }
-        // Single object with id
-        if (isset($data['id'])) {
-            $candidates[] = $data;
-        }
+    } catch (Throwable $e) {
+        error_log('lead_conversions converted status lookup failed: ' . $e->getMessage());
     }
 
-    if (isset($json['user']) && is_array($json['user'])) {
-        $candidates[] = $json['user'];
+    return 0;
+}
+
+function lc_format_amount(float $amount): string
+{
+    if (fmod($amount, 1.0) === 0.0) {
+        return (string) (int) round($amount);
     }
 
-    $fallback = null;
-    foreach ($candidates as $row) {
-        if (!is_array($row)) {
-            continue;
-        }
-        // Prefer nested user.id when present
-        $userNode = isset($row['user']) && is_array($row['user']) ? $row['user'] : $row;
-        $id = (int) ($userNode['id'] ?? $row['id'] ?? 0);
-        if ($id <= 0) {
-            continue;
-        }
-        $name = trim((string) ($userNode['name'] ?? $row['name'] ?? ''));
-        if ($name === '') {
-            $name = trim((string) (($userNode['fname'] ?? $row['fname'] ?? '') . ' ' . ($userNode['lname'] ?? $row['lname'] ?? '')));
-        }
-        $mobile = preg_replace('/\D+/', '', (string) ($userNode['mobile'] ?? $row['mobile'] ?? '')) ?? '';
-        $mobileTail = strlen($mobile) > 10 ? substr($mobile, -10) : $mobile;
+    return number_format($amount, 2, '.', '');
+}
 
-        $match = [
-            'id' => $id,
-            'name' => $name !== '' ? $name : ('Client #' . $id),
-        ];
+function lc_mark_lead_converted(PDO $pdo, int $leadId, int $convertedStatusId, float $amount): bool
+{
+    if ($leadId <= 0 || $convertedStatusId <= 0) {
+        return false;
+    }
+    try {
+        $upd = $pdo->prepare(
+            'UPDATE allureone_meta_leads
+             SET status = :status, amount = :amount
+             WHERE id = :id'
+        );
+        $upd->execute([
+            'status' => $convertedStatusId,
+            'amount' => lc_format_amount($amount),
+            'id' => $leadId,
+        ]);
 
-        if ($mobileTail !== '' && $needleTail !== '' && $mobileTail === $needleTail) {
-            return $match;
-        }
-        if ($fallback === null) {
-            $fallback = $match;
-        }
+        return true;
+    } catch (Throwable $e) {
+        error_log('lead_conversions mark converted failed: ' . $e->getMessage());
     }
 
-    // If API returned exactly one client for this search, accept it
-    if (count($candidates) === 1 && $fallback !== null) {
-        return $fallback;
-    }
-
-    return null;
+    return false;
 }
 
 /**
- * @return list<array{selected_date:string,paid:string}>
+ * @return list<array<string, mixed>>
  */
-function lc_extract_valid_invoices(array $json): array
+function lc_bills_rows(array $json): array
 {
-    $data = $json['data'] ?? [];
+    $data = $json['data'] ?? null;
     if (!is_array($data)) {
         return [];
     }
-
     $out = [];
     foreach ($data as $row) {
-        if (!is_array($row)) {
-            continue;
+        if (is_array($row)) {
+            $out[] = $row;
         }
-        $selectedDate = trim((string) ($row['selected_date'] ?? ''));
-        $paidRaw = $row['paid'] ?? null;
-        $paymentStatus = strtolower(trim((string) ($row['payment_status'] ?? '')));
-        $cancelled = !empty($row['is_cancelled']) || !empty($row['cancelled']);
-
-        if ($cancelled) {
-            continue;
-        }
-
-        $paidNum = is_numeric($paidRaw) ? (float) $paidRaw : null;
-        $isValid = $selectedDate !== ''
-            && (
-                ($paidNum !== null && $paidNum > 0)
-                || in_array($paymentStatus, ['paid', 'success', 'completed', 'partial'], true)
-                || ($paidRaw !== null && $paidRaw !== '' && $paidNum === null)
-            );
-
-        if (!$isValid) {
-            continue;
-        }
-
-        if ($paidNum !== null) {
-            $paidDisplay = number_format($paidNum, 2, '.', '');
-        } else {
-            $paidDisplay = trim((string) $paidRaw);
-        }
-
-        $out[] = [
-            'selected_date' => $selectedDate,
-            'paid' => $paidDisplay,
-        ];
     }
 
     return $out;
 }
 
-$includeStatusKeys = ['new', 'contacted', 'follow_up', 'followup', 'booked'];
-$skipStatusKeys = ['lost', 'no_show', 'noshow', 'converted'];
+/**
+ * Extract mobile + paid from a vendor/bills invoice row.
+ *
+ * @return array{mobile:string,paid:float,paid_display:string,bill_id:int}|null
+ */
+function lc_invoice_mobile_and_paid(array $bill): ?array
+{
+    $user = $bill['user'] ?? null;
+    if (!is_array($user)) {
+        $user = [];
+    }
+    $mobile = lc_mobile_tail((string) ($user['mobile'] ?? $bill['mobile'] ?? ''));
+    if ($mobile === '' || strlen($mobile) < 8) {
+        return null;
+    }
+
+    $paidRaw = $bill['paid'] ?? null;
+    $paidNum = is_numeric($paidRaw) ? (float) $paidRaw : 0.0;
+
+    return [
+        'mobile' => $mobile,
+        'paid' => $paidNum,
+        'paid_display' => lc_format_amount($paidNum),
+        'bill_id' => (int) ($bill['id'] ?? 0),
+    ];
+}
+
+/**
+ * Build mobile-tail => lead rows map for fast lookup.
+ *
+ * @return array<string, list<array{id:int,branch_id:int,status_key:string,lead_name:string}>>
+ */
+function lc_load_leads_by_mobile(PDO $pdo): array
+{
+    $map = [];
+    try {
+        $sql = 'SELECT m.id, m.branch_id, m.lead_name, m.lead_phone_number, m.status,
+                       s.status_key
+                FROM allureone_meta_leads m
+                LEFT JOIN allureone_leads_status s ON s.id = m.status';
+        $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $tail = lc_mobile_tail((string) ($row['lead_phone_number'] ?? ''));
+            if ($tail === '') {
+                continue;
+            }
+            if (!isset($map[$tail])) {
+                $map[$tail] = [];
+            }
+            $map[$tail][] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'branch_id' => (int) ($row['branch_id'] ?? 0),
+                'status_key' => lc_normalize_status_key((string) ($row['status_key'] ?? '')),
+                'lead_name' => trim((string) ($row['lead_name'] ?? '')),
+            ];
+        }
+    } catch (Throwable $e) {
+        error_log('lead_conversions load leads failed: ' . $e->getMessage());
+    }
+
+    return $map;
+}
 
 lc_log_line($logFile, '===== lead_conversions run start: ' . $runStarted . ' =====');
+lc_log_line($logFile, 'bills date (yesterday): ' . $yesterday);
 
 try {
     $pdo = db();
@@ -262,159 +273,163 @@ try {
     exit(1);
 }
 
-try {
-    $sql = 'SELECT m.id, m.branch_id, m.branch_name, m.lead_name, m.lead_phone_number, m.status,
-                   s.status_key, s.status_label
-            FROM allureone_meta_leads m
-            LEFT JOIN allureone_leads_status s ON s.id = m.status
-            ORDER BY m.id ASC';
-    $leads = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
-} catch (Throwable $e) {
-    lc_log_line($logFile, 'Failed to load leads: ' . $e->getMessage());
+$convertedStatusId = lc_converted_status_id($pdo);
+if ($convertedStatusId <= 0) {
+    lc_log_line($logFile, 'ERROR: converted status id not found in allureone_leads_status; aborting.');
     exit(1);
 }
 
-$processed = 0;
-$skipped = 0;
+try {
+    $branches = $pdo->query(
+        'SELECT id, business_name, locality
+         FROM allureone_branch
+         WHERE isActive = 1 AND isDingg = 1
+         ORDER BY id ASC'
+    )->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Throwable $e) {
+    lc_log_line($logFile, 'Failed to load isDingg branches: ' . $e->getMessage());
+    exit(1);
+}
 
-foreach ($leads as $lead) {
-    if (!is_array($lead)) {
+if ($branches === []) {
+    lc_log_line($logFile, 'No active isDingg branches found.');
+    exit(0);
+}
+
+$leadsByMobile = lc_load_leads_by_mobile($pdo);
+$branchCount = 0;
+$invoiceCount = 0;
+$convertedCount = 0;
+$alreadyConverted = 0;
+$noLeadMatch = 0;
+$didBranchApi = false;
+
+foreach ($branches as $branch) {
+    if (!is_array($branch)) {
         continue;
     }
-
-    $statusKey = lc_normalize_status_key((string) ($lead['status_key'] ?? ''));
-    if ($statusKey === '') {
-        // Fallback: if status master missing, treat numeric status 1 as new-like and process
-        $statusId = (int) ($lead['status'] ?? 0);
-        if ($statusId <= 0) {
-            $skipped++;
-            continue;
-        }
-        // Without status_key we cannot safely skip lost/converted — skip unknown
-        $skipped++;
-        continue;
+    $branchId = (int) ($branch['id'] ?? 0);
+    $loc = trim((string) ($branch['locality'] ?? ''));
+    $bn = trim((string) ($branch['business_name'] ?? ''));
+    $branchLabel = $loc !== '' ? $loc : ($bn !== '' ? $bn : ('branch#' . $branchId));
+    if ($loc !== '' && $bn !== '' && strcasecmp($loc, $bn) !== 0) {
+        $branchLabel = $loc . ' · ' . $bn;
     }
 
-    if (in_array($statusKey, $skipStatusKeys, true)) {
-        $skipped++;
-        continue;
-    }
-    if (!in_array($statusKey, $includeStatusKeys, true)) {
-        $skipped++;
-        continue;
-    }
-
-    $leadId = (int) ($lead['id'] ?? 0);
-    $branchId = (int) ($lead['branch_id'] ?? 0);
-    $branchName = trim((string) ($lead['branch_name'] ?? ''));
-    if ($branchName === '') {
-        $branchName = 'branch#' . $branchId;
-    }
-    $leadName = trim((string) ($lead['lead_name'] ?? ''));
-    $rawPhone = (string) ($lead['lead_phone_number'] ?? '');
-    $searchMobile = lc_search_mobile($rawPhone);
-
-    lc_log_line($logFile, 'lead_id ' . $leadId . ($leadName !== '' ? (' | ' . $leadName) : '') . ' | status ' . $statusKey);
-    lc_log_line($logFile, 'searching number ' . ($searchMobile !== '' ? $searchMobile : '(empty)'));
-
-    if ($searchMobile === '' || strlen($searchMobile) < 3) {
-        lc_log_line($logFile, 'skipped: invalid mobile number');
-        lc_log_line($logFile, '');
-        lc_log_line($logFile, '');
-        $processed++;
-        continue;
-    }
-
-    if ($branchId <= 0) {
-        lc_log_line($logFile, 'skipped: missing branch_id on lead');
-        lc_log_line($logFile, '');
-        lc_log_line($logFile, '');
-        $processed++;
-        continue;
+    if ($didBranchApi) {
+        sleep(3);
     }
 
     $token = lc_branch_session_key($branchId);
     if ($token === '') {
-        lc_log_line($logFile, 'skipped: no Dingg session for branch_id ' . $branchId . ', ' . $branchName);
-        lc_log_line($logFile, '');
-        lc_log_line($logFile, '');
-        $processed++;
         continue;
     }
 
-    $searchUrl = 'https://api.dingg.app/api/v1/vendor/user_list?'
-        . http_build_query(['search' => $searchMobile, 'is_web' => 'true'], '', '&', PHP_QUERY_RFC3986);
-    $searchResp = lc_dingg_get($searchUrl, $token);
-    if (!$searchResp['ok']) {
-        lc_log_line($logFile, 'Dingg client search failed: ' . ($searchResp['error'] ?? 'unknown error'));
-        lc_log_line($logFile, '');
-        lc_log_line($logFile, '');
-        $processed++;
-        continue;
-    }
-
-    $client = lc_find_client_from_search(
-        is_array($searchResp['json'] ?? null) ? $searchResp['json'] : [],
-        $searchMobile
+    $billsUrl = 'https://api.dingg.app/api/v1/vendor/bills?' . http_build_query(
+        [
+            'web' => 'true',
+            'page' => '1',
+            'limit' => '1000',
+            'start' => $yesterday,
+            'end' => $yesterday,
+            'term' => '',
+            'is_product_only' => '',
+        ],
+        '',
+        '&',
+        PHP_QUERY_RFC3986
     );
 
-    if ($client === null) {
-        lc_log_line($logFile, 'client not found in branch_id ' . $branchId . ', ' . $branchName);
-        lc_log_line($logFile, '');
-        lc_log_line($logFile, '');
-        $processed++;
+    $billsResp = lc_dingg_get($billsUrl, $token);
+    $didBranchApi = true;
+    $branchCount++;
+
+    if (!$billsResp['ok']) {
+        lc_log_line($logFile, 'branch_id ' . $branchId . ' | ' . $branchLabel . ' | bills API failed: ' . ($billsResp['error'] ?? 'unknown error'));
         continue;
     }
 
-    $clientId = (int) $client['id'];
-    lc_log_line($logFile, 'found client in branch_id ' . $branchId . ', ' . $branchName);
+    $bills = lc_bills_rows(is_array($billsResp['json'] ?? null) ? $billsResp['json'] : []);
 
-    $billUrl = 'https://api.dingg.app/api/v1/vendor/customer/bill?'
-        . http_build_query(['id' => (string) $clientId], '', '&', PHP_QUERY_RFC3986);
-    $billResp = lc_dingg_get($billUrl, $token);
-    if (!$billResp['ok']) {
-        lc_log_line($logFile, 'Dingg bill API failed: ' . ($billResp['error'] ?? 'unknown error'));
-        lc_log_line($logFile, '');
-        lc_log_line($logFile, '');
-        $processed++;
-        continue;
-    }
+    foreach ($bills as $bill) {
+        if (!is_array($bill)) {
+            continue;
+        }
+        $invoiceCount++;
+        $info = lc_invoice_mobile_and_paid($bill);
+        if ($info === null) {
+            continue;
+        }
 
-    $invoices = lc_extract_valid_invoices(
-        is_array($billResp['json'] ?? null) ? $billResp['json'] : []
-    );
+        $mobile = $info['mobile'];
+        $paid = (float) $info['paid'];
+        $paidDisplay = (string) $info['paid_display'];
+        $billId = (int) $info['bill_id'];
 
-    if ($invoices === []) {
-        lc_log_line($logFile, 'no valid invoice found');
-    } else {
-        foreach ($invoices as $inv) {
-            lc_log_line(
-                $logFile,
-                'found invoice ' . $inv['selected_date'] . ', amount  - Rs. ' . $inv['paid']
-            );
+        $matches = $leadsByMobile[$mobile] ?? [];
+        if ($matches === []) {
+            $noLeadMatch++;
+            continue;
+        }
+
+        // Prefer leads for this branch; otherwise all phone matches
+        $preferred = [];
+        $others = [];
+        foreach ($matches as $m) {
+            if ((int) ($m['branch_id'] ?? 0) === $branchId) {
+                $preferred[] = $m;
+            } else {
+                $others[] = $m;
+            }
+        }
+        $toProcess = $preferred !== [] ? $preferred : $others;
+
+        foreach ($toProcess as $lead) {
+            $leadId = (int) ($lead['id'] ?? 0);
+            $statusKey = (string) ($lead['status_key'] ?? '');
+            $leadName = (string) ($lead['lead_name'] ?? '');
+
+            if ($statusKey === 'converted') {
+                $alreadyConverted++;
+                continue;
+            }
+
+            if (lc_mark_lead_converted($pdo, $leadId, $convertedStatusId, $paid)) {
+                $convertedCount++;
+                // Keep in-memory map in sync for later invoices same run
+                foreach ($leadsByMobile[$mobile] as $i => $cached) {
+                    if ((int) ($cached['id'] ?? 0) === $leadId) {
+                        $leadsByMobile[$mobile][$i]['status_key'] = 'converted';
+                    }
+                }
+                lc_log_line(
+                    $logFile,
+                    'branch_id ' . $branchId . ' | ' . $branchLabel
+                    . ' | invoice ' . $billId
+                    . ' | mobile ' . $mobile
+                    . ' | lead_id ' . $leadId
+                    . ($leadName !== '' ? (' | ' . $leadName) : '')
+                    . ' | status updated to converted, amount = ' . $paidDisplay
+                );
+            }
         }
     }
-
-    // Two blank lines before next lead
-    lc_log_line($logFile, '');
-    lc_log_line($logFile, '');
-    $processed++;
-
-    // Small pause to avoid hammering Dingg
-    usleep(150000);
 }
 
 $runEnded = date('Y-m-d H:i:s');
 lc_log_line(
     $logFile,
     '===== lead_conversions run end: ' . $runEnded
-    . ' | processed=' . $processed
-    . ' | skipped_status=' . $skipped
+    . ' | branches=' . $branchCount
+    . ' | invoices=' . $invoiceCount
+    . ' | converted=' . $convertedCount
+    . ' | already_converted=' . $alreadyConverted
+    . ' | no_lead_match=' . $noLeadMatch
     . ' ====='
 );
 
 if (!$isCli) {
-    echo "OK processed={$processed} skipped_status={$skipped}\n";
+    echo "OK branches={$branchCount} invoices={$invoiceCount} converted={$convertedCount}\n";
     echo "Log: {$logFile}\n";
 }
 

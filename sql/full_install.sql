@@ -7,6 +7,7 @@ DROP TABLE IF EXISTS allureone_franchise_leads;
 DROP TABLE IF EXISTS allureone_session_data;
 DROP TABLE IF EXISTS allurepro_InvoiceCancellation;
 DROP TABLE IF EXISTS allureone_giftcard;
+DROP TABLE IF EXISTS allureone_meta_form_config;
 DROP TABLE IF EXISTS allureone_salerecord;
 DROP TABLE IF EXISTS allureone_users;
 DROP TABLE IF EXISTS allureone_branch;
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS allureone_users (
   RoleId INT NOT NULL,
   isactive TINYINT(1) NOT NULL DEFAULT 1,
   RecordSale TINYINT(1) NOT NULL DEFAULT 0,
+  MetaConfig TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   UNIQUE KEY uq_allureone_login (loginname),
   KEY idx_user_branch (BranchId),
@@ -65,6 +67,22 @@ CREATE TABLE IF NOT EXISTS allureone_salerecord (
   KEY idx_salerecord_branch (BranchId),
   KEY idx_salerecord_date (SaleDate),
   CONSTRAINT fk_salerecord_branch FOREIGN KEY (BranchId) REFERENCES allureone_branch (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS allureone_meta_form_config (
+  id INT NOT NULL AUTO_INCREMENT,
+  BranchId INT NOT NULL,
+  meta_form_id VARCHAR(64) NOT NULL,
+  campaign_name VARCHAR(255) NULL,
+  CreatedBy INT NULL,
+  CreatedDate DATETIME NOT NULL,
+  UpdatedBy INT NULL,
+  UpdatedDate DATETIME NULL,
+  IsActive TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_meta_form_id_active (meta_form_id),
+  KEY idx_meta_form_branch (BranchId),
+  CONSTRAINT fk_meta_form_branch FOREIGN KEY (BranchId) REFERENCES allureone_branch (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS allureone_giftcard (

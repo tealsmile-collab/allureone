@@ -7,15 +7,76 @@ require_sale_record_access();
 $user = current_user();
 $pdo = db();
 $userId = (int) ($user['id'] ?? 0);
-$branchId = isset($user['branch_id']) ? (int) $user['branch_id'] : 0;
+$roleId = (int) ($user['role_id'] ?? 0);
+$canSelectBranch = in_array($roleId, [ROLE_SUPERADMIN, ROLE_ADMIN], true);
 $today = date('Y-m-d');
+
+$userBranchId = isset($user['branch_id']) ? (int) $user['branch_id'] : 0;
+$branchOptions = [];
+if ($canSelectBranch) {
+    try {
+        $branchOptions = $pdo->query(
+            'SELECT id, business_name, locality
+             FROM allureone_branch
+             WHERE isActive = 1
+             ORDER BY locality ASC, business_name ASC'
+        )->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (PDOException $e) {
+        error_log('Sale record branch list failed: ' . $e->getMessage());
+        $branchOptions = [];
+    }
+}
+
+$branchId = $userBranchId;
+if ($canSelectBranch) {
+    $requestedBranchId = 0;
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $requestedBranchId = isset($_POST['branch_id']) ? (int) $_POST['branch_id'] : 0;
+    } else {
+        $requestedBranchId = isset($_GET['branch_id']) ? (int) $_GET['branch_id'] : 0;
+    }
+    $validIds = [];
+    foreach ($branchOptions as $ob) {
+        $validIds[(int) ($ob['id'] ?? 0)] = true;
+    }
+    if ($requestedBranchId > 0 && isset($validIds[$requestedBranchId])) {
+        $branchId = $requestedBranchId;
+    } elseif ($userBranchId > 0 && isset($validIds[$userBranchId])) {
+        $branchId = $userBranchId;
+    } elseif ($branchOptions !== []) {
+        $branchId = (int) ($branchOptions[0]['id'] ?? 0);
+    } else {
+        $branchId = 0;
+    }
+}
+
+/**
+ * @param array<string, scalar|null> $extra
+ */
+function sale_record_url(array $extra = [], int $branchId = 0, bool $canSelectBranch = false): string
+{
+    $q = $extra;
+    if ($canSelectBranch && $branchId > 0) {
+        $q['branch_id'] = $branchId;
+    }
+    $qs = http_build_query($q);
+
+    return 'sale_record.php' . ($qs !== '' ? ('?' . $qs) : '');
+}
 
 if (isset($_GET['lookup_date'])) {
     header('Content-Type: application/json; charset=utf-8');
     $lookupDate = trim((string) $_GET['lookup_date']);
+    $lookupBranchId = $branchId;
+    if ($canSelectBranch) {
+        $lb = isset($_GET['branch_id']) ? (int) $_GET['branch_id'] : 0;
+        if ($lb > 0) {
+            $lookupBranchId = $lb;
+        }
+    }
     $dt = DateTime::createFromFormat('Y-m-d', $lookupDate);
     $valid = $dt && $dt->format('Y-m-d') === $lookupDate;
-    if (!$valid || $lookupDate > $today || $branchId < 1) {
+    if (!$valid || $lookupDate > $today || $lookupBranchId < 1) {
         echo json_encode(['ok' => true, 'found' => false]);
         exit;
     }
@@ -25,7 +86,7 @@ if (isset($_GET['lookup_date'])) {
              WHERE BranchId = :b AND SaleDate = :d AND IsActive = 1
              LIMIT 1'
         );
-        $ls->execute(['b' => $branchId, 'd' => $lookupDate]);
+        $ls->execute(['b' => $lookupBranchId, 'd' => $lookupDate]);
         $lrow = $ls->fetch();
         if (is_array($lrow)) {
             echo json_encode([
@@ -105,7 +166,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = 'Invalid session. Please refresh and try again.';
         $messageType = 'error';
     } elseif ($branchId < 1) {
-        $message = 'No branch assigned to your user. Contact admin.';
+        $message = $canSelectBranch
+            ? 'Please select a branch.'
+            : 'No branch assigned to your user. Contact admin.';
         $messageType = 'error';
     } else {
         $action = isset($_POST['_action']) ? (string) $_POST['_action'] : 'save';
@@ -132,7 +195,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $totalSale = number_format((float) $totalRaw, 2, '.', '');
             $now = date('Y-m-d H:i:s');
             try {
-                // Always upsert by branch + date so Save updates when that date already exists.
                 $exist = $pdo->prepare(
                     'SELECT id FROM allureone_salerecord
                      WHERE BranchId = :b AND SaleDate = :d AND IsActive = 1
@@ -155,7 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'id' => $rid,
                         'b' => $branchId,
                     ]);
-                    header('Location: sale_record.php?msg=updated&rid=' . $rid);
+                    header('Location: ' . sale_record_url(['msg' => 'updated', 'rid' => $rid], $branchId, $canSelectBranch));
                     exit;
                 }
 
@@ -183,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'id' => $editId,
                             'b' => $branchId,
                         ]);
-                        header('Location: sale_record.php?msg=updated&rid=' . $editId);
+                        header('Location: ' . sale_record_url(['msg' => 'updated', 'rid' => $editId], $branchId, $canSelectBranch));
                         exit;
                     }
                 } else {
@@ -200,7 +262,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'cd' => $now,
                     ]);
                     $rid = (int) $pdo->lastInsertId();
-                    header('Location: sale_record.php?msg=saved&rid=' . $rid);
+                    header('Location: ' . sale_record_url(['msg' => 'saved', 'rid' => $rid], $branchId, $canSelectBranch));
                     exit;
                 }
             } catch (PDOException $e) {
@@ -302,17 +364,45 @@ require __DIR__ . '/includes/layout_start.php';
     <div class="card sale-record-form-card">
         <div class="card__head">
             <span><?= $editId > 0 ? 'Edit sale record' : 'Record sale' ?></span>
-            <a class="btn btn--secondary btn--sm" href="sale_record.php?view=1">View sales</a>
+            <a class="btn btn--secondary btn--sm" href="<?= e(sale_record_url(['view' => 1], $branchId, $canSelectBranch)) ?>">View sales</a>
         </div>
         <div class="card__body sale-record-body">
-            <p class="main__meta" style="margin:0 0 0.85rem">Branch: <strong><?= e($branchLabel) ?></strong></p>
-            <?php if ($branchId < 1): ?>
-                <p class="empty">Your user has no branch assigned. Ask Superadmin to set a branch in User Master.</p>
+            <?php if ($canSelectBranch): ?>
+                <div class="form__row" style="max-width:420px;margin:0 0 0.85rem">
+                    <label for="sale_branch_select">Branch</label>
+                    <select id="sale_branch_select" class="form__select">
+                        <?php if ($branchOptions === []): ?>
+                            <option value="">No active branches</option>
+                        <?php else: ?>
+                            <?php foreach ($branchOptions as $ob): ?>
+                                <?php
+                                $oid = (int) ($ob['id'] ?? 0);
+                                $oloc = trim((string) ($ob['locality'] ?? ''));
+                                $obn = trim((string) ($ob['business_name'] ?? ''));
+                                $olabel = $oloc !== '' ? $oloc : ($obn !== '' ? $obn : ('Branch #' . $oid));
+                                if ($oloc !== '' && $obn !== '' && strcasecmp($oloc, $obn) !== 0) {
+                                    $olabel = $oloc . ' · ' . $obn;
+                                }
+                                ?>
+                                <option value="<?= $oid ?>"<?= $oid === $branchId ? ' selected' : '' ?>><?= e($olabel) ?></option>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </select>
+                </div>
             <?php else: ?>
-                <form class="form" method="post" action="sale_record.php" style="max-width:420px" autocomplete="off" id="sale-record-form">
+                <p class="main__meta" style="margin:0 0 0.85rem">Branch: <strong><?= e($branchLabel) ?></strong></p>
+            <?php endif; ?>
+
+            <?php if ($branchId < 1): ?>
+                <p class="empty"><?= $canSelectBranch ? 'Please select a branch.' : 'Your user has no branch assigned. Ask Superadmin to set a branch in User Master.' ?></p>
+            <?php else: ?>
+                <form class="form" method="post" action="<?= e(sale_record_url([], $branchId, $canSelectBranch)) ?>" style="max-width:420px" autocomplete="off" id="sale-record-form">
                     <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="_action" id="sale_action" value="<?= $editId > 0 ? 'update' : 'save' ?>">
                     <input type="hidden" name="record_id" id="record_id" value="<?= (int) $editId ?>">
+                    <?php if ($canSelectBranch): ?>
+                        <input type="hidden" name="branch_id" id="sale_branch_id" value="<?= (int) $branchId ?>">
+                    <?php endif; ?>
                     <div class="form__row">
                         <label for="sale_date">Date</label>
                         <input id="sale_date" name="sale_date" type="date" required
@@ -329,7 +419,7 @@ require __DIR__ . '/includes/layout_start.php';
                     <div class="form__actions">
                         <button class="btn btn--primary" type="submit" id="sale_submit_btn"><?= $editId > 0 ? 'Update' : 'Save' ?></button>
                         <?php if ($editId > 0 && isset($_GET['edit'])): ?>
-                            <a class="btn btn--ghost" href="sale_record.php">Cancel</a>
+                            <a class="btn btn--ghost" href="<?= e(sale_record_url([], $branchId, $canSelectBranch)) ?>">Cancel</a>
                         <?php endif; ?>
                     </div>
                 </form>
@@ -342,7 +432,7 @@ require __DIR__ . '/includes/layout_start.php';
     <div class="card sale-record-form-card">
         <div class="card__head">
             <span>Record sale</span>
-            <a class="btn btn--secondary btn--sm" href="sale_record.php?view=1">View sales</a>
+            <a class="btn btn--secondary btn--sm" href="<?= e(sale_record_url(['view' => 1], $branchId, $canSelectBranch)) ?>">View sales</a>
         </div>
         <div class="card__body sale-record-body">
             <p class="main__meta" style="margin:0 0 0.85rem">Branch: <strong><?= e($branchLabel) ?></strong></p>
@@ -360,14 +450,14 @@ require __DIR__ . '/includes/layout_start.php';
                             <td><?= e((string) ($savedRow['SaleDate'] ?? '')) ?></td>
                             <td><?= e(number_format((float) ($savedRow['TotalSale'] ?? 0), 2, '.', ',')) ?></td>
                             <td class="table-actions">
-                                <a href="sale_record.php?edit=<?= (int) $savedRow['id'] ?>">Edit</a>
+                                <a href="<?= e(sale_record_url(['edit' => (int) $savedRow['id']], $branchId, $canSelectBranch)) ?>">Edit</a>
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             <div class="form__actions" style="margin-top:0.85rem">
-                <a class="btn btn--primary" href="sale_record.php">Record sale</a>
+                <a class="btn btn--primary" href="<?= e(sale_record_url([], $branchId, $canSelectBranch)) ?>">Record sale</a>
             </div>
         </div>
     </div>
@@ -377,12 +467,32 @@ require __DIR__ . '/includes/layout_start.php';
     <div class="card sale-record-list-card">
         <div class="card__head">
             <span>Date-wise Total Sale</span>
-            <a class="btn btn--secondary btn--sm" href="sale_record.php">Record sale</a>
+            <a class="btn btn--secondary btn--sm" href="<?= e(sale_record_url([], $branchId, $canSelectBranch)) ?>">Record sale</a>
         </div>
         <div class="card__body sale-record-body">
-            <p class="main__meta" style="margin:0 0 0.85rem">Branch: <strong><?= e($branchLabel) ?></strong></p>
+            <?php if ($canSelectBranch): ?>
+                <div class="form__row" style="max-width:420px;margin:0 0 0.85rem">
+                    <label for="sale_branch_select_list">Branch</label>
+                    <select id="sale_branch_select_list" class="form__select">
+                        <?php foreach ($branchOptions as $ob): ?>
+                            <?php
+                            $oid = (int) ($ob['id'] ?? 0);
+                            $oloc = trim((string) ($ob['locality'] ?? ''));
+                            $obn = trim((string) ($ob['business_name'] ?? ''));
+                            $olabel = $oloc !== '' ? $oloc : ($obn !== '' ? $obn : ('Branch #' . $oid));
+                            if ($oloc !== '' && $obn !== '' && strcasecmp($oloc, $obn) !== 0) {
+                                $olabel = $oloc . ' · ' . $obn;
+                            }
+                            ?>
+                            <option value="<?= $oid ?>"<?= $oid === $branchId ? ' selected' : '' ?>><?= e($olabel) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            <?php else: ?>
+                <p class="main__meta" style="margin:0 0 0.85rem">Branch: <strong><?= e($branchLabel) ?></strong></p>
+            <?php endif; ?>
             <?php if ($branchId < 1): ?>
-                <p class="empty">No branch assigned.</p>
+                <p class="empty"><?= $canSelectBranch ? 'Please select a branch.' : 'No branch assigned.' ?></p>
             <?php elseif (count($records) === 0): ?>
                 <p class="empty">No sale records yet.</p>
             <?php else: ?>
@@ -401,7 +511,7 @@ require __DIR__ . '/includes/layout_start.php';
                                     <td><?= e((string) ($r['SaleDate'] ?? '')) ?></td>
                                     <td><?= e(number_format((float) ($r['TotalSale'] ?? 0), 2, '.', ',')) ?></td>
                                     <td class="table-actions">
-                                        <a href="sale_record.php?edit=<?= (int) $r['id'] ?>">Edit</a>
+                                        <a href="<?= e(sale_record_url(['edit' => (int) $r['id']], $branchId, $canSelectBranch)) ?>">Edit</a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -443,6 +553,13 @@ require __DIR__ . '/includes/layout_start.php';
     padding: 0.35rem 0.7rem;
     font-size: 0.85rem;
 }
+.form__select {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #c9d2de;
+    border-radius: 6px;
+    font-size: 0.95rem;
+}
 </style>
 
 <script>
@@ -453,7 +570,15 @@ require __DIR__ . '/includes/layout_start.php';
     var recordIdEl = document.getElementById('record_id');
     var submitBtn = document.getElementById('sale_submit_btn');
     var hintEl = document.getElementById('sale_date_hint');
+    var branchHidden = document.getElementById('sale_branch_id');
+    var canSelectBranch = <?= $canSelectBranch ? 'true' : 'false' ?>;
+    var currentBranchId = <?= (int) $branchId ?>;
     var lookupSeq = 0;
+
+    function withBranch(url) {
+        if (!canSelectBranch || !currentBranchId) return url;
+        return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'branch_id=' + encodeURIComponent(String(currentBranchId));
+    }
 
     if (amount) {
         amount.addEventListener('input', function () {
@@ -499,7 +624,11 @@ require __DIR__ . '/includes/layout_start.php';
             return;
         }
         var seq = ++lookupSeq;
-        fetch('sale_record.php?lookup_date=' + encodeURIComponent(d), {
+        var url = 'sale_record.php?lookup_date=' + encodeURIComponent(d);
+        if (canSelectBranch && currentBranchId > 0) {
+            url += '&branch_id=' + encodeURIComponent(String(currentBranchId));
+        }
+        fetch(url, {
             credentials: 'same-origin',
             headers: { 'Accept': 'application/json' }
         })
@@ -521,6 +650,24 @@ require __DIR__ . '/includes/layout_start.php';
         dateEl.addEventListener('change', lookupByDate);
         dateEl.addEventListener('input', lookupByDate);
     }
+
+    function onBranchChange(ev) {
+        var sel = ev.target;
+        var id = parseInt(sel.value || '0', 10) || 0;
+        if (id <= 0) return;
+        var params = new URLSearchParams(window.location.search);
+        params.set('branch_id', String(id));
+        // Drop edit/rid when switching branch
+        params.delete('edit');
+        params.delete('rid');
+        params.delete('msg');
+        window.location.search = params.toString();
+    }
+
+    var branchSelect = document.getElementById('sale_branch_select');
+    var branchSelectList = document.getElementById('sale_branch_select_list');
+    if (branchSelect) branchSelect.addEventListener('change', onBranchChange);
+    if (branchSelectList) branchSelectList.addEventListener('change', onBranchChange);
 })();
 </script>
 

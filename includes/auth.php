@@ -41,6 +41,10 @@ function can_access_sale_record(?array $user = null): bool
     if (!is_array($u)) {
         return false;
     }
+    $roleId = (int) ($u['role_id'] ?? 0);
+    if ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) {
+        return true;
+    }
 
     return !empty($u['record_sale']);
 }
@@ -51,6 +55,30 @@ function require_sale_record_access(): void
     if (!can_access_sale_record()) {
         http_response_code(403);
         echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied. Sale Record permission required.</p><p><a href="' . htmlspecialchars(allureone_home_path_for_user(), ENT_QUOTES, 'UTF-8') . '">Home</a></p></body></html>';
+        exit;
+    }
+}
+
+function can_access_meta_config(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+    $roleId = (int) ($u['role_id'] ?? 0);
+    if ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) {
+        return true;
+    }
+
+    return !empty($u['meta_config']);
+}
+
+function require_meta_config_access(): void
+{
+    require_login();
+    if (!can_access_meta_config()) {
+        http_response_code(403);
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied. Meta Config permission required.</p><p><a href="' . htmlspecialchars(allureone_home_path_for_user(), ENT_QUOTES, 'UTF-8') . '">Home</a></p></body></html>';
         exit;
     }
 }
@@ -100,6 +128,7 @@ function current_user(): ?array
         'branch_id' => isset($_SESSION['branch_id']) ? (int) $_SESSION['branch_id'] : null,
         'role_id' => (int) $_SESSION['role_id'],
         'record_sale' => !empty($_SESSION['record_sale']),
+        'meta_config' => !empty($_SESSION['meta_config']),
         'invoice_cancellation_disabled' => !empty($_SESSION['invoice_cancellation_disabled']),
     ];
 }
@@ -182,6 +211,8 @@ function login_user(array $row): void
     $_SESSION['role_id'] = (int) $role;
     $recordSale = $row['record_sale'] ?? $row['RecordSale'] ?? 0;
     $_SESSION['record_sale'] = ((int) $recordSale === 1);
+    $metaConfig = $row['meta_config'] ?? $row['MetaConfig'] ?? 0;
+    $_SESSION['meta_config'] = ((int) $metaConfig === 1);
 }
 
 /** Stable synthetic user id for Dingg-only login (no allureone_users row). */

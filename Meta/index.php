@@ -395,9 +395,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
 
                 $sqlMeta = "INSERT INTO allureone_meta_leads
-                    (sourceName, Campaiign, branch_id, branch_name, lead_name, lead_phone_number, Created_Datetime, status, remarks, amount)
+                    (sourceName, Campaiign, branch_id, branch_name, lead_name, lead_phone_number, Created_Datetime, status, remarks, amount, leadgen_id, form_id)
                     VALUES
-                    (:sourceName, :campaign, :branch_id, :branch_name, :lead_name, :lead_phone_number, NOW(), :status, :remarks, :amount)";
+                    (:sourceName, :campaign, :branch_id, :branch_name, :lead_name, :lead_phone_number, NOW(), :status, :remarks, :amount, :leadgen_id, :form_id)";
                 $stMeta = $pdoMeta->prepare($sqlMeta);
                 $stMeta->execute([
                     'sourceName' => 'Insta-Fb',
@@ -409,6 +409,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'status' => 1,
                     'remarks' => null,
                     'amount' => null,
+                    'leadgen_id' => (string) $lead_id,
+                    'form_id' => (string) $form_id,
                 ]);
             }catch(Throwable $e){
                 $metaDbLog = date("Y-m-d H:i:s")." | MetaLeads DB Insert Error | ".$lead_id." | ".$e->getMessage()."\n";

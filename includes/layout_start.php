@@ -13,6 +13,7 @@ $userRoleId = (int) ($user['role_id'] ?? 0);
 $isAppointmentStaffRole = ($userRoleId === ROLE_THERAPIST || $userRoleId === ROLE_HOUSEKEEPING);
 $canAppointments = can_access_appointments($user);
 $canSaleRecord = can_access_sale_record($user);
+$canMetaConfig = can_access_meta_config($user);
 $homeHref = allureone_home_path_for_user($user);
 ?>
 <!DOCTYPE html>
@@ -44,11 +45,14 @@ $homeHref = allureone_home_path_for_user($user);
         <button type="button" class="sidebar__close-btn" id="mobileMenuClose" aria-label="Close menu">×</button>
         <a class="sidebar__brand" href="<?= e($homeHref) ?>"><?= e($appName) ?></a>
         <nav class="sidebar__nav">
-            <?php if ($canSaleRecord): ?>
+            <?php if ($canSaleRecord && $userRoleId !== ROLE_SUPERADMIN && $userRoleId !== ROLE_ADMIN): ?>
                 <a class="sidebar__link<?= ($activeNav === 'sale_record') ? ' is-active' : '' ?>" href="sale_record.php">Sale Record</a>
             <?php endif; ?>
             <?php if (!$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'dashboard') ? ' is-active' : '' ?>" href="dashboard.php">Dashboard</a>
+                <?php if ($canSaleRecord && ($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN)): ?>
+                    <a class="sidebar__link<?= ($activeNav === 'sale_record') ? ' is-active' : '' ?>" href="sale_record.php">Sale Record</a>
+                <?php endif; ?>
                 <?php if ($isInvoiceCancellationEnabled): ?>
                     <a class="sidebar__link<?= ($activeNav === 'invoice_cancellation') ? ' is-active' : '' ?>" href="invoice_cancellation.php">Invoice Cancellation</a>
                 <?php endif; ?>
@@ -68,6 +72,9 @@ $homeHref = allureone_home_path_for_user($user);
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN || (int) ($user['role_id'] ?? 0) === ROLE_MANAGER)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'leads') ? ' is-active' : '' ?>" href="leads.php">Leads</a>
                 <a class="sidebar__link<?= ($activeNav === 'crm') ? ' is-active' : '' ?>" href="crm.php">CRM</a>
+            <?php endif; ?>
+            <?php if ($canMetaConfig): ?>
+                <a class="sidebar__link<?= ($activeNav === 'meta_config') ? ' is-active' : '' ?>" href="meta-leads-config.php">Meta Config</a>
             <?php endif; ?>
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
                 <a class="sidebar__link<?= ($activeNav === 'google_ads_view') ? ' is-active' : '' ?>" href="google-ads-view.php">Google Ads View</a>

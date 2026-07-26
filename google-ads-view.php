@@ -43,6 +43,8 @@ require __DIR__ . '/includes/layout_start.php';
             </div>
             <div class="form__row form__row--submit">
                 <button type="submit" class="btn btn--primary">Apply</button>
+                <button type="button" id="google_ads_view_prev" class="btn btn--ghost" aria-label="Previous day" title="Previous day">←</button>
+                <button type="button" id="google_ads_view_next" class="btn btn--ghost" aria-label="Next day" title="Next day">→</button>
             </div>
         </form>
         <div id="google-ads-view-status" class="main__meta" style="padding:0 1.25rem 1rem">
@@ -180,6 +182,34 @@ require __DIR__ . '/includes/layout_start.php';
             if (nextDate !== appliedDate) {
                 hideTable();
             }
+        });
+    }
+
+    function shiftDate(days) {
+        if (!dateInput) return;
+        var cur = String(dateInput.value || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(cur)) return;
+        var parts = cur.split('-');
+        var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (isNaN(d.getTime())) return;
+        d.setDate(d.getDate() + days);
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        dateInput.value = y + '-' + m + '-' + day;
+        loadData();
+    }
+
+    var prevBtn = document.getElementById('google_ads_view_prev');
+    var nextBtn = document.getElementById('google_ads_view_next');
+    if (prevBtn) {
+        prevBtn.addEventListener('click', function () {
+            shiftDate(-1);
+        });
+    }
+    if (nextBtn) {
+        nextBtn.addEventListener('click', function () {
+            shiftDate(1);
         });
     }
 

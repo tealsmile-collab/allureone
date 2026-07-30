@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS allureone_branch (
   business_name VARCHAR(255) NOT NULL,
   locality VARCHAR(255) NULL,
   vendor_id INT NOT NULL,
+  mobile_number VARCHAR(15) NULL,
   isActive TINYINT(1) NOT NULL DEFAULT 1,
   isDingg TINYINT(1) NOT NULL DEFAULT 0,
   enableSaleRecord TINYINT(1) NOT NULL DEFAULT 0,
@@ -396,6 +397,9 @@ try {
     }
     if (!isset($branchColSet['enableSaleRecord'])) {
         $pdo->exec('ALTER TABLE allureone_branch ADD COLUMN enableSaleRecord TINYINT(1) NOT NULL DEFAULT 0');
+    }
+    if (!isset($branchColSet['mobile_number'])) {
+        $pdo->exec('ALTER TABLE allureone_branch ADD COLUMN mobile_number VARCHAR(15) NULL AFTER vendor_id');
     }
 
     $userCols = $pdo->query(

@@ -80,73 +80,60 @@ function getLeadFieldValueByName($lead, $targetName){
     return "";
 }
 
-
-
-// ================= BRANCH + FORM MAPS =================
-// Rule: many form_ids → one branch; one form_id → exactly one branch (never multiple branches).
-
-$branchConfig = [
-    "andheri_east_marol" => ["phone" => "917304455836", "branch_id" => 3000],
-    "malad" => ["phone" => "919920309399", "branch_id" => 4185],
-    "andheri_west_lokhandwala" => ["phone" => "917777049450", "branch_id" => 4507],
-    "borivali" => ["phone" => "918624020816", "branch_id" => 2973],
-    "powai" => ["phone" => "918652020816", "branch_id" => 2935],
-    "mulund" => ["phone" => "918080515738", "branch_id" => 3781],
-    "thane" => ["phone" => "919987799720", "branch_id" => 3780],
-    "navi_mumbai_-_seawoods" => ["phone" => "919324525471", "branch_id" => 3782],
-    "navi_mumbai_-_kharghar" => ["phone" => "918424925346", "branch_id" => 5000],
-    "palghar" => ["phone" => "917875588844", "branch_id" => 5001],
-    "boisar" => ["phone" => "919325825052", "branch_id" => 4456],
-    "gujrat_-_halol_vadodara" => ["phone" => "919274954980", "branch_id" => 5002],
-    "ratnagiri" => ["phone" => "918983188738", "branch_id" => 4274],
-    "thanevartaknagar" => ["phone" => "919321852726", "branch_id" => 4651],
-];
-
-// form_id => branch key (add more form ids under the same branch key as needed)
-$formIdToBranchKey = [
-    "1069208812451626" => "navi_mumbai_-_seawoods",
-    "957571290636446" => "boisar",
-    "1000356342810563" => "thanevartaknagar",
-    "1036833275598874" => "thanevartaknagar",
-    "2487128015124199" => "andheri_west_lokhandwala",
-    // Add each branch's unique Meta form id(s) below, e.g.:
-    // "FORM_ID_1" => "andheri_east_marol",
-    // "FORM_ID_2" => "andheri_east_marol",
-];
-
-// Derived lookups (kept for location-name matching when lead has location/branch field)
-$branchPhones = [];
-$branchNameToBranchId = [];
-foreach ($branchConfig as $branchKey => $cfg) {
-    $branchPhones[$branchKey] = (string) ($cfg["phone"] ?? "");
-    $branchNameToBranchId[$branchKey] = (int) ($cfg["branch_id"] ?? 0);
-}
-// Alias used in older maps
-$branchNameToBranchId["vartaknagar"] = (int) ($branchConfig["thanevartaknagar"]["branch_id"] ?? 4651);
-
-function meta_branch_key_for_form_id($formId, array $formIdToBranchKey): string
+/**
+ * PDO for Allure Pro DB (meta form config + branch + leads).
+ */
+function meta_db_pdo(string $host, string $user, string $pass, string $name): PDO
 {
-    $formId = trim((string) $formId);
-    if ($formId === "" || !isset($formIdToBranchKey[$formId])) {
-        return "";
-    }
+    $dsn = "mysql:host=".$host.";dbname=".$name.";charset=utf8";
 
-    return strtolower(trim((string) $formIdToBranchKey[$formId]));
+    return new PDO($dsn, $user, $pass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ]);
 }
 
-function meta_branch_info_for_key($branchKey, array $branchConfig): ?array
+/**
+ * Resolve branch + mobile from allureone_meta_form_config.meta_form_id → allureone_branch.
+ *
+ * @return array{branch_id:int,campaign_name:string,mobile_number:string,branch_label:string}|null
+ */
+function meta_resolve_branch_by_form_id(PDO $pdo, string $formId): ?array
 {
-    $branchKey = strtolower(trim((string) $branchKey));
-    if ($branchKey === "" || !isset($branchConfig[$branchKey])) {
+    $formId = trim($formId);
+    if ($formId === "") {
         return null;
     }
-    $cfg = $branchConfig[$branchKey];
+
+    $st = $pdo->prepare(
+        'SELECT c.BranchId, c.campaign_name,
+                b.mobile_number, b.locality, b.business_name
+         FROM allureone_meta_form_config c
+         INNER JOIN allureone_branch b ON b.id = c.BranchId
+         WHERE c.meta_form_id = :fid AND c.IsActive = 1
+         LIMIT 1'
+    );
+    $st->execute(['fid' => $formId]);
+    $row = $st->fetch();
+    if (!is_array($row)) {
+        return null;
+    }
+
+    $branchId = (int) ($row['BranchId'] ?? 0);
+    if ($branchId <= 0) {
+        return null;
+    }
+
+    $locality = trim((string) ($row['locality'] ?? ''));
+    $businessName = trim((string) ($row['business_name'] ?? ''));
+    $label = $locality !== '' ? $locality : $businessName;
 
     return [
-        "key" => $branchKey,
-        "phone" => (string) ($cfg["phone"] ?? ""),
-        "branch_id" => (int) ($cfg["branch_id"] ?? 0),
-        "label" => trim(str_replace("_", " ", $branchKey)),
+        'branch_id' => $branchId,
+        'campaign_name' => trim((string) ($row['campaign_name'] ?? '')),
+        'mobile_number' => trim((string) ($row['mobile_number'] ?? '')),
+        'branch_label' => $label,
     ];
 }
 
@@ -174,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    global $branchConfig,$formIdToBranchKey,$branchPhones,$branchNameToBranchId,$page_access_token,$api_url,$apiKey,$apiSecret,$logFile,$franchiseLogFile,$apiLogFile;
+    global $page_access_token,$api_url,$apiKey,$apiSecret,$logFile,$franchiseLogFile,$apiLogFile,$frDbHost,$frDbUser,$frDbPass,$frDbName;
 
     $input = file_get_contents("php://input");
     $data = json_decode($input,true);
@@ -189,6 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $lead_id = $data['entry'][0]['changes'][0]['value']['leadgen_id'];
         $form_id = $data['entry'][0]['changes'][0]['value']['form_id'] ?? "";
+        $ad_id = $data['entry'][0]['changes'][0]['value']['ad_id'] ?? "";
 
 
         // ================= FETCH FULL LEAD DATA =================
@@ -212,6 +200,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sourceName="";
         $isMothersDayLead = false;
         $mothersDayBranchId = null;
+        $metaCampaignName = "";
+        $pdoMeta = null;
 
 
 
@@ -275,12 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             try{
-                $dsn = "mysql:host=".$frDbHost.";dbname=".$frDbName.";charset=utf8";
-                $pdo = new PDO($dsn, $frDbUser, $frDbPass, [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_EMULATE_PREPARES => false,
-                ]);
+                $pdo = meta_db_pdo($frDbHost, $frDbUser, $frDbPass, $frDbName);
 
                 $sql = "INSERT INTO allureone_franchise_leads
                     (FULL_NAME, PHONE_NUMBER, CITY, investment_budget, preferred_timeline, experience_in_the_wellness, property_for_the_wellness, sourceName, DateTime, form_id, campaign_id)
@@ -341,34 +326,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // No location/branch field: resolve from form_id → branch key (many forms may share one branch).
-            $mappedBranchKey = "";
-            if(!$locationFieldFound && !$branchFieldFound){
-                $mappedBranchKey = meta_branch_key_for_form_id($form_id, $formIdToBranchKey);
-                $mappedInfo = meta_branch_info_for_key($mappedBranchKey, $branchConfig);
-                if(is_array($mappedInfo)){
-                    $preferredLocation = escapeValue(normalizeValue($mappedInfo["label"]));
-                }
-            }
+            // form_id → BranchId (allureone_meta_form_config) → mobile_number (allureone_branch)
+            try{
+                $pdoMeta = meta_db_pdo($frDbHost, $frDbUser, $frDbPass, $frDbName);
+                $branchInfo = meta_resolve_branch_by_form_id($pdoMeta, (string) $form_id);
+                if(is_array($branchInfo)){
+                    $mothersDayBranchId = (int) $branchInfo['branch_id'];
+                    $metaCampaignName = (string) ($branchInfo['campaign_name'] ?? '');
+                    $branchLabel = (string) ($branchInfo['branch_label'] ?? '');
+                    $branchMobile = preg_replace('/\D+/', '', (string) ($branchInfo['mobile_number'] ?? '')) ?? '';
 
-            $locationKey = strtolower(trim(str_replace(" ", "_", $preferredLocation)));
-
-            if(isset($branchPhones[$locationKey])){
-                $recipientName = $preferredLocation;
-                $recipientPhone = $branchPhones[$locationKey];
-            }
-
-            if($mappedBranchKey !== ""){
-                $mappedInfo = meta_branch_info_for_key($mappedBranchKey, $branchConfig);
-                if(is_array($mappedInfo) && (int)$mappedInfo["branch_id"] > 0){
-                    $mothersDayBranchId = (int)$mappedInfo["branch_id"];
-                    if($mappedInfo["phone"] !== ""){
-                        $recipientName = $preferredLocation !== "" ? $preferredLocation : $mappedInfo["label"];
-                        $recipientPhone = $mappedInfo["phone"];
+                    if(!$locationFieldFound && !$branchFieldFound && $branchLabel !== ''){
+                        $preferredLocation = escapeValue(normalizeValue($branchLabel));
                     }
+
+                    if($branchMobile !== ''){
+                        $recipientName = $preferredLocation !== '' ? $preferredLocation : ($branchLabel !== '' ? $branchLabel : $recipientName);
+                        $recipientPhone = $branchMobile;
+                    }
+                } else {
+                    $missLog = date("Y-m-d H:i:s")." | Meta form config not found for form_id=".$form_id." | lead=".$lead_id."\n";
+                    file_put_contents($apiLogFile, $missLog, FILE_APPEND);
                 }
-            } elseif(isset($branchNameToBranchId[$locationKey])){
-                $mothersDayBranchId = (int)$branchNameToBranchId[$locationKey];
+            }catch(Throwable $e){
+                $pdoMeta = null;
+                $cfgLog = date("Y-m-d H:i:s")." | Meta branch resolve error | ".$lead_id." | ".$e->getMessage()."\n";
+                file_put_contents($apiLogFile, $cfgLog, FILE_APPEND);
             }
 
             $details = "Preferred Location - ".$preferredLocation;
@@ -384,24 +367,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $phoneNumber="91".$phoneNumber;
         }
 
-        // ================= SAVE META MOTHERS DAY LEAD =================
+        // ================= SAVE META LEAD =================
         if($isMothersDayLead){
             try{
-                $dsnMeta = "mysql:host=".$frDbHost.";dbname=".$frDbName.";charset=utf8";
-                $pdoMeta = new PDO($dsnMeta, $frDbUser, $frDbPass, [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_EMULATE_PREPARES => false,
-                ]);
+                if($pdoMeta === null){
+                    $pdoMeta = meta_db_pdo($frDbHost, $frDbUser, $frDbPass, $frDbName);
+                }
+
+                $campaignLabel = $metaCampaignName !== ''
+                    ? $metaCampaignName
+                    : ('Meta Campaign ' . $form_id);
 
                 $sqlMeta = "INSERT INTO allureone_meta_leads
-                    (sourceName, Campaiign, branch_id, branch_name, lead_name, lead_phone_number, Created_Datetime, status, remarks, amount, leadgen_id, form_id)
+                    (sourceName, Campaiign, branch_id, branch_name, lead_name, lead_phone_number, Created_Datetime, status, remarks, amount, leadgen_id, form_id, ad_id)
                     VALUES
-                    (:sourceName, :campaign, :branch_id, :branch_name, :lead_name, :lead_phone_number, NOW(), :status, :remarks, :amount, :leadgen_id, :form_id)";
+                    (:sourceName, :campaign, :branch_id, :branch_name, :lead_name, :lead_phone_number, NOW(), :status, :remarks, :amount, :leadgen_id, :form_id, :ad_id)";
                 $stMeta = $pdoMeta->prepare($sqlMeta);
                 $stMeta->execute([
                     'sourceName' => 'Insta-Fb',
-                    'campaign' => 'Meta Campaign ' . $form_id,
+                    'campaign' => $campaignLabel,
                     'branch_id' => $mothersDayBranchId,
                     'branch_name' => $preferredLocation,
                     'lead_name' => $customerName,
@@ -411,6 +395,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'amount' => null,
                     'leadgen_id' => (string) $lead_id,
                     'form_id' => (string) $form_id,
+                    'ad_id' => (string) $ad_id,
                 ]);
             }catch(Throwable $e){
                 $metaDbLog = date("Y-m-d H:i:s")." | MetaLeads DB Insert Error | ".$lead_id." | ".$e->getMessage()."\n";

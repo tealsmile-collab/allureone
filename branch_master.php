@@ -17,10 +17,26 @@ if (isset($flash[$mk])) {
     [$message, $messageType] = $flash[$mk];
 }
 
+/**
+ * Digits only, max 15. Empty allowed.
+ */
+function branch_normalize_mobile(string $raw): string
+{
+    $digits = preg_replace('/\D+/', '', $raw) ?? '';
+    if (strlen($digits) > 15) {
+        $digits = substr($digits, 0, 15);
+    }
+
+    return $digits;
+}
+
 $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $editRow = null;
 if ($editId > 0) {
-    $es = $pdo->prepare('SELECT id, business_name, locality, vendor_id, isActive, isDingg, enableSaleRecord FROM allureone_branch WHERE id = :id LIMIT 1');
+    $es = $pdo->prepare(
+        'SELECT id, business_name, locality, vendor_id, mobile_number, isActive, isDingg, enableSaleRecord
+         FROM allureone_branch WHERE id = :id LIMIT 1'
+    );
     $es->execute(['id' => $editId]);
     $editRow = $es->fetch();
     if ($editRow === false) {
@@ -40,6 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = isset($_POST['business_name']) ? trim((string) $_POST['business_name']) : '';
         $locality = isset($_POST['locality']) ? trim((string) $_POST['locality']) : '';
         $vendorId = isset($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : 0;
+        $mobileRaw = isset($_POST['mobile_number']) ? trim((string) $_POST['mobile_number']) : '';
+        $mobileNumber = branch_normalize_mobile($mobileRaw);
         $lenName = function_exists('mb_strlen') ? mb_strlen($name) : strlen($name);
 
         if ($id < 1) {
@@ -53,6 +71,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messageType = 'error';
         } elseif ($vendorId < 1) {
             $message = 'Vendor ID is required and must be greater than 0.';
+            $messageType = 'error';
+        } elseif ($mobileRaw !== '' && !preg_match('/^\d{1,15}$/', $mobileRaw)) {
+            $message = 'Mobile number must be digits only (max 15 characters).';
             $messageType = 'error';
         } elseif ($action === 'update') {
             $isActive = isset($_POST['is_active']) ? 1 : 0;
@@ -70,14 +91,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $upd = $pdo->prepare(
                         'UPDATE allureone_branch
-                         SET business_name = :n, locality = :l, vendor_id = :v, isActive = :a,
-                             isDingg = :d, enableSaleRecord = :s
+                         SET business_name = :n, locality = :l, vendor_id = :v, mobile_number = :m,
+                             isActive = :a, isDingg = :d, enableSaleRecord = :s
                          WHERE id = :id'
                     );
                     $upd->execute([
                         'n' => $name,
                         'l' => $locality,
                         'v' => $vendorId,
+                        'm' => $mobileNumber !== '' ? $mobileNumber : null,
                         'a' => $isActive,
                         'd' => $isDingg,
                         's' => $enableSaleRecord,
@@ -92,14 +114,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $enableSaleRecord = isset($_POST['enable_sale_record']) ? 1 : 0;
             try {
                 $ins = $pdo->prepare(
-                    'INSERT INTO allureone_branch (id, business_name, locality, vendor_id, isActive, isDingg, enableSaleRecord)
-                     VALUES (:id, :n, :l, :v, 1, :d, :s)'
+                    'INSERT INTO allureone_branch
+                        (id, business_name, locality, vendor_id, mobile_number, isActive, isDingg, enableSaleRecord)
+                     VALUES (:id, :n, :l, :v, :m, 1, :d, :s)'
                 );
                 $ins->execute([
                     'id' => $id,
                     'n' => $name,
                     'l' => $locality,
                     'v' => $vendorId,
+                    'm' => $mobileNumber !== '' ? $mobileNumber : null,
                     'd' => $isDingg,
                     's' => $enableSaleRecord,
                 ]);
@@ -115,7 +139,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $list = $pdo->query(
-    'SELECT id, business_name, locality, vendor_id, isActive, isDingg, enableSaleRecord FROM allureone_branch ORDER BY id ASC'
+    'SELECT id, business_name, locality, vendor_id, mobile_number, isActive, isDingg, enableSaleRecord
+     FROM allureone_branch ORDER BY id ASC'
 )->fetchAll();
 
 $pageTitle = 'Branch Master';
@@ -149,6 +174,12 @@ require __DIR__ . '/includes/layout_start.php';
                 <label for="edit_vendor_id">Vendor ID</label>
                 <input id="edit_vendor_id" name="vendor_id" type="number" min="1" required
                        value="<?= (int) ($editRow['vendor_id'] ?? 0) ?>">
+            </div>
+            <div class="form__row">
+                <label for="edit_mobile_number">Mobile number</label>
+                <input id="edit_mobile_number" name="mobile_number" type="text" inputmode="numeric"
+                       pattern="[0-9]*" maxlength="15" autocomplete="tel"
+                       value="<?= e((string) ($editRow['mobile_number'] ?? '')) ?>">
             </div>
             <div class="form__row form__row--check">
                 <label class="check-label">
@@ -203,6 +234,12 @@ require __DIR__ . '/includes/layout_start.php';
                 <input id="vendor_id" name="vendor_id" type="number" min="1" required
                        value="<?= (!$editId && isset($_POST['vendor_id']) && ($_POST['_action'] ?? '') === 'create') ? (int) $_POST['vendor_id'] : 11179 ?>">
             </div>
+            <div class="form__row">
+                <label for="mobile_number">Mobile number</label>
+                <input id="mobile_number" name="mobile_number" type="text" inputmode="numeric"
+                       pattern="[0-9]*" maxlength="15" autocomplete="tel"
+                       value="<?= (!$editId && isset($_POST['mobile_number']) && ($_POST['_action'] ?? '') === 'create') ? e((string) $_POST['mobile_number']) : '' ?>">
+            </div>
             <div class="form__row form__row--check">
                 <label class="check-label">
                     <input type="checkbox" name="is_dingg" value="1">
@@ -234,6 +271,7 @@ require __DIR__ . '/includes/layout_start.php';
                             <th>Business name</th>
                             <th>Locality</th>
                             <th>Vendor ID</th>
+                            <th>Mobile</th>
                             <th>Active</th>
                             <th>Dingg</th>
                             <th>Sale record</th>
@@ -247,6 +285,7 @@ require __DIR__ . '/includes/layout_start.php';
                                 <td><?= e((string) $b['business_name']) ?></td>
                                 <td><?= e((string) ($b['locality'] ?? '')) ?></td>
                                 <td><?= (int) $b['vendor_id'] ?></td>
+                                <td><?= e((string) ($b['mobile_number'] ?? '')) ?></td>
                                 <td><?= ((int) $b['isActive'] === 1) ? 'Yes' : 'No' ?></td>
                                 <td><?= ((int) ($b['isDingg'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
                                 <td><?= ((int) ($b['enableSaleRecord'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
@@ -259,5 +298,19 @@ require __DIR__ . '/includes/layout_start.php';
         <?php endif; ?>
     </div>
 </div>
+
+<script>
+(function () {
+    function digitsOnly(el) {
+        if (!el) return;
+        el.addEventListener('input', function () {
+            var next = String(el.value || '').replace(/\D+/g, '').slice(0, 15);
+            if (el.value !== next) el.value = next;
+        });
+    }
+    digitsOnly(document.getElementById('mobile_number'));
+    digitsOnly(document.getElementById('edit_mobile_number'));
+})();
+</script>
 
 <?php require __DIR__ . '/includes/layout_end.php'; ?>

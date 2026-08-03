@@ -550,23 +550,14 @@
     $('#mobileMaxPrice').val(state.filters.max_price || state.dealFilters.max_price || '');
     $('#mobileDuration').val(state.filters.duration || '');
     $('#mobileCategory').val(state.filters.category_id || '');
-    $('#mobileFilterCategoryGroup').prop('hidden', false);
+    $('#mobileFilterCategoryGroup').prop('hidden', true);
     state.mobileFilters && state.mobileFilters.show();
   }
 
   function renderCategoryBars(categories) {
-    const $mobile = $('#mobileCatChips').empty();
     const $mobileCat = $('#mobileCategory').empty().append('<option value="">All</option>');
-    const allBtn = '<button type="button" class="category-chip active" data-id="">All</button>';
-    $mobile.append(allBtn);
-    const hideFromBar = new Set(['foot-reflexology']);
     (categories || []).forEach((c) => {
-      const slug = String(c.slug || '').toLowerCase().trim();
-      const name = String(c.name || '').toLowerCase().trim();
-      const skipBar = hideFromBar.has(slug) || name === 'foot reflexology';
       $mobileCat.append(`<option value="${c.id}">${escapeHtml(c.name)}</option>`);
-      if (skipBar) return;
-      $mobile.append(`<button type="button" class="category-chip" data-id="${c.id}">${escapeHtml(c.name)}</button>`);
     });
   }
 

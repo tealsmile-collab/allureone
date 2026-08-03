@@ -105,46 +105,8 @@ img { max-width: 100%; height: auto; }
   background: var(--sage); color: #4a5242; border-color: var(--sage);
 }
 
-/* Mobile shop-by — outside sticky header so it doesn't cover product images */
-.mobile-shop-by {
-  border-bottom: 1px solid var(--line);
-  padding: .55rem 1rem .7rem;
-  background: rgba(255, 250, 245, 0.96);
-  position: relative;
-  z-index: 2;
-}
-.shop-by-label {
-  margin: 0 0 .4rem;
-  font-size: .72rem;
-  font-weight: 600;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.shop-by-tabs {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: .5rem;
-}
-.shop-by-tab {
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
-  border-radius: 12px;
-  padding: .65rem .8rem;
-  font-weight: 600;
-  font-size: .95rem;
-}
-.shop-by-tab.active {
-  background: var(--stone);
-  border-color: var(--stone);
-  color: #fff;
-}
-.mobile-category-panel {
-  margin-top: .65rem;
-  padding-top: .55rem;
-  border-top: 1px dashed var(--line);
-}
+/* Mobile shop-by removed */
+.mobile-shop-by { display: none !important; }
 .mobile-cat-chips {
   display: flex;
   flex-wrap: wrap;

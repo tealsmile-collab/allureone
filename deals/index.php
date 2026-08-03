@@ -75,21 +75,6 @@ $csrf = Security::csrfToken();
       </div>
     </nav>
   </header>
-  <div class="mobile-shop-by d-md-none" id="mobileShopBy">
-    <p class="shop-by-label">Shop by</p>
-    <div class="shop-by-tabs">
-      <button type="button" class="shop-by-tab" id="btnShopCategory" aria-expanded="false">Category</button>
-    </div>
-    <div class="mobile-category-panel" id="mobileCategoryPanel" hidden>
-      <div class="mobile-cat-chips" id="mobileCatChips"></div>
-      <button type="button" class="mobile-filters-link" id="btnMobileFilters">
-        <i class="fa-solid fa-sliders"></i> Filters
-      </button>
-    </div>
-    <button type="button" class="mobile-deals-filters-btn" id="btnDealsFilters" hidden>
-      <i class="fa-solid fa-sliders"></i> Filters
-    </button>
-  </div>
 
   <main id="app">
     <div class="home-stage">
@@ -200,7 +185,7 @@ $csrf = Security::csrfToken();
       <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
     </div>
     <div class="offcanvas-body">
-      <div class="filter-group mb-3" id="mobileFilterCategoryGroup">
+      <div class="filter-group mb-3" id="mobileFilterCategoryGroup" hidden>
         <label class="form-label" for="mobileCategory">Category</label>
         <select id="mobileCategory" class="form-select">
           <option value="">All</option>

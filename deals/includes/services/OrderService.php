@@ -558,7 +558,7 @@ class OrderService
         $amount = number_format((float) ($order['grand_total'] ?? 0), 2, '.', '');
 
         $payload = [
-            'channelId' => config('gallabox.channel_id'),
+            'channelId' => gallabox_config('channel_id'),
             'channelType' => 'whatsapp',
             'recipient' => [
                 'name' => (string) ($order['customer_name'] ?: 'Guest'),
@@ -567,7 +567,7 @@ class OrderService
             'whatsapp' => [
                 'type' => 'template',
                 'template' => [
-                    'templateName' => (string) config('gallabox.buyer_template', 'allure_deal_confirmation'),
+                    'templateName' => (string) gallabox_config('buyer_template', 'allure_deal_confirmation'),
                     'bodyValues' => [
                         'fullName' => (string) ($order['customer_name'] ?: 'Guest'),
                         'orderId' => (string) ($order['order_no'] ?? ''),
@@ -593,14 +593,14 @@ class OrderService
         $phone = (string) ($master['mobile'] ?? '');
         $recipientName = (string) ($master['label'] ?? '');
         if ($recipientName === '') {
-            $recipientName = $branchName !== '' ? $branchName : (string) config('gallabox.default_name', 'Shailesh');
+            $recipientName = $branchName !== '' ? $branchName : (string) gallabox_config('default_name', 'Shailesh');
         }
         if ($phone === '') {
             // Last resort: deals branch whatsapp, then default
             $phone = trim((string) ($order['branch_whatsapp'] ?? ''));
         }
         if ($phone === '') {
-            $phone = (string) config('gallabox.default_phone', '');
+            $phone = (string) gallabox_config('default_phone', '');
         }
         if ($phone === '') {
             $this->logWhatsApp((int) $order['id'], 'whatsapp_branch_skipped', [
@@ -649,7 +649,7 @@ class OrderService
         $details = implode("\n", $detailParts);
 
         $payload = [
-            'channelId' => config('gallabox.channel_id'),
+            'channelId' => gallabox_config('channel_id'),
             'channelType' => 'whatsapp',
             'recipient' => [
                 'name' => $recipientName,
@@ -658,7 +658,7 @@ class OrderService
             'whatsapp' => [
                 'type' => 'template',
                 'template' => [
-                    'templateName' => config('gallabox.template', 'meta_lead'),
+                    'templateName' => gallabox_config('template', 'meta_lead'),
                     'bodyValues' => [
                         'sourceName' => 'Allure Deals',
                         'customerNumber' => format_phone_in((string) ($order['customer_mobile'] ?? '')),
@@ -841,9 +841,12 @@ class OrderService
 
     private function dispatchGallabox(array $payload, int $orderId, string $event): bool
     {
-        $apiKey = (string) config('gallabox.api_key');
-        $apiSecret = (string) config('gallabox.api_secret');
-        if ($apiKey === '' || str_contains($apiKey, 'gallabox_api_key') || str_contains($apiKey, 'YOUR_GALLABOX')) {
+        // Always use deployable includes/config/gallabox.php (matches api/refer.txt)
+        $apiUrl = trim((string) gallabox_config('api_url', 'https://server.gallabox.com/devapi/messages/whatsapp'));
+        $apiKey = trim((string) gallabox_config('api_key', ''));
+        $apiSecret = trim((string) gallabox_config('api_secret', ''));
+
+        if ($apiKey === '' || $apiSecret === '' || str_contains($apiKey, 'YOUR_GALLABOX')) {
             $this->logWhatsApp($orderId, $event . '_skipped', $payload, 'skipped');
             OrderCartLog::info('whatsapp_skipped', [
                 'order_id' => $orderId,
@@ -854,16 +857,19 @@ class OrderService
             return false;
         }
 
-        $ch = curl_init((string) config('gallabox.api_url'));
+        // Same header style as api/refer.txt (working Meta lead sender)
+        $headers = [
+            'apiKey: ' . $apiKey,
+            'apiSecret: ' . $apiSecret,
+            'Content-Type: application/json',
+        ];
+
+        $ch = curl_init($apiUrl);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'apiKey: ' . $apiKey,
-                'apiSecret: ' . $apiSecret,
-            ],
+            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            CURLOPT_HTTPHEADER => $headers,
             CURLOPT_TIMEOUT => 30,
         ]);
         $response = curl_exec($ch);
@@ -872,13 +878,20 @@ class OrderService
         curl_close($ch);
 
         $data = json_decode((string) $response, true);
-        $ok = is_array($data) && ((($data['status'] ?? '') === 'success') || ($http >= 200 && $http < 300));
+        $ok = is_array($data) && ((($data['status'] ?? '') === 'success') || ($http >= 200 && $http < 300 && !isset($data['status'])));
+        // Explicit unauthorized is always a failure
+        if (is_array($data) && strtolower((string) ($data['status'] ?? '')) === 'unauthorized') {
+            $ok = false;
+        }
 
         $logPayload = [
             'request' => $payload,
             'response' => $data ?? $response,
             'http' => $http,
             'curl_error' => $curlError !== '' ? $curlError : null,
+            'api_key_prefix' => substr($apiKey, 0, 6) . '…',
+            'api_secret_prefix' => substr($apiSecret, 0, 6) . '…',
+            'api_url' => $apiUrl,
         ];
         $this->logWhatsApp($orderId, $event, $logPayload, $ok ? 'success' : 'failed');
 
@@ -889,6 +902,7 @@ class OrderService
                 'http' => $http,
                 'payload' => $payload,
                 'response' => $data ?? $response,
+                'api_key_prefix' => substr($apiKey, 0, 6) . '…',
             ]);
         } else {
             OrderCartLog::error('whatsapp_api_call', [
@@ -898,6 +912,9 @@ class OrderService
                 'curl_error' => $curlError !== '' ? $curlError : null,
                 'payload' => $payload,
                 'response' => $data ?? $response,
+                'api_key_prefix' => substr($apiKey, 0, 6) . '…',
+                'api_secret_prefix' => substr($apiSecret, 0, 6) . '…',
+                'hint' => 'If Unauthorized, confirm includes/config/gallabox.php matches api/refer.txt',
             ]);
         }
 

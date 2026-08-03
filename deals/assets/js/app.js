@@ -534,17 +534,13 @@
     if (on) state.dealsMode = false;
     if (on) {
       $('#btnShopCategory').addClass('active');
-      $('#btnShopDeals').removeClass('active');
     }
   }
 
   function setDealsMode(on) {
     state.dealsMode = !!on;
     $('#btnDealsFilters').prop('hidden', !on);
-    if (on) {
-      $('#btnShopDeals').addClass('active');
-      $('#btnShopCategory').removeClass('active');
-    } else {
+    if (!on) {
       $('#btnDealsFilters').prop('hidden', true);
     }
   }
@@ -689,25 +685,12 @@
     $(this).attr('aria-expanded', open ? 'true' : 'false');
     $(this).toggleClass('active', open);
     if (open) {
-      $('#btnShopDeals').removeClass('active');
       state.filters.today_deal = '1';
       setCategoryMode(true);
       state.page = 1;
       loadDeals();
       scrollToDeals();
     }
-  });
-
-  $('#btnShopDeals').on('click', function () {
-    $('#mobileCategoryPanel').prop('hidden', true);
-    $('#btnShopCategory').removeClass('active').attr('aria-expanded', 'false');
-    state.filters.today_deal = '1';
-    state.filters.category_id = '';
-    setDealsMode(true);
-    syncCategoryChips('');
-    state.page = 1;
-    loadDeals();
-    scrollToDeals();
   });
 
   function openFiltersFromUi() {

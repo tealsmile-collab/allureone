@@ -79,7 +79,6 @@ $csrf = Security::csrfToken();
     <p class="shop-by-label">Shop by</p>
     <div class="shop-by-tabs">
       <button type="button" class="shop-by-tab" id="btnShopCategory" aria-expanded="false">Category</button>
-      <button type="button" class="shop-by-tab" id="btnShopDeals">Deals</button>
     </div>
     <div class="mobile-category-panel" id="mobileCategoryPanel" hidden>
       <div class="mobile-cat-chips" id="mobileCatChips"></div>

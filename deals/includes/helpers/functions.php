@@ -137,6 +137,31 @@ function logo_url(): string
     return asset_url($logo);
 }
 
+/**
+ * Gallabox settings from deployable includes/config/gallabox.php (overrides config.php).
+ */
+function gallabox_config(?string $key = null, mixed $default = null): mixed
+{
+    static $gb = null;
+    if ($gb === null) {
+        $file = ROOT_PATH . '/includes/config/gallabox.php';
+        $gb = is_file($file) ? (require $file) : [];
+        if (!is_array($gb)) {
+            $gb = [];
+        }
+        // Fallback to config.php keys if file missing values
+        foreach (['api_url', 'api_key', 'api_secret', 'channel_id', 'template', 'buyer_template', 'default_phone', 'default_name'] as $k) {
+            if (!isset($gb[$k]) || $gb[$k] === '' || $gb[$k] === null) {
+                $gb[$k] = config('gallabox.' . $k);
+            }
+        }
+    }
+    if ($key === null) {
+        return $gb;
+    }
+    return $gb[$key] ?? $default;
+}
+
 function is_ajax(): bool
 {
     return !empty($_SERVER['HTTP_X_REQUESTED_WITH'])

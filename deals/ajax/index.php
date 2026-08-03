@@ -6,6 +6,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/config.php';
+require_once ROOT_PATH . '/includes/helpers/OrderCartLog.php';
 require_once ROOT_PATH . '/includes/models/ProductModel.php';
 require_once ROOT_PATH . '/includes/models/CartModel.php';
 require_once ROOT_PATH . '/includes/models/CatalogModel.php';

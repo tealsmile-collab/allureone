@@ -5,6 +5,8 @@
 
 declare(strict_types=1);
 
+require_once ROOT_PATH . '/includes/helpers/OrderCartLog.php';
+
 class OrderService
 {
     private PDO $db;

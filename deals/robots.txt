@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /ajax/
+Disallow: /config/
+Disallow: /includes/
+Disallow: /database/
+Disallow: /vendor/
+
+Sitemap: https://deals.allurethaispa.in/sitemap.php

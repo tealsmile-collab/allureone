@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#978671"/>
+      <stop offset="45%" stop-color="#B2BDA3"/>
+      <stop offset="100%" stop-color="#F8D3BB"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="800" fill="url(#g)"/>
+  <circle cx="400" cy="320" r="110" fill="rgba(244,229,217,.25)"/>
+  <text x="400" y="460" text-anchor="middle" fill="#F4E5D9" font-family="Georgia, serif" font-size="48">Allure Thai Spa</text>
+  <text x="400" y="510" text-anchor="middle" fill="#EBDFCE" font-family="Arial, sans-serif" font-size="22">Wellness Deal</text>
+</svg>

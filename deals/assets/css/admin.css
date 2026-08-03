@@ -1,0 +1,41 @@
+:root {
+  --sage: #B2BDA3;
+  --sand: #EBDFCE;
+  --pearl: #F4E5D9;
+  --peach: #F8D3BB;
+  --stone: #978671;
+  --brand: var(--stone);
+  --brand-2: #7d6e5c;
+  --bg: var(--pearl);
+  --panel: #fffaf5;
+  --ink: #5c5245;
+  --line: rgba(151, 134, 113, 0.22);
+  --font: Outfit, sans-serif;
+  --display: "Cormorant Garamond", serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);background:var(--bg);color:var(--ink)}
+.admin-shell{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+.admin-sidebar{background:linear-gradient(180deg,var(--stone),#7d6e5c);color:var(--pearl);padding:1.2rem .8rem}
+.brand-mini{font-family:var(--display);font-size:1.6rem;padding:.4rem .7rem 1rem}
+.admin-sidebar a{display:block;color:var(--peach);padding:.65rem .8rem;border-radius:10px;text-decoration:none;margin-bottom:.2rem}
+.admin-sidebar a.active,.admin-sidebar a:hover{background:rgba(178,189,163,.28);color:#fff}
+.admin-main{padding:1rem 1.2rem 2rem}
+.admin-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem}
+.admin-top h1{font-family:var(--display);font-size:2rem;margin:0;color:var(--stone)}
+.user-chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:.4rem .9rem;font-size:.9rem}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+.stat-card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:1rem 1.1rem;box-shadow:0 10px 30px rgba(151,134,113,.1)}
+.stat-card span{display:block;color:#8a8070;font-size:.85rem}
+.stat-card strong{font-size:1.6rem;color:var(--stone)}
+.panel h2{font-family:var(--display);font-size:1.4rem;margin:0 0 1rem;color:var(--stone)}
+.table thead th{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:#8a8070}
+.btn-brand{background:var(--stone);border-color:var(--stone);color:#fff}
+.btn-brand:hover{background:var(--brand-2);border-color:var(--brand-2);color:#fff}
+@media(max-width:991px){
+  .admin-shell{grid-template-columns:1fr}
+  .admin-sidebar{display:flex;gap:.4rem;overflow:auto;padding:.7rem}
+  .brand-mini{display:none}
+  .admin-sidebar a{white-space:nowrap}
+  .stat-grid{grid-template-columns:1fr 1fr}
+}

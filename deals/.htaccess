@@ -1,0 +1,42 @@
+# Allure Thai Spa Deals — Apache / Hostinger
+Options -Indexes
+ServerSignature Off
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Force HTTPS (enable on production Hostinger)
+  # RewriteCond %{HTTPS} off
+  # RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # SEO friendly product URLs -> SPA with hash/query handled client-side via AJAX
+  RewriteRule ^product/([a-z0-9\-]+)/?$ index.php?product=$1 [L,QSA]
+  RewriteRule ^policy/([a-z0-9\-]+)/?$ index.php?policy=$1 [L,QSA]
+  RewriteRule ^cart/?$ index.php?view=cart [L,QSA]
+  RewriteRule ^checkout/?$ index.php?view=checkout [L,QSA]
+
+  # Block sensitive paths
+  RewriteRule ^config\.php$ - [F,L]
+  RewriteRule ^database/ - [F,L]
+  RewriteRule ^includes/ - [F,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Cache static assets
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/jpeg "access plus 7 days"
+  ExpiresByType image/png "access plus 7 days"
+  ExpiresByType image/webp "access plus 7 days"
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+</IfModule>
+
+php_value upload_max_filesize 8M
+php_value post_max_size 10M

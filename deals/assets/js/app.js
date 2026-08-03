@@ -21,6 +21,29 @@
     checkoutModal: null,
   };
 
+  /** Coupon fields = 20; other text inputs without maxlength = 30. Keeps existing maxlength. */
+  function applyDefaultMaxLengths(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const couponIds = new Set(['couponCode', 'qvCoupon']);
+    scope.querySelectorAll('input').forEach((el) => {
+      if (!(el instanceof HTMLInputElement)) return;
+      if (el.hasAttribute('maxlength')) return;
+
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      const skipTypes = new Set([
+        'hidden', 'checkbox', 'radio', 'file', 'submit', 'button', 'reset', 'image',
+        'range', 'color', 'date', 'datetime-local', 'time', 'month', 'week', 'number',
+      ]);
+      if (skipTypes.has(type)) return;
+
+      if (couponIds.has(el.id) || el.name === 'code' || /coupon/i.test(el.id + el.name)) {
+        el.setAttribute('maxlength', '20');
+        return;
+      }
+      el.setAttribute('maxlength', '30');
+    });
+  }
+
   toastr.options = { positionClass: 'toast-bottom-right', timeOut: 2500 };
 
   function api(action, data = null, type = 'GET') {
@@ -272,7 +295,7 @@
         <div class="row-line"><span>GST included (${cart.gst_percent}%)</span><span>${money(cart.gst_amount)}</span></div>
         <div class="row-line grand"><span>Total (incl. GST)</span><span>${money(cart.grand_total)}</span></div>
         <div class="input-group mt-3">
-          <input type="text" class="form-control" id="couponCode" placeholder="Coupon code" value="${cart.coupon_code || ''}">
+          <input type="text" class="form-control" id="couponCode" placeholder="Coupon code" maxlength="20" value="${cart.coupon_code || ''}">
           <button class="btn btn-outline-dark" id="btnApplyCoupon" type="button">Apply</button>
         </div>
         ${cart.coupon_code ? '<button class="btn btn-link btn-sm px-0" id="btnRemoveCoupon">Remove coupon</button>' : ''}
@@ -280,6 +303,7 @@
       </div>`;
     }
     $('#cartBody').html(html);
+    applyDefaultMaxLengths(document.getElementById('cartBody'));
   }
 
   function openProduct(slug) {
@@ -313,7 +337,7 @@
             <div class="col-6"><label class="form-label">City</label><select id="qvCity" class="form-select form-select-sm"></select></div>
             <div class="col-6"><label class="form-label">Branch</label><select id="qvBranch" class="form-select form-select-sm"></select></div>
             <div class="col-6"><label class="form-label">Qty</label><input type="number" id="qvQty" class="form-control form-control-sm" min="1" value="1"></div>
-            <div class="col-6"><label class="form-label">Coupon</label><input type="text" id="qvCoupon" class="form-control form-control-sm" placeholder="Optional"></div>
+            <div class="col-6"><label class="form-label">Coupon</label><input type="text" id="qvCoupon" class="form-control form-control-sm" placeholder="Optional" maxlength="20"></div>
           </div>
           <div class="d-grid gap-2 d-sm-flex">
             <button class="btn btn-cart flex-fill" id="qvAdd" data-id="${p.id}">Add to Cart</button>
@@ -326,6 +350,7 @@
 
       fillCityBranch('#qvCity', '#qvBranch');
       state.productModal && state.productModal.show();
+      applyDefaultMaxLengths(document.getElementById('productModalBody'));
     });
   }
 
@@ -873,5 +898,6 @@
   });
 
   setInterval(tickCountdowns, 1000);
+  applyDefaultMaxLengths(document);
   initApp();
 })(jQuery);

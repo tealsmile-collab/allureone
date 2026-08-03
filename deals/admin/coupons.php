@@ -106,8 +106,8 @@ admin_header('Coupons', 'coupons');
       <?= Security::csrfField() ?>
       <input type="hidden" name="form_type" value="marketing">
       <input type="hidden" name="id" value="<?= e((string) ($edit['id'] ?? '')) ?>">
-      <div class="col-6"><input class="form-control" name="code" placeholder="CODE *" required value="<?= e((string) ($edit['code'] ?? '')) ?>"></div>
-      <div class="col-6"><input class="form-control" name="title" placeholder="Title" value="<?= e((string) ($edit['title'] ?? '')) ?>"></div>
+      <div class="col-6"><input class="form-control" name="code" placeholder="CODE *" required maxlength="20" value="<?= e((string) ($edit['code'] ?? '')) ?>"></div>
+      <div class="col-6"><input class="form-control" name="title" placeholder="Title" maxlength="30" value="<?= e((string) ($edit['title'] ?? '')) ?>"></div>
       <div class="col-6">
         <select class="form-select" name="discount_type" required>
           <option value="percent" <?= (($edit['discount_type'] ?? '') === 'percent') ? 'selected' : '' ?>>Discount type: Percent (%) *</option>
@@ -135,7 +135,7 @@ admin_header('Coupons', 'coupons');
       <input type="hidden" name="form_type" value="onetime">
       <input type="hidden" name="id" value="<?= e((string) ($editOt['id'] ?? '')) ?>">
       <div class="col-6">
-        <input class="form-control" name="code" placeholder="Coupon code * (customer enters at checkout)" required value="<?= e((string) ($editOt['code'] ?? '')) ?>">
+        <input class="form-control" name="code" placeholder="Coupon code * (customer enters at checkout)" required maxlength="20" value="<?= e((string) ($editOt['code'] ?? '')) ?>">
       </div>
       <div class="col-6">
         <select class="form-select" name="discount_type" title="Discount type *" required>

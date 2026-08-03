@@ -182,4 +182,22 @@
     const cleanUrl = window.location.pathname + (qs ? '?' + qs : '');
     window.history.replaceState({}, '', cleanUrl);
   })();
+
+  /** Coupon code = 20; other text inputs without maxlength = 30. */
+  (function applyDefaultMaxLengths() {
+    document.querySelectorAll('input').forEach((el) => {
+      if (!(el instanceof HTMLInputElement) || el.hasAttribute('maxlength')) return;
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      const skip = new Set([
+        'hidden', 'checkbox', 'radio', 'file', 'submit', 'button', 'reset', 'image',
+        'range', 'color', 'date', 'datetime-local', 'time', 'month', 'week', 'number',
+      ]);
+      if (skip.has(type)) return;
+      if (el.name === 'code' || /coupon/i.test(el.id + el.name)) {
+        el.setAttribute('maxlength', '20');
+        return;
+      }
+      el.setAttribute('maxlength', '30');
+    });
+  })();
 })(jQuery);

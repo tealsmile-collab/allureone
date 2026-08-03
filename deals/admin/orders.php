@@ -50,7 +50,7 @@ admin_header('Orders', 'orders');
         <?php endforeach; ?>
       </select>
     </div>
-    <div class="col-md-1"><input class="form-control" name="coupon" placeholder="Coupon" value="<?= e($filters['coupon']) ?>"></div>
+    <div class="col-md-1"><input class="form-control" name="coupon" placeholder="Coupon" maxlength="20" value="<?= e($filters['coupon']) ?>"></div>
     <div class="col-md-2"><button class="btn btn-brand w-100">Filter</button></div>
   </form>
 </div>

@@ -56,6 +56,7 @@ $config = [
         'api_secret' => 'YOUR_GALLABOX_API_SECRET',
         'channel_id' => 'YOUR_GALLABOX_CHANNEL_ID',
         'template'   => 'meta_lead',
+        'buyer_template' => 'allure_deal_confirmation',
         'default_phone' => '918369676845',
         'default_name'  => 'Shailesh',
     ],
@@ -93,6 +94,7 @@ require_once ROOT_PATH . '/config/Database.php';
 require_once ROOT_PATH . '/includes/helpers/Auth.php';
 require_once ROOT_PATH . '/includes/helpers/Security.php';
 require_once ROOT_PATH . '/includes/helpers/Response.php';
+require_once ROOT_PATH . '/includes/helpers/OrderCartLog.php';
 
 /**
  * Get config value by dot notation: config('db.host')

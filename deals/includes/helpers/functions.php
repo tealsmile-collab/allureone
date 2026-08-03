@@ -73,10 +73,24 @@ function cart_token(): string
 
 function format_phone_in(string $phone): string
 {
+    // Digits only (drops +, spaces, dashes, etc.)
     $digits = preg_replace('/\D+/', '', $phone) ?? '';
+
+    // International prefix 00…
+    if (str_starts_with($digits, '00')) {
+        $digits = substr($digits, 2);
+    }
+
+    // Local Indian format 0XXXXXXXXXX → XXXXXXXXXX
+    if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+        $digits = substr($digits, 1);
+    }
+
+    // 10-digit mobile → default India country code 91
     if (strlen($digits) === 10) {
         $digits = '91' . $digits;
     }
+
     return $digits;
 }
 

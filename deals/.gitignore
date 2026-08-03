@@ -11,6 +11,10 @@ config.php
 !/uploads/**/.htaccess
 !/uploads/**/.gitkeep
 
+# Logs
+/logs/*.log
+!/logs/.htaccess
+
 # OS / IDE
 .DS_Store
 Thumbs.db

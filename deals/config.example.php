@@ -112,6 +112,25 @@ function config(string $key, mixed $default = null): mixed
 }
 
 /**
+ * Resolve app root directory from SCRIPT_NAME (strips admin/ajax/policy/slug folders).
+ */
+function app_root_dir(): string
+{
+    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
+    $dir = str_replace('\\', '/', dirname($script));
+    // /policy/privacy-policy, /admin, /ajax, etc. → app root
+    if (preg_match('#^(.+)/(?:admin|ajax|api|cart|checkout|product|policy)(?:/.*)?$#', $dir, $m)) {
+        $dir = $m[1];
+    } elseif (preg_match('#^/(?:admin|ajax|api|cart|checkout|product|policy)(?:/.*)?$#', $dir)) {
+        $dir = '';
+    }
+    if ($dir === '/' || $dir === '.' || $dir === '\\') {
+        $dir = '';
+    }
+    return $dir;
+}
+
+/**
  * Base URL helper — prefers current request host so AJAX works on any domain/subdir
  */
 function base_url(string $path = ''): string
@@ -124,19 +143,7 @@ function base_url(string $path = ''): string
         if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
             $scheme = strtolower((string) $_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https' ? 'https' : 'http';
         }
-        $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
-        $dir = str_replace('\\', '/', dirname($script));
-        // Normalize admin/ajax/api nested entry points to app root
-        foreach (['/admin', '/ajax', '/api', '/cart', '/checkout', '/product', '/policy'] as $suffix) {
-            if (str_ends_with($dir, $suffix)) {
-                $dir = substr($dir, 0, -strlen($suffix)) ?: '/';
-                break;
-            }
-        }
-        if ($dir === '/' || $dir === '.' || $dir === '\\') {
-            $dir = '';
-        }
-        $base = $scheme . '://' . $_SERVER['HTTP_HOST'] . $dir;
+        $base = $scheme . '://' . $_SERVER['HTTP_HOST'] . app_root_dir();
     }
 
     $path = ltrim($path, '/');
@@ -146,17 +153,7 @@ function base_url(string $path = ''): string
 /** Root-relative app path (best for AJAX/assets) */
 function app_path(string $path = ''): string
 {
-    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
-    $dir = str_replace('\\', '/', dirname($script));
-    foreach (['/admin', '/ajax', '/api', '/cart', '/checkout', '/product', '/policy'] as $suffix) {
-        if (str_ends_with($dir, $suffix)) {
-            $dir = substr($dir, 0, -strlen($suffix)) ?: '/';
-            break;
-        }
-    }
-    if ($dir === '/' || $dir === '.' || $dir === '\\') {
-        $dir = '';
-    }
+    $dir = app_root_dir();
     $path = ltrim($path, '/');
     return $path === '' ? ($dir === '' ? '/' : $dir) : $dir . '/' . $path;
 }

@@ -13,6 +13,7 @@
     cities: [],
     branches: [],
     cart: null,
+    cartBarDismissed: false,
     hero: null,
     cartDrawer: null,
     mobileFilters: null,
@@ -234,11 +235,14 @@
 
   function updateCartUI(cart) {
     state.cart = cart;
-    $('#cartCount').text(cart.item_count || 0);
+    const count = cart.item_count || 0;
+    if (count === 0) state.cartBarDismissed = false;
+    const showBar = count > 0 && !state.cartBarDismissed;
+    $('#cartCount').text(count);
     $('#mobileCartTotal').text(money(cart.grand_total));
-    $('#mobileCartItems').text((cart.item_count || 0) + ' items');
-    $('#mobileCartBar').toggleClass('visible', (cart.item_count || 0) > 0);
-    $('body').toggleClass('has-mobile-cart', (cart.item_count || 0) > 0);
+    $('#mobileCartItems').text(count + ' items');
+    $('#mobileCartBar').toggleClass('visible', showBar);
+    $('body').toggleClass('has-mobile-cart', showBar);
 
     let html = '';
     if (!cart.items.length) {
@@ -347,6 +351,7 @@
       city_id: cityId || null,
       branch_id: branchId || null,
     }, 'POST').then((cart) => {
+      state.cartBarDismissed = false;
       updateCartUI(cart);
       toastr.success('Added to cart');
       if (buyNow) {
@@ -371,6 +376,26 @@
     state.checkoutModal && state.checkoutModal.show();
   }
 
+  /** Razorpay / Bootstrap often leave overflow:hidden on html/body after dismiss. */
+  function restorePageScroll() {
+    const html = document.documentElement;
+    const body = document.body;
+    body.classList.remove('modal-open');
+    [html, body].forEach((el) => {
+      el.style.removeProperty('overflow');
+      el.style.removeProperty('overflow-x');
+      el.style.removeProperty('overflow-y');
+      el.style.removeProperty('padding-right');
+      el.style.removeProperty('position');
+      el.style.removeProperty('height');
+      el.style.removeProperty('touch-action');
+    });
+    // Drop orphaned backdrops if no modal/offcanvas is open
+    if (!document.querySelector('.modal.show, .offcanvas.show')) {
+      document.querySelectorAll('.modal-backdrop, .offcanvas-backdrop').forEach((el) => el.remove());
+    }
+  }
+
   function payWithRazorpay(order) {
     // Demo mode when Razorpay keys are placeholders
     if (String(order.razorpay_order_id).startsWith('order_demo_')) {
@@ -380,6 +405,7 @@
         razorpay_payment_id: 'pay_demo_' + Date.now(),
         razorpay_signature: 'demo',
       }, 'POST').then((res) => {
+        restorePageScroll();
         Swal.fire('Payment Successful', `Order ${res.order_no} confirmed.`, 'success');
         return api('cart_get').then(updateCartUI);
       });
@@ -398,6 +424,13 @@
         contact: order.customer.contact,
       },
       theme: { color: '#978671' },
+      modal: {
+        ondismiss: function () {
+          // Closing Razorpay without paying leaves body scroll locked
+          restorePageScroll();
+          toastr.info('Payment cancelled. You can try again from checkout.');
+        },
+      },
       handler: function (response) {
         api('payment_verify', {
           order_id: order.order_id,
@@ -405,16 +438,23 @@
           razorpay_payment_id: response.razorpay_payment_id,
           razorpay_signature: response.razorpay_signature,
         }, 'POST').then((res) => {
+          restorePageScroll();
           Swal.fire({
             icon: 'success',
             title: 'Payment Successful',
             html: `Order <b>${res.order_no}</b> confirmed.<br>Invoice: ${res.invoice_no}`,
           });
           api('cart_get').then(updateCartUI);
-        }).catch((err) => Swal.fire('Error', err.message || 'Verification failed', 'error'));
+        }).catch((err) => {
+          restorePageScroll();
+          Swal.fire('Error', err.message || 'Verification failed', 'error');
+        });
       },
     };
     const rzp = new Razorpay(options);
+    rzp.on('payment.failed', function () {
+      restorePageScroll();
+    });
     rzp.open();
   }
 
@@ -536,8 +576,19 @@
           $('#filterCity').append(`<option value="${c.id}">${escapeHtml(c.name)}</option>`);
         }
       });
-      $('#footerPolicies').html((d.policies || []).map((p) =>
-        `<li><a href="#" class="policy-link" data-slug="${p.slug}">${escapeHtml(p.title)}</a></li>`
+      const base = String(window.ALLURE.baseUrl || '').replace(/\/$/, '');
+      const hiddenSlugs = new Set(['refund-policy', 'no-refund-policy', 'gift-voucher-policy']);
+      const policies = (d.policies || []).filter((p) => !hiddenSlugs.has(String(p.slug || '')));
+      const fallback = [
+        { slug: 'privacy-policy', title: 'Privacy Policy' },
+        { slug: 'terms-conditions', title: 'Terms & Conditions' },
+        { slug: 'cancellation-policy', title: 'Cancellation Policy and Refund Policy' },
+        { slug: 'digital-product-policy', title: 'Digital Product Policy' },
+        { slug: 'payment-policy', title: 'Payment Policy' },
+      ];
+      const list = policies.length ? policies : fallback;
+      $('#footerPolicies').html(list.map((p) =>
+        `<li><a href="${escapeHtml(base + '/policy/' + p.slug + '/')}">${escapeHtml(p.title)}</a></li>`
       ).join(''));
 
       // Render deals from bootstrap payload
@@ -686,6 +737,13 @@
 
   $('#btnCart, #mobileCartBtn').on('click', () => state.cartDrawer && state.cartDrawer.show());
 
+  $('#mobileCartClose').on('click', function (e) {
+    e.stopPropagation();
+    state.cartBarDismissed = true;
+    $('#mobileCartBar').removeClass('visible');
+    $('body').removeClass('has-mobile-cart');
+  });
+
   $(document).on('click', '.btn-add', function () {
     addToCart($(this).data('id'));
   });
@@ -771,9 +829,20 @@
     data.notes = notes;
 
     api('checkout_create', data, 'POST').then((order) => {
-      state.checkoutModal && state.checkoutModal.hide();
+      const checkoutEl = document.getElementById('checkoutModal');
+      const openPay = () => {
+        restorePageScroll();
+        payWithRazorpay(order);
+      };
       state.cartDrawer && state.cartDrawer.hide();
-      payWithRazorpay(order);
+      if (state.checkoutModal && checkoutEl && checkoutEl.classList.contains('show')) {
+        // Wait for Bootstrap hide so modal-open / overflow lock is cleared before Razorpay
+        $(checkoutEl).one('hidden.bs.modal', openPay);
+        state.checkoutModal.hide();
+      } else {
+        state.checkoutModal && state.checkoutModal.hide();
+        openPay();
+      }
     }).catch((err) => toastr.error(err.message || 'Checkout failed'));
   });
 

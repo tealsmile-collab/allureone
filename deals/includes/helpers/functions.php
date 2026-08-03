@@ -116,7 +116,11 @@ function asset_url(string $path): string
 
 function logo_url(): string
 {
-    return asset_url((string) config('logo'));
+    $logo = ltrim((string) config('logo'), '/');
+    if ($logo === '' || !is_file(ROOT_PATH . '/' . $logo)) {
+        $logo = 'assets/img/logo1.png';
+    }
+    return asset_url($logo);
 }
 
 function is_ajax(): bool

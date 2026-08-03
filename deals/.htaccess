@@ -12,7 +12,10 @@ ServerSignature Off
 
   # SEO friendly product URLs -> SPA with hash/query handled client-side via AJAX
   RewriteRule ^product/([a-z0-9\-]+)/?$ index.php?product=$1 [L,QSA]
-  RewriteRule ^policy/([a-z0-9\-]+)/?$ index.php?policy=$1 [L,QSA]
+  # Policy pages — support both dedicated script and legacy index.php?policy=
+  RewriteRule ^policy/([a-z0-9\-]+)/?$ policy.php?slug=$1 [L,QSA]
+  # Fallback if policy.php missing on older deploy
+  # RewriteRule ^policy/([a-z0-9\-]+)/?$ index.php?policy=$1 [L,QSA]
   RewriteRule ^cart/?$ index.php?view=cart [L,QSA]
   RewriteRule ^checkout/?$ index.php?view=checkout [L,QSA]
 

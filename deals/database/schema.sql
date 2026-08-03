@@ -600,15 +600,16 @@ VALUES
 ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
 
 INSERT INTO `alluredeal_policy` (`slug`, `title`, `content`, `display_order`) VALUES
-('privacy-policy', 'Privacy Policy', '<p>We respect your privacy. Personal data collected during booking is used only for order processing, communication, and service improvement.</p>', 1),
-('terms-conditions', 'Terms & Conditions', '<p>By purchasing deals on Allure Thai Spa Deals, you agree to service availability at selected branches and applicable spa house rules.</p>', 2),
-('payment-policy', 'Payment Policy', '<p>All payments are processed securely via Razorpay in INR. Orders are confirmed only after successful payment.</p>', 3),
-('cancellation-policy', 'Cancellation Policy', '<p>Cancellations must be requested at least 24 hours before the appointment. Same-day cancellations may not be eligible for reschedule.</p>', 4),
-('refund-policy', 'Refund Policy', '<p>Eligible refunds are processed to the original payment method within 5–7 business days after approval.</p>', 5),
-('no-refund-policy', 'No Refund Policy', '<p>Certain promotional and flash deals are non-refundable once redeemed or expired as stated on the deal page.</p>', 6),
-('gift-voucher-policy', 'Gift Voucher Policy', '<p>Gift vouchers are valid as per the validity mentioned and cannot be exchanged for cash.</p>', 7),
-('digital-product-policy', 'Digital Product Policy', '<p>Digital vouchers and memberships are delivered electronically after successful payment confirmation.</p>', 8)
-ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
+('privacy-policy', 'Privacy Policy', '<p><strong>Allure Thai Spa &amp; Wellness</strong> protects guest privacy on Allure Thai Spa Deals. See full page at /policy/privacy-policy. Help: feedback.allurespa@gmail.com or WhatsApp +917620049769.</p>', 1),
+('terms-conditions', 'Terms & Conditions', '<p>By purchasing on Allure Thai Spa Deals you agree to Allure Thai Spa &amp; Wellness terms. Full page: /policy/terms-conditions. Help: feedback.allurespa@gmail.com or WhatsApp +917620049769.</p>', 2),
+('cancellation-policy', 'Cancellation Policy and Refund Policy', '<p>Allure does not issue cash refunds. Guests receive spa services worth the paid amount. Full page: /policy/cancellation-policy. Help: feedback.allurespa@gmail.com or WhatsApp +917620049769.</p>', 3),
+('digital-product-policy', 'Digital Product Policy', '<p>Digital vouchers and memberships are delivered electronically and redeemed for Allure services. Full page: /policy/digital-product-policy. Help: feedback.allurespa@gmail.com or WhatsApp +917620049769.</p>', 4),
+('payment-policy', 'Payment Policy', '<p>Payments are processed securely via Razorpay in INR. Orders confirm after successful payment. Help: feedback.allurespa@gmail.com or WhatsApp +917620049769.</p>', 5)
+ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `content` = VALUES(`content`), `display_order` = VALUES(`display_order`);
+
+UPDATE `alluredeal_policy`
+SET `is_active` = 0, `is_deleted` = 1
+WHERE `slug` IN ('refund-policy', 'no-refund-policy', 'gift-voucher-policy');
 
 INSERT INTO `alluredeal_settings` (`setting_key`, `setting_value`, `setting_group`) VALUES
 ('site_tagline', 'Premium Thai Spa Deals Across India', 'general'),

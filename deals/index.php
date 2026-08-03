@@ -5,6 +5,14 @@
 declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 
+// Pretty policy URLs may land here as ?policy=slug (legacy rewrite) — show policy page
+$policySlug = trim((string) ($_GET['policy'] ?? ''));
+if ($policySlug !== '') {
+    $_GET['slug'] = $policySlug;
+    require __DIR__ . '/policy.php';
+    exit;
+}
+
 $siteName = config('site_name');
 $company = config('company_name');
 $logo = logo_url();
@@ -147,7 +155,13 @@ $csrf = Security::csrfToken();
         </div>
         <div class="col-md-4">
           <h4>Policies</h4>
-          <ul class="footer-links" id="footerPolicies"></ul>
+          <ul class="footer-links" id="footerPolicies">
+            <li><a href="<?= e(base_url('policy/privacy-policy/')) ?>">Privacy Policy</a></li>
+            <li><a href="<?= e(base_url('policy/terms-conditions/')) ?>">Terms &amp; Conditions</a></li>
+            <li><a href="<?= e(base_url('policy/cancellation-policy/')) ?>">Cancellation Policy and Refund Policy</a></li>
+            <li><a href="<?= e(base_url('policy/digital-product-policy/')) ?>">Digital Product Policy</a></li>
+            <li><a href="<?= e(base_url('policy/payment-policy/')) ?>">Payment Policy</a></li>
+          </ul>
         </div>
         <div class="col-md-4">
           <h4>Contact</h4>
@@ -164,7 +178,12 @@ $csrf = Security::csrfToken();
       <strong id="mobileCartTotal">₹0.00</strong>
       <small id="mobileCartItems">0 items</small>
     </div>
-    <button type="button" id="mobileCartBtn">View Cart</button>
+    <div class="mobile-cart-bar-actions">
+      <button type="button" id="mobileCartBtn">View Cart</button>
+      <button type="button" class="mobile-cart-close" id="mobileCartClose" title="Close" aria-label="Close cart bar">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
   </div>
 
   <!-- Sticky FABs: back-to-top + reserved phone slot -->

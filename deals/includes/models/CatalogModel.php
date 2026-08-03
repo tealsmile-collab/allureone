@@ -72,11 +72,16 @@ class CatalogModel
 
     public function policies(): array
     {
-        return $this->db->query(
-            'SELECT id, slug, title FROM alluredeal_policy
+        $hidden = ['refund-policy', 'no-refund-policy', 'gift-voucher-policy'];
+        $placeholders = implode(',', array_fill(0, count($hidden), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT id, slug, title FROM alluredeal_policy
              WHERE is_active = 1 AND is_deleted = 0
-             ORDER BY display_order ASC'
-        )->fetchAll();
+               AND slug NOT IN ($placeholders)
+             ORDER BY display_order ASC"
+        );
+        $stmt->execute($hidden);
+        return $stmt->fetchAll();
     }
 
     public function policy(string $slug): ?array

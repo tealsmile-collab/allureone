@@ -14,6 +14,7 @@
     branches: [],
     cart: null,
     cartBarDismissed: false,
+    cartBarDismissCount: 0,
     hero: null,
     cartDrawer: null,
     mobileFilters: null,
@@ -45,6 +46,56 @@
   }
 
   toastr.options = { positionClass: 'toast-bottom-right', timeOut: 2500 };
+
+  const CART_BAR_DISMISS_KEY = 'allure_cart_bar_dismiss';
+
+  function readCartBarDismiss() {
+    try {
+      const raw = sessionStorage.getItem(CART_BAR_DISMISS_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || typeof data.count !== 'number') return null;
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearCartBarDismiss() {
+    try { sessionStorage.removeItem(CART_BAR_DISMISS_KEY); } catch (e) { /* ignore */ }
+    state.cartBarDismissed = false;
+    state.cartBarDismissCount = 0;
+  }
+
+  function rememberCartBarDismiss(itemCount) {
+    const count = Math.max(0, Number(itemCount) || 0);
+    try {
+      sessionStorage.setItem(CART_BAR_DISMISS_KEY, JSON.stringify({ count: count }));
+    } catch (e) { /* ignore */ }
+    state.cartBarDismissed = true;
+    state.cartBarDismissCount = count;
+  }
+
+  /** Keep bar hidden after close until cart item_count increases (new item / qty+). */
+  function syncCartBarDismiss(itemCount) {
+    const count = Math.max(0, Number(itemCount) || 0);
+    if (count <= 0) {
+      clearCartBarDismiss();
+      return;
+    }
+    const saved = readCartBarDismiss();
+    if (!saved) {
+      state.cartBarDismissed = false;
+      state.cartBarDismissCount = 0;
+      return;
+    }
+    if (count > Number(saved.count || 0)) {
+      clearCartBarDismiss();
+      return;
+    }
+    state.cartBarDismissed = true;
+    state.cartBarDismissCount = Number(saved.count || 0);
+  }
 
   function api(action, data = null, type = 'GET') {
     const opts = {
@@ -259,7 +310,7 @@
   function updateCartUI(cart) {
     state.cart = cart;
     const count = cart.item_count || 0;
-    if (count === 0) state.cartBarDismissed = false;
+    syncCartBarDismiss(count);
     const showBar = count > 0 && !state.cartBarDismissed;
     $('#cartCount').text(count);
     $('#mobileCartTotal').text(money(cart.grand_total));
@@ -376,7 +427,6 @@
       city_id: cityId || null,
       branch_id: branchId || null,
     }, 'POST').then((cart) => {
-      state.cartBarDismissed = false;
       updateCartUI(cart);
       toastr.success('Added to cart');
       if (buyNow) {
@@ -738,7 +788,7 @@
 
   $('#mobileCartClose').on('click', function (e) {
     e.stopPropagation();
-    state.cartBarDismissed = true;
+    rememberCartBarDismiss(state.cart ? (state.cart.item_count || 0) : 0);
     $('#mobileCartBar').removeClass('visible');
     $('body').removeClass('has-mobile-cart');
   });

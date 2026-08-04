@@ -46,7 +46,7 @@ class OrderService
                 $invoiceNo,
                 $customerId,
                 $customer['name'],
-                format_phone_in($customer['mobile']),
+                format_phone_in((string) $customer['mobile']),
                 $customer['email'] ?? null,
                 $customer['gender'] ?? null,
                 $customer['notes'] ?? null,
@@ -101,7 +101,8 @@ class OrderService
                 'order_no' => $orderNo,
                 'invoice_no' => $invoiceNo,
                 'customer_name' => $customer['name'],
-                'customer' => format_phone_in($customer['mobile']),
+                'customer' => format_phone_in((string) $customer['mobile']),
+                'country_code' => $customer['country_code'] ?? null,
                 'email' => $customer['email'] ?? null,
                 'branch_id' => (int) $customer['branch_id'],
                 'grand_total' => $summary['grand_total'],
@@ -115,10 +116,11 @@ class OrderService
                 'razorpay_order_id' => $rzOrder['id'] ?? null,
             ]);
 
-            $mobileDigits = preg_replace('/\D+/', '', (string) $customer['mobile']) ?? '';
-                if (strlen($mobileDigits) > 10 && str_starts_with($mobileDigits, '91')) {
-                    $mobileDigits = substr($mobileDigits, -10);
-                }
+            // Razorpay prefill: local 10-digit number when available
+            $mobileDigits = preg_replace('/\D+/', '', (string) ($customer['mobile_local'] ?? $customer['mobile'])) ?? '';
+            if (strlen($mobileDigits) > 10) {
+                $mobileDigits = substr($mobileDigits, -10);
+            }
 
                 return [
                 'order_id' => $orderId,
@@ -364,7 +366,18 @@ class OrderService
 
     private function upsertCustomer(array $customer): int
     {
-        $mobile = format_phone_in($customer['mobile']);
+        $mobile = format_phone_in((string) ($customer['mobile'] ?? ''));
+        if (!empty($customer['country_code']) && !empty($customer['mobile_local'])) {
+            $mobile = format_phone_with_country(
+                (string) $customer['mobile_local'],
+                (string) $customer['country_code']
+            );
+        } elseif ($mobile === '' && !empty($customer['mobile_local'])) {
+            $mobile = format_phone_with_country(
+                (string) $customer['mobile_local'],
+                (string) ($customer['country_code'] ?? '91')
+            );
+        }
         $stmt = $this->db->prepare('SELECT id FROM alluredeal_customer WHERE mobile = ? LIMIT 1');
         $stmt->execute([$mobile]);
         $id = $stmt->fetchColumn();

@@ -448,6 +448,7 @@
         <div class="row-line"><span>GST included (${state.cart.gst_percent}%)</span><span>${money(state.cart.gst_amount)}</span></div>
         <div class="row-line grand"><span>Pay (incl. GST)</span><span>${money(state.cart.grand_total)}</span></div>
       </div>`);
+    updateCheckoutNotesCount();
     state.checkoutModal && state.checkoutModal.show();
   }
 
@@ -835,9 +836,19 @@
 
   $(document).on('click', '#btnCheckout', openCheckout);
 
-  // Mobile: digits only
+  function updateCheckoutNotesCount() {
+    const $notes = $('#checkoutNotes');
+    if (!$notes.length) return;
+    const max = 150;
+    const len = String($notes.val() || '').length;
+    $('#checkoutNotesCount').text(len + ' / ' + max);
+  }
+
+  $(document).on('input', '#checkoutNotes', updateCheckoutNotesCount);
+
+  // Mobile: digits only, max 10 (country code is separate)
   $(document).on('input', '#checkoutMobile, input[name="mobile"]', function () {
-    this.value = this.value.replace(/\D+/g, '').slice(0, 15);
+    this.value = this.value.replace(/\D+/g, '').slice(0, 10);
   });
   $(document).on('keypress', '#checkoutMobile, input[name="mobile"]', function (e) {
     const ch = e.which || e.keyCode;
@@ -848,17 +859,18 @@
   $(document).on('paste', '#checkoutMobile, input[name="mobile"]', function (e) {
     e.preventDefault();
     const text = (e.originalEvent.clipboardData || window.clipboardData).getData('text') || '';
-    const digits = text.replace(/\D+/g, '').slice(0, 15);
+    const digits = text.replace(/\D+/g, '').slice(0, 10);
     const el = this;
     const start = el.selectionStart || 0;
     const end = el.selectionEnd || 0;
-    el.value = (el.value.slice(0, start) + digits + el.value.slice(end)).replace(/\D+/g, '').slice(0, 15);
+    el.value = (el.value.slice(0, start) + digits + el.value.slice(end)).replace(/\D+/g, '').slice(0, 10);
   });
 
   $('#checkoutForm').on('submit', function (e) {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(this).entries());
     const name = String(data.name || '').trim();
+    const countryCode = String(data.country_code || '91').replace(/\D+/g, '') || '91';
     const mobile = String(data.mobile || '').replace(/\D+/g, '');
     const email = String(data.email || '').trim();
     const notes = String(data.notes || '').trim();
@@ -866,13 +878,15 @@
     if (!name) return toastr.error('Name is required');
     if (name.length > 80) return toastr.error('Name must be max 80 characters');
     if (!mobile) return toastr.error('Mobile is required');
-    if (!/^\d{10,15}$/.test(mobile)) return toastr.error('Mobile must be 10–15 digits only');
+    if (!/^\d{10}$/.test(mobile)) return toastr.error('Mobile must be exactly 10 digits');
+    if (!/^\d{1,4}$/.test(countryCode)) return toastr.error('Select a valid country code');
     if (email && email.length > 100) return toastr.error('Email must be max 100 characters');
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toastr.error('Enter a valid email');
-    if (notes.length > 200) return toastr.error('Notes must be max 200 characters');
+    if (notes.length > 150) return toastr.error('Notes must be max 150 characters');
     if (!data.branch_id) return toastr.error('Please select a branch');
 
     data.name = name;
+    data.country_code = countryCode;
     data.mobile = mobile;
     data.email = email;
     data.notes = notes;

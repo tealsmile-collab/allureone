@@ -124,15 +124,26 @@ try {
             }
 
             $name = Security::clean((string) $in['name']);
-            $mobile = preg_replace('/\D+/', '', Security::clean((string) $in['mobile'])) ?? '';
+            $countryCode = preg_replace('/\D+/', '', Security::clean((string) ($in['country_code'] ?? '91'))) ?? '91';
+            if ($countryCode === '') {
+                $countryCode = '91';
+            }
+            if (strlen($countryCode) > 4) {
+                Response::error('Invalid country code');
+            }
+            $mobileLocal = preg_replace('/\D+/', '', Security::clean((string) $in['mobile'])) ?? '';
             $email = Security::clean((string) ($in['email'] ?? ''));
             $notes = Security::clean((string) ($in['notes'] ?? ''));
 
             if (mb_strlen($name) > 80) {
                 Response::error('Name must be max 80 characters');
             }
-            if ($mobile === '' || !preg_match('/^\d{10,15}$/', $mobile)) {
-                Response::error('Mobile must be 10–15 digits only');
+            if ($mobileLocal === '' || !preg_match('/^\d{10}$/', $mobileLocal)) {
+                Response::error('Mobile must be exactly 10 digits');
+            }
+            $mobileFull = format_phone_with_country($mobileLocal, $countryCode);
+            if ($mobileFull === '' || strlen($mobileFull) < 11 || strlen($mobileFull) > 15) {
+                Response::error('Invalid mobile number for selected country code');
             }
             if ($email !== '' && mb_strlen($email) > 100) {
                 Response::error('Email must be max 100 characters');
@@ -140,17 +151,19 @@ try {
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 Response::error('Enter a valid email address');
             }
-            if (mb_strlen($notes) > 200) {
-                Response::error('Notes must be max 200 characters');
+            if (mb_strlen($notes) > 150) {
+                Response::error('Notes must be max 150 characters');
             }
 
             $orders = new OrderService();
             $result = $orders->createFromCart([
                 'name' => mb_substr($name, 0, 80),
-                'mobile' => mb_substr($mobile, 0, 15),
+                'mobile' => $mobileFull,
+                'mobile_local' => $mobileLocal,
+                'country_code' => $countryCode,
                 'email' => $email !== '' ? mb_substr($email, 0, 100) : '',
                 'gender' => Security::clean((string) ($in['gender'] ?? '')),
-                'notes' => mb_substr($notes, 0, 200),
+                'notes' => mb_substr($notes, 0, 150),
                 'city_id' => !empty($in['city_id']) ? (int) $in['city_id'] : null,
                 'branch_id' => (int) $in['branch_id'],
             ], $token);

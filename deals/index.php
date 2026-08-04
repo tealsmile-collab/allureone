@@ -244,17 +244,34 @@ $csrf = Security::csrfToken();
             <div class="col-md-6">
               <label class="form-label">Name *</label>
               <input name="name" class="form-control" required maxlength="80" minlength="2" autocomplete="name">
-              <small class="text-muted">Max 80 characters</small>
             </div>
             <div class="col-md-6">
               <label class="form-label">Mobile *</label>
-              <input name="mobile" id="checkoutMobile" class="form-control" type="tel" required maxlength="15" minlength="10" pattern="[0-9]{10,15}" inputmode="numeric" autocomplete="tel" placeholder="10-digit mobile number">
-              <small class="text-muted">Numbers only · Max 15 digits</small>
+              <div class="checkout-phone-row input-group">
+                <select name="country_code" id="checkoutCountryCode" class="form-select checkout-country-code" aria-label="Country code" required>
+                  <option value="91" selected>+91 IN</option>
+                  <option value="971">+971 AE</option>
+                  <option value="966">+966 SA</option>
+                  <option value="974">+974 QA</option>
+                  <option value="968">+968 OM</option>
+                  <option value="965">+965 KW</option>
+                  <option value="973">+973 BH</option>
+                  <option value="977">+977 NP</option>
+                  <option value="880">+880 BD</option>
+                  <option value="94">+94 LK</option>
+                  <option value="65">+65 SG</option>
+                  <option value="60">+60 MY</option>
+                  <option value="44">+44 UK</option>
+                  <option value="1">+1 US</option>
+                  <option value="61">+61 AU</option>
+                </select>
+                <input name="mobile" id="checkoutMobile" class="form-control" type="tel" required maxlength="10" minlength="10" pattern="[0-9]{10}" inputmode="numeric" autocomplete="tel-national" placeholder="10-digit mobile">
+              </div>
+              <small class="text-muted">Country code + 10-digit mobile</small>
             </div>
             <div class="col-md-6">
               <label class="form-label">Email</label>
               <input type="email" name="email" class="form-control" maxlength="100" autocomplete="email">
-              <small class="text-muted">Max 100 characters</small>
             </div>
             <div class="col-md-6"><label class="form-label">Gender</label>
               <select name="gender" class="form-select">
@@ -268,9 +285,11 @@ $csrf = Security::csrfToken();
             <div class="col-md-6"><label class="form-label">City</label><select name="city_id" id="checkoutCity" class="form-select"></select></div>
             <div class="col-md-6"><label class="form-label">Branch *</label><select name="branch_id" id="checkoutBranch" class="form-select" required></select></div>
             <div class="col-12">
-              <label class="form-label">Notes</label>
-              <textarea name="notes" class="form-control" rows="2" maxlength="200"></textarea>
-              <small class="text-muted">Max 200 characters</small>
+              <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <label class="form-label mb-0" for="checkoutNotes">Notes</label>
+                <small class="text-muted" id="checkoutNotesCount">0 / 150</small>
+              </div>
+              <textarea name="notes" id="checkoutNotes" class="form-control" rows="2" maxlength="150" aria-describedby="checkoutNotesCount"></textarea>
             </div>
             <div class="col-12" id="checkoutSummary"></div>
             <div class="col-12"><button class="btn btn-primary w-100" type="submit">Pay Securely with Razorpay</button></div>

@@ -94,6 +94,39 @@ function format_phone_in(string $phone): string
     return $digits;
 }
 
+/**
+ * Build WhatsApp / E.164-style digits from country code + local mobile.
+ * Local mobile is expected as 10 digits (no + / country code).
+ */
+function format_phone_with_country(string $mobile, string $countryCode = '91'): string
+{
+    $local = preg_replace('/\D+/', '', $mobile) ?? '';
+    $cc = preg_replace('/\D+/', '', $countryCode) ?? '';
+    if ($cc === '') {
+        $cc = '91';
+    }
+
+    // If a full international number was pasted into mobile, normalize as-is
+    if (strlen($local) > 10) {
+        return format_phone_in($local);
+    }
+
+    if (str_starts_with($local, '0')) {
+        $local = ltrim($local, '0');
+    }
+
+    if ($local === '') {
+        return '';
+    }
+
+    // Avoid doubling country code
+    if (str_starts_with($local, $cc)) {
+        return $local;
+    }
+
+    return $cc . $local;
+}
+
 function json_input(): array
 {
     static $cached = null;

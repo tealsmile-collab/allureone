@@ -621,3 +621,21 @@ body.has-mobile-cart .sticky-fabs {
 .policy-body p { margin-bottom: .85rem; }
 .site-footer .footer-bottom a { color: var(--peach); text-decoration: none; }
 .site-footer .footer-bottom a:hover { text-decoration: underline; }
+
+/* Checkout mobile + country code */
+.checkout-phone-row { flex-wrap: nowrap; }
+.checkout-country-code {
+  max-width: 7.25rem;
+  flex: 0 0 7.25rem;
+  padding-left: .5rem;
+  padding-right: .35rem;
+  font-size: .9rem;
+  background: var(--sand);
+}
+@media (max-width: 575px) {
+  .checkout-country-code {
+    max-width: 6.5rem;
+    flex-basis: 6.5rem;
+    font-size: .85rem;
+  }
+}

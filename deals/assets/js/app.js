@@ -473,6 +473,47 @@
   }
 
   function payWithRazorpay(order) {
+    function showPaymentSuccess(res, checkoutOrder) {
+      const wa = String(res.support_whatsapp || '917620049769').replace(/\D+/g, '');
+      const waLink = 'https://wa.me/' + wa;
+      const mobileShared = escapeHtml(String(res.customer_mobile || (checkoutOrder.customer && checkoutOrder.customer.contact) || ''));
+      const rows = [
+        ['Order', res.order_no],
+        ['Invoice', res.invoice_no],
+        ['Transaction', res.transaction_id || '—'],
+        ['Order summary', res.order_summary || '—'],
+        ['Amount paid', '₹' + (res.amount_paid || res.grand_total || '0.00')],
+        ['Branch', [res.branch_name, res.city_name].filter(Boolean).join(', ') || '—'],
+        ['Name', res.customer_name || '—'],
+        ['Mobile', res.customer_mobile || '—'],
+        ['Email', res.customer_email || '—'],
+        ['Gender', res.customer_gender || '—'],
+        ['Notes', res.notes || '—'],
+      ];
+      let summaryHtml = '<div class="text-start mt-3" style="font-size:.92rem;line-height:1.45">';
+      rows.forEach(([label, value]) => {
+        summaryHtml += `<div style="display:flex;gap:.5rem;margin-bottom:.35rem"><span style="min-width:7.5rem;color:#6b635a">${escapeHtml(label)}</span><strong style="flex:1">${escapeHtml(String(value || '—'))}</strong></div>`;
+      });
+      summaryHtml += '</div>';
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Payment Successful',
+        width: 520,
+        html: `
+          <p class="mb-2">Order <b>${escapeHtml(String(res.order_no || ''))}</b> confirmed.<br>Invoice: <b>${escapeHtml(String(res.invoice_no || ''))}</b></p>
+          <p class="mb-2" style="font-size:.95rem">You will receive order details over WhatsApp on the mobile number shared at checkout${mobileShared ? ` (<b>${mobileShared}</b>)` : ''}.</p>
+          <p class="mb-0" style="font-size:.95rem">For any queries, WhatsApp us on
+            <a href="${waLink}" target="_blank" rel="noopener">+${wa.replace(/(\d{2})(\d{5})(\d{5})/, '$1 $2 $3')}</a>.
+          </p>
+          <hr class="my-3">
+          <p class="fw-semibold mb-1 text-start">Order placed summary</p>
+          ${summaryHtml}
+        `,
+        confirmButtonText: 'Done',
+      });
+    }
+
     // Demo mode when Razorpay keys are placeholders
     if (String(order.razorpay_order_id).startsWith('order_demo_')) {
       return api('payment_verify', {
@@ -482,7 +523,7 @@
         razorpay_signature: 'demo',
       }, 'POST').then((res) => {
         restorePageScroll();
-        Swal.fire('Payment Successful', `Order ${res.order_no} confirmed.`, 'success');
+        showPaymentSuccess(res, order);
         return api('cart_get').then(updateCartUI);
       });
     }
@@ -515,11 +556,7 @@
           razorpay_signature: response.razorpay_signature,
         }, 'POST').then((res) => {
           restorePageScroll();
-          Swal.fire({
-            icon: 'success',
-            title: 'Payment Successful',
-            html: `Order <b>${res.order_no}</b> confirmed.<br>Invoice: ${res.invoice_no}`,
-          });
+          showPaymentSuccess(res, order);
           api('cart_get').then(updateCartUI);
         }).catch((err) => {
           restorePageScroll();
@@ -866,17 +903,53 @@
     el.value = (el.value.slice(0, start) + digits + el.value.slice(end)).replace(/\D+/g, '').slice(0, 10);
   });
 
+  const FORBIDDEN_CHECKOUT_CHARS = /[$%#@~`'"]/g;
+
+  function stripForbiddenCheckoutChars(value) {
+    return String(value || '').replace(FORBIDDEN_CHECKOUT_CHARS, '');
+  }
+
+  $(document).on('input', '#checkoutForm input[name="name"], #checkoutNotes', function () {
+    const cleaned = stripForbiddenCheckoutChars(this.value);
+    if (cleaned !== this.value) {
+      const pos = this.selectionStart;
+      this.value = cleaned;
+      if (typeof pos === 'number') {
+        const next = Math.max(0, pos - 1);
+        this.setSelectionRange(next, next);
+      }
+      if (this.id === 'checkoutNotes') updateCheckoutNotesCount();
+    }
+  });
+
+  $(document).on('paste', '#checkoutForm input[name="name"], #checkoutNotes', function (e) {
+    e.preventDefault();
+    const text = (e.originalEvent.clipboardData || window.clipboardData).getData('text') || '';
+    const cleaned = stripForbiddenCheckoutChars(text);
+    const el = this;
+    const start = el.selectionStart || 0;
+    const end = el.selectionEnd || 0;
+    const max = el.id === 'checkoutNotes' ? 150 : 80;
+    el.value = (el.value.slice(0, start) + cleaned + el.value.slice(end)).slice(0, max);
+    if (el.id === 'checkoutNotes') updateCheckoutNotesCount();
+  });
+
   $('#checkoutForm').on('submit', function (e) {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(this).entries());
-    const name = String(data.name || '').trim();
+    const name = stripForbiddenCheckoutChars(String(data.name || '').trim());
     const countryCode = String(data.country_code || '91').replace(/\D+/g, '') || '91';
     const mobile = String(data.mobile || '').replace(/\D+/g, '');
     const email = String(data.email || '').trim();
-    const notes = String(data.notes || '').trim();
+    const notes = stripForbiddenCheckoutChars(String(data.notes || '').trim());
 
     if (!name) return toastr.error('Name is required');
     if (name.length > 80) return toastr.error('Name must be max 80 characters');
+    if (FORBIDDEN_CHECKOUT_CHARS.test(String(data.name || '')) || FORBIDDEN_CHECKOUT_CHARS.test(String(data.notes || ''))) {
+      FORBIDDEN_CHECKOUT_CHARS.lastIndex = 0;
+      return toastr.error('Name/Notes cannot contain special characters like $ % # @ ~ ` \' "');
+    }
+    FORBIDDEN_CHECKOUT_CHARS.lastIndex = 0;
     if (!mobile) return toastr.error('Mobile is required');
     if (!/^\d{10}$/.test(mobile)) return toastr.error('Mobile must be exactly 10 digits');
     if (!/^\d{1,4}$/.test(countryCode)) return toastr.error('Select a valid country code');

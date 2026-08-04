@@ -123,7 +123,7 @@ try {
                 }
             }
 
-            $name = Security::clean((string) $in['name']);
+            $name = sanitize_checkout_text(Security::clean((string) $in['name']));
             $countryCode = preg_replace('/\D+/', '', Security::clean((string) ($in['country_code'] ?? '91'))) ?? '91';
             if ($countryCode === '') {
                 $countryCode = '91';
@@ -133,10 +133,16 @@ try {
             }
             $mobileLocal = preg_replace('/\D+/', '', Security::clean((string) $in['mobile'])) ?? '';
             $email = Security::clean((string) ($in['email'] ?? ''));
-            $notes = Security::clean((string) ($in['notes'] ?? ''));
+            $notes = sanitize_checkout_text(Security::clean((string) ($in['notes'] ?? '')));
 
+            if ($name === '' || mb_strlen($name) < 2) {
+                Response::error('Name is required');
+            }
             if (mb_strlen($name) > 80) {
                 Response::error('Name must be max 80 characters');
+            }
+            if (checkout_text_has_forbidden_chars((string) ($in['name'] ?? '')) || checkout_text_has_forbidden_chars((string) ($in['notes'] ?? ''))) {
+                Response::error('Name/Notes cannot contain special characters like $ % # @ ~ ` \' "');
             }
             if ($mobileLocal === '' || !preg_match('/^\d{10}$/', $mobileLocal)) {
                 Response::error('Mobile must be exactly 10 digits');
@@ -174,12 +180,43 @@ try {
             $in = json_input();
             $orders = new OrderService();
             $order = $orders->verifyPayment($in);
+            $itemSummary = [];
+            foreach ($order['items'] as $item) {
+                $line = (string) ($item['product_name'] ?? 'Deal');
+                $qty = (int) ($item['quantity'] ?? 1);
+                if ($qty > 1) {
+                    $line .= ' x' . $qty;
+                }
+                $dur = trim((string) ($item['duration'] ?? ''));
+                if ($dur !== '') {
+                    $line .= ' (' . $dur . (ctype_digit($dur) ? ' Min' : '') . ')';
+                }
+                $itemSummary[] = $line;
+            }
+            $genderMap = [
+                'female' => 'Female',
+                'male' => 'Male',
+                'other' => 'Other',
+                'prefer_not' => 'Prefer not to say',
+            ];
+            $genderRaw = (string) ($order['customer_gender'] ?? '');
             Response::success([
                 'order_no' => $order['order_no'],
                 'invoice_no' => $order['invoice_no'],
                 'payment_status' => $order['payment_status'],
                 'grand_total' => $order['grand_total'],
                 'invoice_url' => !empty($order['invoice_path']) ? asset_url($order['invoice_path']) : null,
+                'transaction_id' => $order['razorpay_payment_id'] ?? null,
+                'order_summary' => $itemSummary !== [] ? implode(', ', $itemSummary) : 'Spa deal',
+                'amount_paid' => number_format((float) ($order['grand_total'] ?? 0), 2, '.', ''),
+                'branch_name' => $order['branch_name'] ?? '',
+                'city_name' => $order['city_name'] ?? '',
+                'customer_name' => $order['customer_name'] ?? '',
+                'customer_mobile' => $order['customer_mobile'] ?? '',
+                'customer_email' => $order['customer_email'] ?? '',
+                'customer_gender' => $genderMap[$genderRaw] ?? $genderRaw,
+                'notes' => $order['notes'] ?? '',
+                'support_whatsapp' => '917620049769',
             ], 'Payment successful');
 
         case 'policy':

@@ -127,6 +127,23 @@ function format_phone_with_country(string $mobile, string $countryCode = '91'): 
     return $cc . $local;
 }
 
+/** Strip forbidden special characters from checkout name / notes. */
+function sanitize_checkout_text(string $value): string
+{
+    $value = trim($value);
+    // Disallow: $ % # @ ~ ` ' "
+    $value = preg_replace('/[$%#@~`\'"]+/u', '', $value) ?? '';
+    // Collapse leftover multi-spaces
+    $value = preg_replace('/\s{2,}/u', ' ', $value) ?? $value;
+    return trim($value);
+}
+
+/** True if text still contains forbidden special characters. */
+function checkout_text_has_forbidden_chars(string $value): bool
+{
+    return (bool) preg_match('/[$%#@~`\'"]/u', $value);
+}
+
 function json_input(): array
 {
     static $cached = null;

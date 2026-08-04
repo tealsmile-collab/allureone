@@ -639,27 +639,33 @@ class OrderService
         }
         $dealNames = $itemLines !== [] ? implode(', ', $itemLines) : 'Spa deal';
         $amount = number_format((float) ($order['grand_total'] ?? 0), 2, '.', '');
-        $gender = trim((string) ($order['customer_gender'] ?? ''));
-        $email = trim((string) ($order['customer_email'] ?? ''));
-        $notes = trim((string) ($order['notes'] ?? ''));
-
-        $detailParts = [
-            'Deal: ' . $dealNames,
-            'Amount paid: INR ' . $amount,
+        $genderRaw = trim((string) ($order['customer_gender'] ?? ''));
+        $genderMap = [
+            'female' => 'Female',
+            'male' => 'Male',
+            'other' => 'Other',
+            'prefer_not' => 'Prefer not to say',
         ];
-        if ($gender !== '') {
-            $detailParts[] = 'Gender: ' . $gender;
+        $gender = $genderMap[$genderRaw] ?? $genderRaw;
+        $notes = trim((string) ($order['notes'] ?? ''));
+        $branchLabel = $branchName !== '' ? $branchName : trim((string) ($order['city_name'] ?? ''));
+
+        // Short plain-text summary for Gallabox "details" (no rich/color markup)
+        $details = 'Deal purchased - ' . $dealNames
+            . ', paid Amount: Rs.' . $amount;
+        if ($branchLabel !== '') {
+            $details .= ', Branch: ' . $branchLabel;
         }
-        if ($email !== '') {
-            $detailParts[] = 'Email: ' . $email;
+        if ($gender !== '') {
+            $details .= ', ' . $gender;
         }
         if ($notes !== '') {
-            $detailParts[] = 'Notes: ' . $notes;
+            $details .= ', Remark - ' . $notes;
         }
-        if ($branchName !== '') {
-            $detailParts[] = 'Branch: ' . $branchName;
+        // Keep template variable reasonably short
+        if (mb_strlen($details) > 500) {
+            $details = mb_substr($details, 0, 497) . '...';
         }
-        $details = implode("\n", $detailParts);
 
         $payload = [
             'channelId' => gallabox_config('channel_id'),

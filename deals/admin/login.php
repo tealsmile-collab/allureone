@@ -11,8 +11,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!Security::verifyCsrf($_POST['csrf_token'] ?? null)) {
         $error = 'Invalid session token. Please retry.';
     } else {
-        $login = trim((string) ($_POST['login'] ?? ''));
-        $password = (string) ($_POST['password'] ?? '');
+        $login = mb_substr(trim((string) ($_POST['login'] ?? '')), 0, 50);
+        $password = mb_substr((string) ($_POST['password'] ?? ''), 0, 50);
         if (Auth::attempt($login, $password)) {
             redirect(base_url('admin/index.php'));
         }
@@ -45,11 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <?= Security::csrfField() ?>
       <div class="mb-3">
         <label class="form-label">Username / Email</label>
-        <input type="text" name="login" class="form-control" required autofocus>
+        <input type="text" name="login" class="form-control" required autofocus maxlength="50" autocomplete="username">
       </div>
       <div class="mb-3">
         <label class="form-label">Password</label>
-        <input type="password" name="password" class="form-control" required>
+        <input type="password" name="password" class="form-control" required maxlength="50" autocomplete="current-password">
       </div>
       <button class="btn btn-brand text-white w-100 py-2" type="submit">Login</button>
     </form>

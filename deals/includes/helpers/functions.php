@@ -137,6 +137,37 @@ function logo_url(): string
     return asset_url($logo);
 }
 
+/** Opaque URL-safe token for admin invoice links (hides plain order id). */
+function invoice_ref_encode(int $orderId): string
+{
+    if ($orderId <= 0) {
+        return '';
+    }
+    return rtrim(strtr(base64_encode((string) $orderId), '+/', '-_'), '=');
+}
+
+/** Decode invoice token; also accepts legacy plain numeric ids. */
+function invoice_ref_decode(string $token): int
+{
+    $token = trim(rawurldecode($token));
+    if ($token === '') {
+        return 0;
+    }
+    if (ctype_digit($token)) {
+        return (int) $token;
+    }
+    $b64 = strtr($token, '-_', '+/');
+    $pad = strlen($b64) % 4;
+    if ($pad > 0) {
+        $b64 .= str_repeat('=', 4 - $pad);
+    }
+    $raw = base64_decode($b64, true);
+    if (!is_string($raw) || !ctype_digit($raw)) {
+        return 0;
+    }
+    return (int) $raw;
+}
+
 /**
  * Gallabox settings from deployable includes/config/gallabox.php (overrides config.php).
  */

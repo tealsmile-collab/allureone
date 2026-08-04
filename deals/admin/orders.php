@@ -17,13 +17,19 @@ $cities = $catalog->cities();
 $branches = $catalog->branches();
 
 if (!empty($_GET['invoice'])) {
-    $order = (new OrderService())->getOrder((int) $_GET['invoice']);
+    $orderId = invoice_ref_decode((string) $_GET['invoice']);
+    if ($orderId <= 0) {
+        http_response_code(400);
+        echo 'Invalid invoice reference';
+        exit;
+    }
+    $order = (new OrderService())->getOrder($orderId);
     if (!empty($order['invoice_path']) && is_file(ROOT_PATH . '/' . $order['invoice_path'])) {
         header('Content-Type: text/html; charset=utf-8');
         readfile(ROOT_PATH . '/' . $order['invoice_path']);
         exit;
     }
-    $path = (new OrderService())->generateInvoice((int) $_GET['invoice']);
+    $path = (new OrderService())->generateInvoice($orderId);
     redirect(base_url($path));
 }
 
@@ -68,7 +74,7 @@ admin_header('Orders', 'orders');
           <td><?= e($o['payment_status']) ?></td>
           <td><?= e((string) $o['coupon_code']) ?></td>
           <td><?= e($o['status_code']) ?></td>
-          <td><a class="btn btn-sm btn-outline-dark" href="?invoice=<?= (int) $o['id'] ?>" target="_blank">Invoice</a></td>
+          <td><a class="btn btn-sm btn-outline-dark" href="?invoice=<?= e(rawurlencode(invoice_ref_encode((int) $o['id']))) ?>" target="_blank">Invoice</a></td>
         </tr>
       <?php endforeach; ?>
       </tbody>

@@ -46,6 +46,16 @@ $visitEvents = [
     'google-Ad-Visit-Franchise',
 ];
 
+/** Menu card Amplitude events (display name + visit/call/whatsapp) */
+$menuCardRows = [
+    [
+        'event' => 'Byke Thane MenuPage',
+        'visit_event' => 'Byke-Thane-MenuCard-Visit',
+        'call_event' => 'Byke-Thane-MenuCard-Call',
+        'whatsapp_event' => 'Byke-Thane-MenuCard-Whatsapp',
+    ],
+];
+
 if (!function_exists('curl_init')) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'cURL extension is not enabled on this server.']);
@@ -66,6 +76,14 @@ foreach ($visitEvents as $visitEvent) {
         $amplitudeEvents[] = $callEvent;
     }
 }
+foreach ($menuCardRows as $menuRow) {
+    foreach (['visit_event', 'call_event', 'whatsapp_event'] as $ek) {
+        $ev = trim((string) ($menuRow[$ek] ?? ''));
+        if ($ev !== '') {
+            $amplitudeEvents[] = $ev;
+        }
+    }
+}
 
 $eventCounts = google_ads_fetch_amplitude_event_counts($amplitudeEvents, $startDate, $endDate, $credentials);
 
@@ -77,18 +95,40 @@ foreach ($visitEvents as $event) {
         'count' => $eventCounts[$event] ?? 0,
         'call_event' => $callEvent,
         'call_count' => $callEvent !== null ? ($eventCounts[$callEvent] ?? 0) : null,
+        'whatsapp_event' => null,
+        'whatsapp_count' => null,
+    ];
+}
+foreach ($menuCardRows as $menuRow) {
+    $visitEv = (string) ($menuRow['visit_event'] ?? '');
+    $callEv = (string) ($menuRow['call_event'] ?? '');
+    $waEv = (string) ($menuRow['whatsapp_event'] ?? '');
+    $results[] = [
+        'event' => (string) ($menuRow['event'] ?? ''),
+        'count' => $visitEv !== '' ? ($eventCounts[$visitEv] ?? 0) : 0,
+        'call_event' => $callEv !== '' ? $callEv : null,
+        'call_count' => $callEv !== '' ? ($eventCounts[$callEv] ?? 0) : null,
+        'whatsapp_event' => $waEv !== '' ? $waEv : null,
+        'whatsapp_count' => $waEv !== '' ? ($eventCounts[$waEv] ?? 0) : null,
     ];
 }
 
 $totalVisits = 0;
 $totalCalls = 0;
+$totalWhatsapp = 0;
 $countedCallEvents = [];
+$countedWaEvents = [];
 foreach ($results as $row) {
     $totalVisits += (int) ($row['count'] ?? 0);
     $callEventKey = (string) ($row['call_event'] ?? '');
     if ($callEventKey !== '' && !isset($countedCallEvents[$callEventKey])) {
         $totalCalls += (int) ($row['call_count'] ?? 0);
         $countedCallEvents[$callEventKey] = true;
+    }
+    $waEventKey = (string) ($row['whatsapp_event'] ?? '');
+    if ($waEventKey !== '' && !isset($countedWaEvents[$waEventKey])) {
+        $totalWhatsapp += (int) ($row['whatsapp_count'] ?? 0);
+        $countedWaEvents[$waEventKey] = true;
     }
 }
 
@@ -98,4 +138,5 @@ echo json_encode([
     'results' => $results,
     'total' => $totalVisits,
     'total_calls' => $totalCalls,
+    'total_whatsapp' => $totalWhatsapp,
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

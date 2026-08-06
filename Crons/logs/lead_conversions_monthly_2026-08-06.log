@@ -1,0 +1,11 @@
+===== lead_conversions_monthly run start: 2026-08-06 03:51:27 =====
+months: June / July / August 2026
+branch_id 2935 | Powai · Powai - Allure Thai Spa & Wellness | June 2026 | invoice V/2026-27/1028 | mobile 918369676845 | lead_id 3 | Shailesh B | status updated to converted, amount = 0
+branch_id 2935 | Powai · Powai - Allure Thai Spa & Wellness | June 2026 | invoice V/2026-27/1028 | mobile 918369676845 | lead_id 211 | Shailesh B | status updated to converted, amount = 0
+===== lead_conversions_monthly run start: 2026-08-06 03:52:56 =====
+months: June / July / August 2026
+branch_id 2973 | Borivali · Borivali (WEST) - Allure Thai Spa & Wellness | July 2026 | invoice V/2026-27/1259 | mobile 919833153664 | lead_id 17 | Jatin Sankhe | status updated to converted, amount = 3000
+branch_id 3780 | Thane Kolshet · Thane - Allure Thai Spa And Wellness | July 2026 | invoice V/2026-27/0751 | mobile 919480694913 | lead_id 278 | Avinash Manjrekar | status updated to converted, amount = 10000
+branch_id 4651 | Thane Vartak Nagar · Thane Vartak Nagar - Allure Thai | July 2026 | invoice V/2026-27/0091 | mobile 917506249238 | lead_id 317 | baliram Gairola | status updated to converted, amount = 2500
+branch_id 4651 | Thane Vartak Nagar · Thane Vartak Nagar - Allure Thai | July 2026 | invoice V/2026-27/0101 | mobile 919833528999 | lead_id 275 | Ashok Palan | status updated to converted, amount = 1500
+===== lead_conversions_monthly run end: 2026-08-06 03:54:51 | api_calls=33 | invoices=4842 | converted=4 | already_converted=14 | no_lead_match=4825 =====

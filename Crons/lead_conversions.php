@@ -153,29 +153,55 @@ function lc_format_amount(float $amount): string
     return number_format($amount, 2, '.', '');
 }
 
-function lc_mark_lead_converted(PDO $pdo, int $leadId, int $convertedStatusId, float $amount): bool
-{
+/**
+ * Mark lead converted; if lead branch differs from invoice branch, set branch_id too.
+ *
+ * @return array{ok:bool,branch_updated:bool}
+ */
+function lc_mark_lead_converted(
+    PDO $pdo,
+    int $leadId,
+    int $convertedStatusId,
+    float $amount,
+    int $invoiceBranchId,
+    int $leadBranchId
+): array {
     if ($leadId <= 0 || $convertedStatusId <= 0) {
-        return false;
+        return ['ok' => false, 'branch_updated' => false];
     }
+    $branchUpdated = $invoiceBranchId > 0 && $leadBranchId !== $invoiceBranchId;
     try {
-        $upd = $pdo->prepare(
-            'UPDATE allureone_meta_leads
-             SET status = :status, amount = :amount
-             WHERE id = :id'
-        );
-        $upd->execute([
-            'status' => $convertedStatusId,
-            'amount' => lc_format_amount($amount),
-            'id' => $leadId,
-        ]);
+        if ($branchUpdated) {
+            $upd = $pdo->prepare(
+                'UPDATE allureone_meta_leads
+                 SET status = :status, amount = :amount, branch_id = :branch_id
+                 WHERE id = :id'
+            );
+            $upd->execute([
+                'status' => $convertedStatusId,
+                'amount' => lc_format_amount($amount),
+                'branch_id' => $invoiceBranchId,
+                'id' => $leadId,
+            ]);
+        } else {
+            $upd = $pdo->prepare(
+                'UPDATE allureone_meta_leads
+                 SET status = :status, amount = :amount
+                 WHERE id = :id'
+            );
+            $upd->execute([
+                'status' => $convertedStatusId,
+                'amount' => lc_format_amount($amount),
+                'id' => $leadId,
+            ]);
+        }
 
-        return true;
+        return ['ok' => true, 'branch_updated' => $branchUpdated];
     } catch (Throwable $e) {
         error_log('lead_conversions mark converted failed: ' . $e->getMessage());
     }
 
-    return false;
+    return ['ok' => false, 'branch_updated' => false];
 }
 
 /**
@@ -386,6 +412,7 @@ foreach ($branches as $branch) {
 
         foreach ($toProcess as $lead) {
             $leadId = (int) ($lead['id'] ?? 0);
+            $leadBranchId = (int) ($lead['branch_id'] ?? 0);
             $statusKey = (string) ($lead['status_key'] ?? '');
             $leadName = (string) ($lead['lead_name'] ?? '');
 
@@ -394,13 +421,28 @@ foreach ($branches as $branch) {
                 continue;
             }
 
-            if (lc_mark_lead_converted($pdo, $leadId, $convertedStatusId, $paid)) {
+            $mark = lc_mark_lead_converted(
+                $pdo,
+                $leadId,
+                $convertedStatusId,
+                $paid,
+                $branchId,
+                $leadBranchId
+            );
+            if ($mark['ok']) {
                 $convertedCount++;
                 // Keep in-memory map in sync for later invoices same run
                 foreach ($leadsByMobile[$mobile] as $i => $cached) {
                     if ((int) ($cached['id'] ?? 0) === $leadId) {
                         $leadsByMobile[$mobile][$i]['status_key'] = 'converted';
+                        if ($mark['branch_updated']) {
+                            $leadsByMobile[$mobile][$i]['branch_id'] = $branchId;
+                        }
                     }
+                }
+                $extra = '';
+                if ($mark['branch_updated']) {
+                    $extra = ', branch_id ' . $leadBranchId . ' → ' . $branchId;
                 }
                 lc_log_line(
                     $logFile,
@@ -410,6 +452,7 @@ foreach ($branches as $branch) {
                     . ' | lead_id ' . $leadId
                     . ($leadName !== '' ? (' | ' . $leadName) : '')
                     . ' | status updated to converted, amount = ' . $paidDisplay
+                    . $extra
                 );
             }
         }

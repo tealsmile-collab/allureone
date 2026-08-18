@@ -7,6 +7,18 @@ declare(strict_types=1);
 
 function google_ads_call_event_for_visit(string $visitEvent): ?string
 {
+    $useVisitCountAsCall = [
+        'google-Ad-Visit-BorivaliWest',
+        'google-Ad-Visit-Powai',
+        'google-Ad-Visit-MulundRunwal',
+        'google-Ad-Visit-Seawoods',
+        'google-Ad-Visit-ThaneLodha',
+        'google-Ad-Visit-Malad',
+    ];
+    if (in_array($visitEvent, $useVisitCountAsCall, true)) {
+        return $visitEvent;
+    }
+
     $prefix = 'google-Ad-Visit-';
     if (strncmp($visitEvent, $prefix, strlen($prefix)) === 0) {
         $location = substr($visitEvent, strlen($prefix));
@@ -16,6 +28,23 @@ function google_ads_call_event_for_visit(string $visitEvent): ?string
     }
 
     return null;
+}
+
+function google_ads_whatsapp_event_for_visit(string $visitEvent): ?string
+{
+    $map = [
+        'google-Ad-Visit-Marol' => 'google-Ad-WhatsApp-Marol',
+        'google-Ad-Visit-AndheriWest' => 'google-Ad-WhatsApp-AndheriWest',
+        'google-Ad-Visit-BorivaliWest' => 'google-Ad-WhatsApp-BorivaliWest',
+        'google-Ad-Visit-Powai' => 'google-Ad-WhatsApp-Powai',
+        'google-Ad-Visit-MulundRunwal' => 'google-Ad-WhatsApp-MulundRunwal',
+        'google-Ad-Visit-Seawoods' => 'google-Ad-WhatsApp-Seawoods',
+        'google-Ad-Visit-ThaneLodha' => 'google-Ad-WhatsApp-ThaneLodha',
+        'google-Ad-Visit-VartakNagar' => 'google-Ad-WhatsApp-VartakNagar',
+        'google-Ad-Visit-Malad' => 'google-Ad-WhatsApp-Malad',
+    ];
+
+    return $map[$visitEvent] ?? null;
 }
 
 function google_ads_amplitude_url(string $event, string $startDate, string $endDate): string

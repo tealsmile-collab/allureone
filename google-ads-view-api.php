@@ -34,15 +34,12 @@ $visitEvents = [
     'google-Ad-Visit-Marol',
     'google-Ad-Visit-AndheriWest',
     'google-Ad-Visit-BorivaliWest',
-    'google-Ad-Visit-BorivaliWest-NewPage',
     'google-Ad-Visit-Powai',
-    'google-Ad-Visit-Powai-NewPage',
-    'google-Ad-Visit-Mulund',
+    'google-Ad-Visit-MulundRunwal',
     'google-Ad-Visit-Seawoods',
     'google-Ad-Visit-ThaneLodha',
-    'google-Ad-Visit-ThaneLodha-NewPage',
     'google-Ad-Visit-VartakNagar',
-    'google-Ad-Visit-Malad-NewPage',
+    'google-Ad-Visit-Malad',
     'google-Ad-Visit-Franchise',
 ];
 
@@ -75,6 +72,10 @@ foreach ($visitEvents as $visitEvent) {
     if ($callEvent !== null) {
         $amplitudeEvents[] = $callEvent;
     }
+    $whatsappEvent = google_ads_whatsapp_event_for_visit($visitEvent);
+    if ($whatsappEvent !== null) {
+        $amplitudeEvents[] = $whatsappEvent;
+    }
 }
 foreach ($menuCardRows as $menuRow) {
     foreach (['visit_event', 'call_event', 'whatsapp_event'] as $ek) {
@@ -90,13 +91,14 @@ $eventCounts = google_ads_fetch_amplitude_event_counts($amplitudeEvents, $startD
 $results = [];
 foreach ($visitEvents as $event) {
     $callEvent = google_ads_call_event_for_visit($event);
+    $whatsappEvent = google_ads_whatsapp_event_for_visit($event);
     $results[] = [
         'event' => $event,
         'count' => $eventCounts[$event] ?? 0,
         'call_event' => $callEvent,
         'call_count' => $callEvent !== null ? ($eventCounts[$callEvent] ?? 0) : null,
-        'whatsapp_event' => null,
-        'whatsapp_count' => null,
+        'whatsapp_event' => $whatsappEvent,
+        'whatsapp_count' => $whatsappEvent !== null ? ($eventCounts[$whatsappEvent] ?? 0) : null,
     ];
 }
 foreach ($menuCardRows as $menuRow) {

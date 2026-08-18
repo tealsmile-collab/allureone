@@ -794,7 +794,13 @@ require __DIR__ . '/includes/layout_start.php';
 
 <?php if ($canDailySale): ?>
 <?php
-$dailySaleTodayYmd = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+$dailySaleNowIst = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+$dailySaleTodayYmd = $dailySaleNowIst->format('Y-m-d');
+$dailySaleDefaultYmd = $dailySaleTodayYmd;
+// Before 12:00 IST (11:59 AM and earlier), default to previous day.
+if ($dailySaleNowIst->format('H:i') < '12:00') {
+    $dailySaleDefaultYmd = (clone $dailySaleNowIst)->modify('-1 day')->format('Y-m-d');
+}
 ?>
 <details class="card" id="daily-sale-card">
     <summary class="card__head card__toggle">
@@ -807,7 +813,7 @@ $dailySaleTodayYmd = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->fo
         <div class="daily-sale-toolbar">
             <div class="daily-sale-date-row">
                 <label for="daily-sale-date" class="daily-sale-date-label">Date</label>
-                <input type="date" id="daily-sale-date" class="daily-sale-date-input" value="<?= e($dailySaleTodayYmd) ?>" max="<?= e($dailySaleTodayYmd) ?>">
+                <input type="date" id="daily-sale-date" class="daily-sale-date-input" value="<?= e($dailySaleDefaultYmd) ?>" max="<?= e($dailySaleTodayYmd) ?>">
                 <button type="button" class="btn btn--primary daily-sale-view-btn" id="daily-sale-view" title="View">
                     <svg class="daily-sale-view-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                         <path fill="currentColor" d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
@@ -1527,7 +1533,7 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         if (!date) {
             return;
         }
-        // First expand (or after date change): load selected date (defaults to today).
+        // First expand (or after date change): load selected date (yesterday before 12:00 IST, else today).
         if (loadedDate !== date && !loading) {
             loadDailySale();
         }

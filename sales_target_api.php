@@ -132,6 +132,145 @@ function sales_target_fetch_for_branch(string $token, string $startDate, string 
     ];
 }
 
+function sales_target_parse_amount(mixed $val): float
+{
+    if ($val === null || $val === '') {
+        return 0.0;
+    }
+    if (is_numeric($val)) {
+        return (float) $val;
+    }
+    $cleaned = preg_replace('/[^0-9.\-]/', '', (string) $val);
+
+    return is_numeric($cleaned) ? (float) $cleaned : 0.0;
+}
+
+/**
+ * MTD = sum of "total revenue" across sales-by-type rows (null → 0).
+ */
+function sales_target_parse_mtd_from_by_type(string $body): ?float
+{
+    $decoded = json_decode($body, true);
+    if (!is_array($decoded)) {
+        return null;
+    }
+    if (isset($decoded['status']) && strtolower(trim((string) $decoded['status'])) !== 'success') {
+        return null;
+    }
+    $data = $decoded['data'] ?? null;
+    if (!is_array($data)) {
+        return 0.0;
+    }
+    $sum = 0.0;
+    foreach ($data as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $rev = $row['total revenue'] ?? $row['total_revenue'] ?? null;
+        $sum += sales_target_parse_amount($rev);
+    }
+
+    return $sum;
+}
+
+function sales_target_admin_fallback_token(): string
+{
+    try {
+        $st = db()->query(
+            "SELECT session_key
+             FROM allureone_session_data
+             WHERE LOWER(TRIM(mobile_number)) = 'admin'
+             ORDER BY updated_date DESC
+             LIMIT 1"
+        );
+        $tok = trim((string) ($st->fetchColumn() ?: ''));
+        if ($tok !== '') {
+            return $tok;
+        }
+    } catch (Throwable $e) {
+        error_log('AllureOne sales_target admin token: ' . $e->getMessage());
+    }
+
+    return '';
+}
+
+/**
+ * @return array{mtd:?float, error:?string, http:int}
+ */
+function sales_target_fetch_mtd_sales_report(string $token, string $startDate, string $endDate, string $locations = 'null'): array
+{
+    $config = require __DIR__ . '/config.php';
+    $base = trim((string) (($config['dingg']['daily_sale_url'] ?? 'https://api.dingg.app/api/v1/vendor/report/sales')));
+    if ($base === '' || $token === '') {
+        return ['mtd' => null, 'error' => 'missing_token_or_url', 'http' => 0];
+    }
+
+    $params = [
+        'start_date' => $startDate,
+        'report_type' => 'by_type',
+        'end_date' => $endDate,
+        'locations' => $locations,
+        'app_type' => 'web',
+        'range_type' => 'month',
+    ];
+    $url = $base . (str_contains($base, '?') ? '&' : '?') . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+    $resp = dingg_http_request_authenticated('GET', $url, $token, null);
+    $http = (int) ($resp['http'] ?? 0);
+    $body = (string) ($resp['body'] ?? '');
+
+    if ($http < 200 || $http >= 300 || dingg_response_looks_unauthorized($http, $body)) {
+        $jsonErr = json_decode($body, true);
+        $msg = is_array($jsonErr) ? trim((string) ($jsonErr['message'] ?? '')) : '';
+
+        return [
+            'mtd' => null,
+            'error' => $msg !== '' ? $msg : ('HTTP ' . $http),
+            'http' => $http,
+        ];
+    }
+
+    $mtd = sales_target_parse_mtd_from_by_type($body);
+    if ($mtd === null) {
+        return ['mtd' => null, 'error' => 'invalid_report', 'http' => $http];
+    }
+
+    return ['mtd' => $mtd, 'error' => null, 'http' => $http];
+}
+
+function sales_target_resolve_mtd_from_dingg(int $branchId, string $token, string $startDate, string $endDate): ?float
+{
+    $report = sales_target_fetch_mtd_sales_report($token, $startDate, $endDate, 'null');
+    if ($report['error'] === null) {
+        return $report['mtd'];
+    }
+
+    $http = (int) ($report['http'] ?? 0);
+    $err = strtolower(trim((string) ($report['error'] ?? '')));
+    $unauthorized = $http === 401 || $http === 403 || $http === 422
+        || str_contains($err, 'not authorized')
+        || str_contains($err, 'unauthorized');
+    if (!$unauthorized) {
+        error_log('AllureOne sales_target MTD report branch ' . $branchId . ' HTTP ' . $http . ' ' . ($report['error'] ?? ''));
+
+        return null;
+    }
+
+    $adminTok = sales_target_admin_fallback_token();
+    if ($adminTok === '' || $adminTok === $token) {
+        error_log('AllureOne sales_target MTD report branch ' . $branchId . ' HTTP ' . $http);
+
+        return null;
+    }
+
+    $fallback = sales_target_fetch_mtd_sales_report($adminTok, $startDate, $endDate, (string) $branchId);
+    if ($fallback['error'] === null) {
+        return $fallback['mtd'];
+    }
+    error_log('AllureOne sales_target MTD report fallback branch ' . $branchId . ' HTTP ' . (int) ($fallback['http'] ?? 0));
+
+    return null;
+}
+
 function sales_target_branch_is_vadodara(array $branch): bool
 {
     $loc = strtolower(trim((string) ($branch['locality'] ?? '')));
@@ -273,12 +412,13 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
                 $metrics = sales_target_parse_response($body);
                 if ($metrics !== null) {
                     $apiTarget = $metrics['total_sales'];
-                    $apiAchieved = $metrics['total_sales_achieved'];
                     $packageAchieved = $metrics['package_sales_achieved'];
                 }
             } else {
                 error_log('AllureOne sales_target API branch ' . $bid . ' HTTP ' . $http);
             }
+
+            $apiAchieved = sales_target_resolve_mtd_from_dingg($bid, $token, $startDate, $endDate);
         }
     }
 

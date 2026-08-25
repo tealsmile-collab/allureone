@@ -30,11 +30,27 @@ function branch_normalize_mobile(string $raw): string
     return $digits;
 }
 
+/**
+ * @return array{ok:bool,value:?float}
+ */
+function branch_parse_monthly_target(string $raw): array
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return ['ok' => true, 'value' => null];
+    }
+    if (preg_match('/^\d{1,16}(\.\d{1,2})?$/', $raw) !== 1) {
+        return ['ok' => false, 'value' => null];
+    }
+
+    return ['ok' => true, 'value' => (float) $raw];
+}
+
 $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $editRow = null;
 if ($editId > 0) {
     $es = $pdo->prepare(
-        'SELECT id, business_name, locality, vendor_id, mobile_number, isActive, isDingg, enableSaleRecord
+        'SELECT id, business_name, locality, vendor_id, mobile_number, isActive, isDingg, enableSaleRecord, MonthlyTarget
          FROM allureone_branch WHERE id = :id LIMIT 1'
     );
     $es->execute(['id' => $editId]);
@@ -79,7 +95,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $isActive = isset($_POST['is_active']) ? 1 : 0;
             $isDingg = isset($_POST['is_dingg']) ? 1 : 0;
             $enableSaleRecord = isset($_POST['enable_sale_record']) ? 1 : 0;
-            if ($id < 1) {
+            $monthlyTarget = null;
+            if ($isDingg !== 1) {
+                $parsedTarget = branch_parse_monthly_target((string) ($_POST['monthly_target'] ?? ''));
+                if (!$parsedTarget['ok']) {
+                    $message = 'Monthly target must be a number (max 2 decimal places).';
+                    $messageType = 'error';
+                } else {
+                    $monthlyTarget = $parsedTarget['value'];
+                }
+            }
+            if ($message !== '') {
+                // keep form error
+            } elseif ($id < 1) {
                 $message = 'Invalid branch.';
                 $messageType = 'error';
             } else {
@@ -89,22 +117,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $message = 'Branch not found.';
                     $messageType = 'error';
                 } else {
-                    $upd = $pdo->prepare(
-                        'UPDATE allureone_branch
-                         SET business_name = :n, locality = :l, vendor_id = :v, mobile_number = :m,
-                             isActive = :a, isDingg = :d, enableSaleRecord = :s
-                         WHERE id = :id'
-                    );
-                    $upd->execute([
-                        'n' => $name,
-                        'l' => $locality,
-                        'v' => $vendorId,
-                        'm' => $mobileNumber !== '' ? $mobileNumber : null,
-                        'a' => $isActive,
-                        'd' => $isDingg,
-                        's' => $enableSaleRecord,
-                        'id' => $id,
-                    ]);
+                    if ($isDingg === 1) {
+                        $upd = $pdo->prepare(
+                            'UPDATE allureone_branch
+                             SET business_name = :n, locality = :l, vendor_id = :v, mobile_number = :m,
+                                 isActive = :a, isDingg = :d, enableSaleRecord = :s
+                             WHERE id = :id'
+                        );
+                        $upd->execute([
+                            'n' => $name,
+                            'l' => $locality,
+                            'v' => $vendorId,
+                            'm' => $mobileNumber !== '' ? $mobileNumber : null,
+                            'a' => $isActive,
+                            'd' => $isDingg,
+                            's' => $enableSaleRecord,
+                            'id' => $id,
+                        ]);
+                    } else {
+                        $upd = $pdo->prepare(
+                            'UPDATE allureone_branch
+                             SET business_name = :n, locality = :l, vendor_id = :v, mobile_number = :m,
+                                 isActive = :a, isDingg = :d, enableSaleRecord = :s, MonthlyTarget = :t
+                             WHERE id = :id'
+                        );
+                        $upd->execute([
+                            'n' => $name,
+                            'l' => $locality,
+                            'v' => $vendorId,
+                            'm' => $mobileNumber !== '' ? $mobileNumber : null,
+                            'a' => $isActive,
+                            'd' => $isDingg,
+                            's' => $enableSaleRecord,
+                            't' => $monthlyTarget,
+                            'id' => $id,
+                        ]);
+                    }
                     header('Location: branch_master.php?msg=branch_updated');
                     exit;
                 }
@@ -112,34 +160,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $isDingg = isset($_POST['is_dingg']) ? 1 : 0;
             $enableSaleRecord = isset($_POST['enable_sale_record']) ? 1 : 0;
-            try {
-                $ins = $pdo->prepare(
-                    'INSERT INTO allureone_branch
-                        (id, business_name, locality, vendor_id, mobile_number, isActive, isDingg, enableSaleRecord)
-                     VALUES (:id, :n, :l, :v, :m, 1, :d, :s)'
-                );
-                $ins->execute([
-                    'id' => $id,
-                    'n' => $name,
-                    'l' => $locality,
-                    'v' => $vendorId,
-                    'm' => $mobileNumber !== '' ? $mobileNumber : null,
-                    'd' => $isDingg,
-                    's' => $enableSaleRecord,
-                ]);
-                header('Location: branch_master.php?msg=branch_created');
-                exit;
-            } catch (PDOException $e) {
-                $dup = ($e->errorInfo[1] ?? null) === 1062;
-                $message = $dup ? 'Branch ID already exists.' : 'Could not create branch.';
-                $messageType = 'error';
+            $monthlyTarget = null;
+            if ($isDingg !== 1) {
+                $parsedTarget = branch_parse_monthly_target((string) ($_POST['monthly_target'] ?? ''));
+                if (!$parsedTarget['ok']) {
+                    $message = 'Monthly target must be a number (max 2 decimal places).';
+                    $messageType = 'error';
+                } else {
+                    $monthlyTarget = $parsedTarget['value'];
+                }
+            }
+            if ($message === '') {
+                try {
+                    $ins = $pdo->prepare(
+                        'INSERT INTO allureone_branch
+                            (id, business_name, locality, vendor_id, mobile_number, isActive, isDingg, enableSaleRecord, MonthlyTarget)
+                         VALUES (:id, :n, :l, :v, :m, 1, :d, :s, :t)'
+                    );
+                    $ins->execute([
+                        'id' => $id,
+                        'n' => $name,
+                        'l' => $locality,
+                        'v' => $vendorId,
+                        'm' => $mobileNumber !== '' ? $mobileNumber : null,
+                        'd' => $isDingg,
+                        's' => $enableSaleRecord,
+                        't' => $isDingg === 1 ? null : $monthlyTarget,
+                    ]);
+                    header('Location: branch_master.php?msg=branch_created');
+                    exit;
+                } catch (PDOException $e) {
+                    $dup = ($e->errorInfo[1] ?? null) === 1062;
+                    $message = $dup ? 'Branch ID already exists.' : 'Could not create branch.';
+                    $messageType = 'error';
+                }
             }
         }
     }
 }
 
 $list = $pdo->query(
-    'SELECT id, business_name, locality, vendor_id, mobile_number, isActive, isDingg, enableSaleRecord
+    'SELECT id, business_name, locality, vendor_id, mobile_number, isActive, isDingg, enableSaleRecord, MonthlyTarget
      FROM allureone_branch ORDER BY id ASC'
 )->fetchAll();
 
@@ -189,9 +250,22 @@ require __DIR__ . '/includes/layout_start.php';
             </div>
             <div class="form__row form__row--check">
                 <label class="check-label">
-                    <input type="checkbox" name="is_dingg" value="1"<?= ((int) ($editRow['isDingg'] ?? 0) === 1) ? ' checked' : '' ?>>
+                    <input type="checkbox" name="is_dingg" id="edit_is_dingg" value="1"<?= ((int) ($editRow['isDingg'] ?? 0) === 1) ? ' checked' : '' ?>>
                     Dingg software
                 </label>
+            </div>
+            <?php
+            $editMonthlyTargetVal = '';
+            $emt = $editRow['MonthlyTarget'] ?? null;
+            if ($emt !== null && $emt !== '') {
+                $editMonthlyTargetVal = rtrim(rtrim(number_format((float) $emt, 2, '.', ''), '0'), '.');
+            }
+            ?>
+            <div class="form__row" id="edit_monthly_target_wrap">
+                <label for="edit_monthly_target">Monthly target</label>
+                <input id="edit_monthly_target" name="monthly_target" type="text" inputmode="decimal"
+                       maxlength="20" placeholder="Target for a month"
+                       value="<?= e($editMonthlyTargetVal) ?>">
             </div>
             <div class="form__row form__row--check">
                 <label class="check-label">
@@ -242,9 +316,15 @@ require __DIR__ . '/includes/layout_start.php';
             </div>
             <div class="form__row form__row--check">
                 <label class="check-label">
-                    <input type="checkbox" name="is_dingg" value="1">
+                    <input type="checkbox" name="is_dingg" id="is_dingg" value="1"<?= (!$editId && isset($_POST['is_dingg']) && ($_POST['_action'] ?? '') === 'create') ? ' checked' : '' ?>>
                     Dingg software
                 </label>
+            </div>
+            <div class="form__row" id="monthly_target_wrap">
+                <label for="monthly_target">Monthly target</label>
+                <input id="monthly_target" name="monthly_target" type="text" inputmode="decimal"
+                       maxlength="20" placeholder="Target for a month"
+                       value="<?= (!$editId && isset($_POST['monthly_target']) && ($_POST['_action'] ?? '') === 'create') ? e((string) $_POST['monthly_target']) : '' ?>">
             </div>
             <div class="form__row form__row--check">
                 <label class="check-label">
@@ -274,6 +354,7 @@ require __DIR__ . '/includes/layout_start.php';
                             <th>Mobile</th>
                             <th>Active</th>
                             <th>Dingg</th>
+                            <th>Monthly target</th>
                             <th>Sale record</th>
                             <th></th>
                         </tr>
@@ -288,6 +369,15 @@ require __DIR__ . '/includes/layout_start.php';
                                 <td><?= e((string) ($b['mobile_number'] ?? '')) ?></td>
                                 <td><?= ((int) $b['isActive'] === 1) ? 'Yes' : 'No' ?></td>
                                 <td><?= ((int) ($b['isDingg'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
+                                <td><?php
+                                    if ((int) ($b['isDingg'] ?? 0) === 1) {
+                                        echo '—';
+                                    } elseif (($b['MonthlyTarget'] ?? null) === null || $b['MonthlyTarget'] === '') {
+                                        echo '—';
+                                    } else {
+                                        echo e(rtrim(rtrim(number_format((float) $b['MonthlyTarget'], 2, '.', ''), '0'), '.'));
+                                    }
+                                ?></td>
                                 <td><?= ((int) ($b['enableSaleRecord'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
                                 <td class="table-actions"><a href="branch_master.php?edit=<?= (int) $b['id'] ?>">Edit</a></td>
                             </tr>
@@ -310,6 +400,17 @@ require __DIR__ . '/includes/layout_start.php';
     }
     digitsOnly(document.getElementById('mobile_number'));
     digitsOnly(document.getElementById('edit_mobile_number'));
+
+    function bindDinggTarget(cb, wrap) {
+        if (!cb || !wrap) return;
+        function sync() {
+            wrap.style.display = cb.checked ? 'none' : '';
+        }
+        cb.addEventListener('change', sync);
+        sync();
+    }
+    bindDinggTarget(document.getElementById('edit_is_dingg'), document.getElementById('edit_monthly_target_wrap'));
+    bindDinggTarget(document.getElementById('is_dingg'), document.getElementById('monthly_target_wrap'));
 })();
 </script>
 

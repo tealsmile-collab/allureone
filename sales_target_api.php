@@ -375,6 +375,8 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
     $label = $loc !== '' ? $loc : ($bn !== '' ? $bn : ('Branch #' . $bid));
     $isDingg = (int) ($branch['isDingg'] ?? 0) === 1;
     $enableSaleRecord = (int) ($branch['enableSaleRecord'] ?? 0) === 1;
+    $manualTargetRaw = $branch['MonthlyTarget'] ?? $branch['monthly_target'] ?? null;
+    $manualTarget = ($manualTargetRaw !== null && $manualTargetRaw !== '') ? (float) $manualTargetRaw : null;
 
     $blank = [
         'branch_id' => $bid,
@@ -390,7 +392,7 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
         'projection' => null,
     ];
 
-    if (!$isDingg && !$enableSaleRecord) {
+    if (!$isDingg && !$enableSaleRecord && $manualTarget === null) {
         return $blank;
     }
 
@@ -440,17 +442,21 @@ function sales_target_build_row(array $branch, string $startDate, string $endDat
         $achieved = $saleRecordMtd;
     } elseif ($apiAchieved !== null) {
         $achieved = $apiAchieved;
+    } elseif (!$isDingg && $manualTarget !== null) {
+        $achieved = null;
     } else {
         return $blank;
     }
 
-    $totalSales = $apiTarget;
-    $remaining = ($totalSales !== null) ? max(0.0, (float) $totalSales - (float) $achieved) : null;
+    $totalSales = $isDingg ? $apiTarget : $manualTarget;
+    $remaining = ($totalSales !== null && $achieved !== null)
+        ? max(0.0, (float) $totalSales - (float) $achieved)
+        : null;
 
     $expectedAvg = ($totalSales !== null && $daysInMonth > 0)
         ? (int) ceil((float) $totalSales / $daysInMonth)
         : null;
-    $mtdAvg = $daysPassed > 0 ? (int) ceil((float) $achieved / $daysPassed) : null;
+    $mtdAvg = ($achieved !== null && $daysPassed > 0) ? (int) ceil((float) $achieved / $daysPassed) : null;
     $remainingSale = $remaining !== null ? (int) ceil($remaining) : null;
     $remainingExpectedAvg = ($remaining !== null && $daysRemaining > 0)
         ? (int) ceil($remaining / $daysRemaining)
@@ -522,13 +528,13 @@ $branches = [];
 try {
     if ($canViewAllBranches) {
         $stmt = db()->query(
-            'SELECT id, business_name, locality, isDingg, enableSaleRecord
+            'SELECT id, business_name, locality, isDingg, enableSaleRecord, MonthlyTarget
              FROM allureone_branch WHERE isActive = 1 ORDER BY business_name ASC'
         );
         $branches = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } else {
         $stmt = db()->prepare(
-            'SELECT id, business_name, locality, isDingg, enableSaleRecord
+            'SELECT id, business_name, locality, isDingg, enableSaleRecord, MonthlyTarget
              FROM allureone_branch
              WHERE isActive = 1 AND id = :id
              LIMIT 1'

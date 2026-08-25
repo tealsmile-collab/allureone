@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS allureone_branch (
   isActive TINYINT(1) NOT NULL DEFAULT 1,
   isDingg TINYINT(1) NOT NULL DEFAULT 0,
   enableSaleRecord TINYINT(1) NOT NULL DEFAULT 0,
+  MonthlyTarget DECIMAL(20,2) NULL,
   PRIMARY KEY (id),
   KEY idx_branch_vendor (vendor_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -399,6 +400,9 @@ try {
     }
     if (!isset($branchColSet['enableSaleRecord'])) {
         $pdo->exec('ALTER TABLE allureone_branch ADD COLUMN enableSaleRecord TINYINT(1) NOT NULL DEFAULT 0');
+    }
+    if (!isset($branchColSet['MonthlyTarget'])) {
+        $pdo->exec('ALTER TABLE allureone_branch ADD COLUMN MonthlyTarget DECIMAL(20,2) NULL AFTER enableSaleRecord');
     }
     if (!isset($branchColSet['mobile_number'])) {
         $pdo->exec('ALTER TABLE allureone_branch ADD COLUMN mobile_number VARCHAR(15) NULL AFTER vendor_id');

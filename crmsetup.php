@@ -2,13 +2,9 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
-require_login();
+require_crm_segments_access();
 $user = current_user();
 $roleId = (int) ($user['role_id'] ?? 0);
-if ($roleId !== ROLE_SUPERADMIN && $roleId !== ROLE_ADMIN) {
-    http_response_code(403);
-    exit('Forbidden');
-}
 $isSuperadmin = ($roleId === ROLE_SUPERADMIN);
 
 /** @var list<array<string,mixed>> */

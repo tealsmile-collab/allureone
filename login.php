@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $pdo = db();
             $st = $pdo->prepare(
-                'SELECT id, loginname, password, FullName, BranchId, RoleId, isactive, RecordSale, MetaConfig
+                'SELECT id, loginname, password, FullName, BranchId, RoleId, isactive, RecordSale, MetaConfig, GoogleAdsView, CrmSegments
                  FROM allureone_users
                  WHERE loginname = :login
                  LIMIT 1'
@@ -86,6 +86,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'role_id' => (int) ($row['RoleId'] ?? 0),
                     'RecordSale' => (int) ($row['RecordSale'] ?? 0),
                     'MetaConfig' => (int) ($row['MetaConfig'] ?? 0),
+                    'GoogleAdsView' => (int) ($row['GoogleAdsView'] ?? 0),
+                    'CrmSegments' => (int) ($row['CrmSegments'] ?? 0),
                 ]);
                 $_SESSION['invoice_cancellation_disabled'] = $invoiceCancellationDisabled;
                 session_write_close();

@@ -83,6 +83,54 @@ function require_meta_config_access(): void
     }
 }
 
+function can_access_google_ads_view(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+    $roleId = (int) ($u['role_id'] ?? 0);
+    if ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) {
+        return true;
+    }
+
+    return !empty($u['google_ads_view']);
+}
+
+function require_google_ads_view_access(): void
+{
+    require_login();
+    if (!can_access_google_ads_view()) {
+        http_response_code(403);
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied. Google Ads View permission required.</p><p><a href="' . htmlspecialchars(allureone_home_path_for_user(), ENT_QUOTES, 'UTF-8') . '">Home</a></p></body></html>';
+        exit;
+    }
+}
+
+function can_access_crm_segments(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+    $roleId = (int) ($u['role_id'] ?? 0);
+    if ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) {
+        return true;
+    }
+
+    return !empty($u['crm_segments']);
+}
+
+function require_crm_segments_access(): void
+{
+    require_login();
+    if (!can_access_crm_segments()) {
+        http_response_code(403);
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied. CRM Segments permission required.</p><p><a href="' . htmlspecialchars(allureone_home_path_for_user(), ENT_QUOTES, 'UTF-8') . '">Home</a></p></body></html>';
+        exit;
+    }
+}
+
 function can_access_appointments(?array $user = null): bool
 {
     $u = $user ?? current_user();
@@ -129,6 +177,8 @@ function current_user(): ?array
         'role_id' => (int) $_SESSION['role_id'],
         'record_sale' => !empty($_SESSION['record_sale']),
         'meta_config' => !empty($_SESSION['meta_config']),
+        'google_ads_view' => !empty($_SESSION['google_ads_view']),
+        'crm_segments' => !empty($_SESSION['crm_segments']),
         'invoice_cancellation_disabled' => !empty($_SESSION['invoice_cancellation_disabled']),
     ];
 }
@@ -213,6 +263,10 @@ function login_user(array $row): void
     $_SESSION['record_sale'] = ((int) $recordSale === 1);
     $metaConfig = $row['meta_config'] ?? $row['MetaConfig'] ?? 0;
     $_SESSION['meta_config'] = ((int) $metaConfig === 1);
+    $googleAdsView = $row['google_ads_view'] ?? $row['GoogleAdsView'] ?? 0;
+    $_SESSION['google_ads_view'] = ((int) $googleAdsView === 1);
+    $crmSegments = $row['crm_segments'] ?? $row['CrmSegments'] ?? 0;
+    $_SESSION['crm_segments'] = ((int) $crmSegments === 1);
 }
 
 /** Stable synthetic user id for Dingg-only login (no allureone_users row). */

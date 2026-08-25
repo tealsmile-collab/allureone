@@ -14,8 +14,30 @@ function db(): PDO
     $config = require __DIR__ . '/../config.php';
     $c = $config['db'];
     $pdo = allureone_connect_pdo_with_charset_fallback($c);
+    allureone_ensure_user_permission_columns($pdo);
 
     return $pdo;
+}
+
+function allureone_ensure_user_permission_columns(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    try {
+        $cols = $pdo->query("SHOW COLUMNS FROM allureone_users LIKE 'GoogleAdsView'")->fetch();
+        if (!$cols) {
+            $pdo->exec('ALTER TABLE allureone_users ADD COLUMN GoogleAdsView TINYINT(1) NOT NULL DEFAULT 0 AFTER MetaConfig');
+        }
+        $cols = $pdo->query("SHOW COLUMNS FROM allureone_users LIKE 'CrmSegments'")->fetch();
+        if (!$cols) {
+            $pdo->exec('ALTER TABLE allureone_users ADD COLUMN CrmSegments TINYINT(1) NOT NULL DEFAULT 0 AFTER GoogleAdsView');
+        }
+    } catch (Throwable $e) {
+        error_log('AllureOne: could not ensure user permission columns: ' . $e->getMessage());
+    }
 }
 
 /**

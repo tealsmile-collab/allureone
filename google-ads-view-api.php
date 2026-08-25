@@ -2,20 +2,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
-require_login();
+require_google_ads_view_access();
 require_not_accounts_role();
 require_not_franchise_officer_role();
 
 header('Content-Type: application/json; charset=utf-8');
 set_time_limit(120);
-
-$user = current_user();
-$roleId = (int) ($user['role_id'] ?? 0);
-if ($roleId !== ROLE_SUPERADMIN && $roleId !== ROLE_ADMIN) {
-    http_response_code(403);
-    echo json_encode(['ok' => false, 'error' => 'Forbidden']);
-    exit;
-}
 
 require_once __DIR__ . '/includes/google_ads_amplitude.php';
 

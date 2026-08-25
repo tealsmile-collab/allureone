@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS allureone_users (
   isactive TINYINT(1) NOT NULL DEFAULT 1,
   RecordSale TINYINT(1) NOT NULL DEFAULT 0,
   MetaConfig TINYINT(1) NOT NULL DEFAULT 0,
+  GoogleAdsView TINYINT(1) NOT NULL DEFAULT 0,
+  CrmSegments TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   UNIQUE KEY uq_allureone_login (loginname),
   KEY idx_user_branch (BranchId),

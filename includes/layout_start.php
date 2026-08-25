@@ -14,6 +14,8 @@ $isAppointmentStaffRole = ($userRoleId === ROLE_THERAPIST || $userRoleId === ROL
 $canAppointments = can_access_appointments($user);
 $canSaleRecord = can_access_sale_record($user);
 $canMetaConfig = can_access_meta_config($user);
+$canGoogleAdsView = can_access_google_ads_view($user);
+$canCrmSegments = can_access_crm_segments($user);
 $homeHref = allureone_home_path_for_user($user);
 ?>
 <!DOCTYPE html>
@@ -76,7 +78,7 @@ $homeHref = allureone_home_path_for_user($user);
             <?php if ($canMetaConfig): ?>
                 <a class="sidebar__link<?= ($activeNav === 'meta_config') ? ' is-active' : '' ?>" href="meta-leads-config.php">Meta Config</a>
             <?php endif; ?>
-            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && ((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN || (int) ($user['role_id'] ?? 0) === ROLE_ADMIN)): ?>
+            <?php if ($canGoogleAdsView): ?>
                 <a class="sidebar__link<?= ($activeNav === 'google_ads_view') ? ' is-active' : '' ?>" href="google-ads-view.php">Google Ads View</a>
             <?php endif; ?>
             <?php if (!$isFranchiseOfficerRole && !$isAppointmentStaffRole): ?>
@@ -90,8 +92,10 @@ $homeHref = allureone_home_path_for_user($user);
                 <a class="sidebar__link<?= ($activeNav === 'branch') ? ' is-active' : '' ?>" href="branch_master.php">Branch Master</a>
                 <a class="sidebar__link<?= ($activeNav === 'user') ? ' is-active' : '' ?>" href="user_master.php">User Master</a>
             <?php endif; ?>
-            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && (((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN) || ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN))): ?>
+            <?php if ($canCrmSegments): ?>
                 <a class="sidebar__link<?= ($activeNav === 'crm_setup') ? ' is-active' : '' ?>" href="crmsetup.php">CRM Segments</a>
+            <?php endif; ?>
+            <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && (((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN) || ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN))): ?>
                 <a class="sidebar__link<?= ($activeNav === 'announcements') ? ' is-active' : '' ?>" href="Announcement.php">Announcements</a>
             <?php endif; ?>
             <a class="sidebar__link" href="logout.php">Logout</a>

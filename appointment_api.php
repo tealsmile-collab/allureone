@@ -142,20 +142,28 @@ function appointment_load_lead_sources(string $token): array
     if (!$r['ok']) {
         return ['ok' => false, 'sources' => [], 'error' => $r['error'] ?? 'Could not load sources.'];
     }
-    $sources = [];
-    $data = is_array($r['json']) ? ($r['json']['data'] ?? []) : [];
-    if (is_array($data)) {
-        foreach ($data as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $id = (int) ($row['id'] ?? 0);
-            $name = trim((string) ($row['name'] ?? ''));
-            if ($id > 0 && $name !== '') {
-                $sources[] = ['id' => $id, 'name' => $name];
-            }
-        }
+    $json = is_array($r['json'] ?? null) ? $r['json'] : [];
+    $data = $json['data'] ?? [];
+    if (!is_array($data)) {
+        $data = [];
     }
+    $sources = [];
+    $seenIds = [];
+    foreach ($data as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $id = (int) ($row['id'] ?? 0);
+        $name = trim((string) ($row['name'] ?? ''));
+        if ($id <= 0 || $name === '' || isset($seenIds[$id])) {
+            continue;
+        }
+        $seenIds[$id] = true;
+        $sources[] = ['id' => $id, 'name' => $name];
+    }
+    usort($sources, static function (array $a, array $b): int {
+        return strcasecmp((string) ($a['name'] ?? ''), (string) ($b['name'] ?? ''));
+    });
 
     return ['ok' => true, 'sources' => $sources];
 }
@@ -516,15 +524,28 @@ try {
 
     if ($action === 'client_create') {
         $name = trim((string) ($input['name'] ?? ''));
-        $mobile = preg_replace('/\D+/', '', (string) ($input['mobile'] ?? '')) ?? '';
         $gender = strtolower(trim((string) ($input['gender'] ?? 'male')));
         $sourceId = (int) ($input['source_id'] ?? 0);
         $countryId = (int) ($input['country_id'] ?? 1);
         $nameLength = function_exists('mb_strlen') ? mb_strlen($name) : strlen($name);
-        if ($nameLength < 2 || $nameLength > 100) {
-            echo json_encode(['ok' => false, 'error' => 'Enter a valid client name.']);
+        if ($name === '' || $nameLength < 1) {
+            echo json_encode(['ok' => false, 'error' => 'Client name is required.']);
             exit;
         }
+        if ($nameLength < 4 || $nameLength > 100) {
+            echo json_encode(['ok' => false, 'error' => 'Client name must be at least 4 characters.']);
+            exit;
+        }
+        $mobileRaw = trim((string) ($input['mobile'] ?? ''));
+        if ($mobileRaw === '') {
+            echo json_encode(['ok' => false, 'error' => 'Mobile is required.']);
+            exit;
+        }
+        if (preg_match('/\D/', $mobileRaw) === 1) {
+            echo json_encode(['ok' => false, 'error' => 'Mobile must contain only numbers.']);
+            exit;
+        }
+        $mobile = $mobileRaw;
         $countryResult = appointment_load_countries($token);
         if (!$countryResult['ok']) {
             echo json_encode(['ok' => false, 'error' => $countryResult['error'] ?? 'Could not validate country.']);

@@ -175,6 +175,10 @@ require __DIR__ . '/includes/layout_start.php';
 }
 .appt-modal.is-open { display: flex; }
 .appt-modal--client { z-index: 100; }
+.appt-modal--client .appt-sheet {
+  overflow: visible;
+  max-height: none;
+}
 .appt-sheet {
   width: 100%;
   max-width: 560px;
@@ -210,6 +214,10 @@ require __DIR__ . '/includes/layout_start.php';
   font-weight: 700;
   margin: 0 0 0.55rem;
   color: #12263a;
+}
+.appt-req {
+  color: #d92d20;
+  font-weight: 800;
 }
 .appt-step-head {
   display: flex;
@@ -480,10 +488,10 @@ require __DIR__ . '/includes/layout_start.php';
       <h2 id="addClientTitle">Add client</h2>
       <button type="button" class="appt-sheet__close" id="addClientCloseBtn" aria-label="Close">×</button>
     </div>
-    <label class="appt-step-label" for="addClientName">Client name</label>
-    <input class="appt-field" id="addClientName" type="text" maxlength="100" autocomplete="name" placeholder="Enter client name">
+    <label class="appt-step-label" for="addClientName">Client name <span class="appt-req" aria-hidden="true">*</span></label>
+    <input class="appt-field" id="addClientName" type="text" minlength="4" maxlength="100" autocomplete="name" placeholder="Enter client name" required>
     <div class="appt-mobile-label">
-      <label class="appt-step-label" for="addClientMobile">Mobile</label>
+      <label class="appt-step-label" for="addClientMobile">Mobile <span class="appt-req" aria-hidden="true">*</span></label>
       <span class="appt-country-picker">
         <span aria-hidden="true">🌐</span>
         <select id="addClientCountry" aria-label="Country">
@@ -491,16 +499,16 @@ require __DIR__ . '/includes/layout_start.php';
         </select>
       </span>
     </div>
-    <input class="appt-field" id="addClientMobile" type="tel" inputmode="numeric" maxlength="13" autocomplete="tel-national" placeholder="Enter mobile number">
+    <input class="appt-field" id="addClientMobile" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="13" autocomplete="tel-national" placeholder="Enter 10 digit mobile number" required>
     <label class="appt-step-label" for="addClientGender">Gender</label>
     <select class="appt-field" id="addClientGender">
       <option value="male" selected>Male</option>
       <option value="female">Female</option>
       <option value="other">Other</option>
     </select>
-    <label class="appt-step-label" for="addClientSource">Source</label>
-    <select class="appt-field" id="addClientSource">
-      <option value="">Loading sources…</option>
+    <label class="appt-step-label" for="addClientSource">Source <span class="appt-req" aria-hidden="true">*</span></label>
+    <select class="appt-field" id="addClientSource" required>
+      <option value="">Select Source</option>
     </select>
     <p class="appt-help" id="addClientMessage" aria-live="polite"></p>
     <div class="appt-actions">
@@ -1009,33 +1017,47 @@ require __DIR__ . '/includes/layout_start.php';
     }
   }
 
+  var leadSourcesRequest = 0;
   function fillLeadSources(selectedId) {
     var sourceInput = document.getElementById('addClientSource');
     if (!sourceInput) return;
+    var requestId = ++leadSourcesRequest;
     sourceInput.innerHTML = '<option value="">Loading sources…</option>';
     api('lead_sources', {}).then(function (res) {
+      if (requestId !== leadSourcesRequest) return;
       if (!res || !res.ok) {
         sourceInput.innerHTML = '<option value="">Could not load sources</option>';
         return;
       }
-      var sources = res.sources || [];
+      var sources = Array.isArray(res.sources) ? res.sources.slice() : [];
       if (!sources.length) {
         sourceInput.innerHTML = '<option value="">No sources found</option>';
         return;
       }
-      sourceInput.innerHTML = '<option value="">Select source</option>';
+      sources.sort(function (a, b) {
+        return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+      });
+      sourceInput.innerHTML = '';
+      var placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Select Source';
+      sourceInput.appendChild(placeholder);
+      var seenIds = {};
       sources.forEach(function (source) {
+        var id = String(source.id || '');
+        var name = String(source.name || '').trim();
+        if (!id || !name || seenIds[id]) return;
+        seenIds[id] = true;
         var option = document.createElement('option');
-        option.value = String(source.id);
-        option.textContent = source.name;
-        if (selectedId && Number(selectedId) === Number(source.id)) {
-          option.selected = true;
-        } else if (!selectedId && String(source.name).toLowerCase() === 'walk-in') {
+        option.value = id;
+        option.textContent = name;
+        if (selectedId && Number(selectedId) === Number(id)) {
           option.selected = true;
         }
         sourceInput.appendChild(option);
       });
     }).catch(function () {
+      if (requestId !== leadSourcesRequest) return;
       sourceInput.innerHTML = '<option value="">Could not load sources</option>';
     });
   }
@@ -1050,9 +1072,7 @@ require __DIR__ . '/includes/layout_start.php';
       return length > 0;
     });
     mobileInput.maxLength = parsed.length ? Math.max.apply(null, parsed) : 17;
-    mobileInput.placeholder = option
-      ? 'Enter mobile number (+' + String(option.getAttribute('data-dial-code') || '') + ')'
-      : 'Enter mobile number';
+    mobileInput.placeholder = 'Enter 10 digit mobile number';
   }
 
   function fillCountries() {
@@ -1128,12 +1148,28 @@ require __DIR__ . '/includes/layout_start.php';
     var message = document.getElementById('addClientMessage');
     var saveButton = document.getElementById('addClientSaveBtn');
     var name = String(nameInput.value || '').trim();
-    var mobile = String(mobileInput.value || '').replace(/\D+/g, '');
+    var mobileRaw = String(mobileInput.value || '');
+    var mobile = mobileRaw.replace(/\D+/g, '');
     var sourceId = parseInt(sourceInput.value || '0', 10) || 0;
     var countryId = parseInt(countryInput.value || '1', 10) || 1;
-    if (name.length < 2) {
-      message.textContent = 'Enter client name.';
+    if (name === '') {
+      message.textContent = 'Client name is required.';
       nameInput.focus();
+      return;
+    }
+    if (name.length < 4) {
+      message.textContent = 'Client name must be at least 4 characters.';
+      nameInput.focus();
+      return;
+    }
+    if (mobileRaw === '' || mobile === '') {
+      message.textContent = 'Mobile is required.';
+      mobileInput.focus();
+      return;
+    }
+    if (/\D/.test(mobileRaw)) {
+      message.textContent = 'Mobile must contain only numbers.';
+      mobileInput.focus();
       return;
     }
     var countryOption = countryInput.options[countryInput.selectedIndex];
@@ -1181,9 +1217,41 @@ require __DIR__ . '/includes/layout_start.php';
 
   document.getElementById('addClientCountry').addEventListener('change', setMobileCountryRules);
 
+  (function () {
+    var mobileInput = document.getElementById('addClientMobile');
+    if (!mobileInput) return;
+    function keepDigitsOnly() {
+      var next = String(mobileInput.value || '').replace(/\D+/g, '');
+      if (mobileInput.value !== next) {
+        mobileInput.value = next;
+      }
+    }
+    mobileInput.addEventListener('input', keepDigitsOnly);
+    mobileInput.addEventListener('keyup', keepDigitsOnly);
+    mobileInput.addEventListener('keydown', function (e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        return;
+      }
+      var key = e.key || '';
+      if (key.length === 1 && !/[0-9]/.test(key)) {
+        e.preventDefault();
+      }
+    });
+    mobileInput.addEventListener('paste', function (e) {
+      e.preventDefault();
+      var text = (e.clipboardData || window.clipboardData).getData('text') || '';
+      var digits = text.replace(/\D+/g, '');
+      var max = mobileInput.maxLength > 0 ? mobileInput.maxLength : 17;
+      var start = mobileInput.selectionStart || 0;
+      var end = mobileInput.selectionEnd || 0;
+      var cur = String(mobileInput.value || '');
+      mobileInput.value = (cur.slice(0, start) + digits + cur.slice(end)).replace(/\D+/g, '').slice(0, max);
+    });
+  })();
+
   function renderClientResults(clients, box) {
     if (!clients.length) {
-      box.innerHTML = '<div class="appt__empty">No client found.</div>';
+      box.innerHTML = '<div class="appt__empty">No client found. Click Add Client button above to add client</div>';
       return;
     }
     box.className = 'appt-results';

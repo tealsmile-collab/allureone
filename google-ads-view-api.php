@@ -13,7 +13,10 @@ require_once __DIR__ . '/includes/google_ads_amplitude.php';
 
 $apiKey = 'e616b0354f9af02d249bfe8942463141';
 $secretKey = 'dd2b761a626303a25249c9d57d6b2fb0';
-$selectedDateInput = trim((string) ($_GET['date'] ?? date('Y-m-d')));
+$selectedDateInput = trim((string) ($_GET['date'] ?? ''));
+if ($selectedDateInput === '') {
+    $selectedDateInput = google_ads_view_default_date_ymd();
+}
 $startDate = date('Ymd');
 $endDate = $startDate;
 if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDateInput) === 1) {
@@ -21,7 +24,7 @@ if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDateInput) === 1) {
     $endDate = $startDate;
 }
 
-/** @var list<string> Fixed display order */
+/** @var list<string> Fixed display order (Franchise appended at bottom) */
 $visitEvents = [
     'google-Ad-Visit-Marol',
     'google-Ad-Visit-AndheriWest',
@@ -32,17 +35,36 @@ $visitEvents = [
     'google-Ad-Visit-ThaneLodha',
     'google-Ad-Visit-VartakNagar',
     'google-Ad-Visit-Malad',
-    'google-Ad-Visit-Franchise',
 ];
 
-/** Menu card Amplitude events (display name + visit/call/whatsapp) */
-$menuCardRows = [
+/** Custom rows: display label + Amplitude event names per column */
+$customRows = [
+    [
+        'event' => 'Byke - Thane',
+        'visit_event' => 'google-Ad-Visit-BykeThane',
+        'call_event' => 'google-Ad-Call-BykeThane',
+        'whatsapp_event' => 'google-Ad-Whatsapp-BykeThane',
+        'organic_event' => 'Organic-Visit-BykeThane',
+    ],
+    [
+        'event' => 'Gift Card',
+        'visit_event' => 'GiftCard-MetaAd-visit',
+        'call_event' => 'GiftCard-MetaAd-Add2Cart-Click',
+        'whatsapp_event' => '',
+        'organic_event' => 'GiftCard-Organic-Visit',
+    ],
     [
         'event' => 'Byke Thane MenuPage',
         'visit_event' => 'Byke-Thane-MenuCard-Visit',
         'call_event' => 'Byke-Thane-MenuCard-Call',
         'whatsapp_event' => 'Byke-Thane-MenuCard-Whatsapp',
+        'organic_event' => '',
     ],
+];
+
+/** @var list<string> Visit events shown last in the table */
+$visitEventsBottom = [
+    'google-Ad-Visit-Franchise',
 ];
 
 if (!function_exists('curl_init')) {
@@ -58,8 +80,9 @@ if ($apiKey === 'YOUR_API_KEY' || $secretKey === 'YOUR_SECRET_KEY') {
 
 $credentials = base64_encode($apiKey . ':' . $secretKey);
 
-$amplitudeEvents = $visitEvents;
-foreach ($visitEvents as $visitEvent) {
+$allVisitEvents = array_merge($visitEvents, $visitEventsBottom);
+$amplitudeEvents = $allVisitEvents;
+foreach ($allVisitEvents as $visitEvent) {
     $callEvent = google_ads_call_event_for_visit($visitEvent);
     if ($callEvent !== null) {
         $amplitudeEvents[] = $callEvent;
@@ -69,12 +92,18 @@ foreach ($visitEvents as $visitEvent) {
         $amplitudeEvents[] = $whatsappEvent;
     }
 }
-foreach ($menuCardRows as $menuRow) {
-    foreach (['visit_event', 'call_event', 'whatsapp_event'] as $ek) {
-        $ev = trim((string) ($menuRow[$ek] ?? ''));
+foreach ($customRows as $customRow) {
+    foreach (['visit_event', 'call_event', 'whatsapp_event', 'organic_event'] as $ek) {
+        $ev = trim((string) ($customRow[$ek] ?? ''));
         if ($ev !== '') {
             $amplitudeEvents[] = $ev;
         }
+    }
+}
+foreach ($allVisitEvents as $visitEvent) {
+    $organicEvent = google_ads_organic_event_for_row($visitEvent);
+    if ($organicEvent !== null) {
+        $amplitudeEvents[] = $organicEvent;
     }
 }
 
@@ -84,8 +113,9 @@ $results = [];
 foreach ($visitEvents as $event) {
     $callEvent = google_ads_call_event_for_visit($event);
     $whatsappEvent = google_ads_whatsapp_event_for_visit($event);
+    $organicEvent = google_ads_organic_event_for_row($event);
     $results[] = [
-        'event' => $event,
+        'event' => google_ads_event_label_with_organic($event, $organicEvent, $eventCounts),
         'count' => $eventCounts[$event] ?? 0,
         'call_event' => $callEvent,
         'call_count' => $callEvent !== null ? ($eventCounts[$callEvent] ?? 0) : null,
@@ -93,17 +123,33 @@ foreach ($visitEvents as $event) {
         'whatsapp_count' => $whatsappEvent !== null ? ($eventCounts[$whatsappEvent] ?? 0) : null,
     ];
 }
-foreach ($menuCardRows as $menuRow) {
-    $visitEv = (string) ($menuRow['visit_event'] ?? '');
-    $callEv = (string) ($menuRow['call_event'] ?? '');
-    $waEv = (string) ($menuRow['whatsapp_event'] ?? '');
+foreach ($customRows as $customRow) {
+    $label = (string) ($customRow['event'] ?? '');
+    $visitEv = (string) ($customRow['visit_event'] ?? '');
+    $callEv = (string) ($customRow['call_event'] ?? '');
+    $waEv = (string) ($customRow['whatsapp_event'] ?? '');
+    $organicEv = trim((string) ($customRow['organic_event'] ?? ''));
+    $organicEvent = $organicEv !== '' ? $organicEv : null;
     $results[] = [
-        'event' => (string) ($menuRow['event'] ?? ''),
+        'event' => google_ads_event_label_with_organic($label, $organicEvent, $eventCounts),
         'count' => $visitEv !== '' ? ($eventCounts[$visitEv] ?? 0) : 0,
         'call_event' => $callEv !== '' ? $callEv : null,
         'call_count' => $callEv !== '' ? ($eventCounts[$callEv] ?? 0) : null,
         'whatsapp_event' => $waEv !== '' ? $waEv : null,
         'whatsapp_count' => $waEv !== '' ? ($eventCounts[$waEv] ?? 0) : null,
+    ];
+}
+foreach ($visitEventsBottom as $event) {
+    $callEvent = google_ads_call_event_for_visit($event);
+    $whatsappEvent = google_ads_whatsapp_event_for_visit($event);
+    $organicEvent = google_ads_organic_event_for_row($event);
+    $results[] = [
+        'event' => google_ads_event_label_with_organic($event, $organicEvent, $eventCounts),
+        'count' => $eventCounts[$event] ?? 0,
+        'call_event' => $callEvent,
+        'call_count' => $callEvent !== null ? ($eventCounts[$callEvent] ?? 0) : null,
+        'whatsapp_event' => $whatsappEvent,
+        'whatsapp_count' => $whatsappEvent !== null ? ($eventCounts[$whatsappEvent] ?? 0) : null,
     ];
 }
 

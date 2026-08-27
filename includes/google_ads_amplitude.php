@@ -5,6 +5,21 @@ declare(strict_types=1);
  * Amplitude Chart API helpers for Google Ads view.
  */
 
+function google_ads_view_default_date_ymd(): string
+{
+    try {
+        $nowIst = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+    } catch (Throwable $e) {
+        return date('Y-m-d');
+    }
+    // Before 13:00 IST (12:59 PM and earlier), default to previous day.
+    if ($nowIst->format('H:i') < '13:00') {
+        return (clone $nowIst)->modify('-1 day')->format('Y-m-d');
+    }
+
+    return $nowIst->format('Y-m-d');
+}
+
 function google_ads_call_event_for_visit(string $visitEvent): ?string
 {
     $useVisitCountAsCall = [
@@ -45,6 +60,38 @@ function google_ads_whatsapp_event_for_visit(string $visitEvent): ?string
     ];
 
     return $map[$visitEvent] ?? null;
+}
+
+/**
+ * Organic visit Amplitude event whose count is shown in brackets on Event Name.
+ */
+function google_ads_organic_event_for_row(string $rowKey): ?string
+{
+    $map = [
+        'google-Ad-Visit-Marol' => 'Organic-Visit-Marol',
+        'google-Ad-Visit-AndheriWest' => 'Organic-Visit-AndheriWest',
+        'google-Ad-Visit-BorivaliWest' => 'Organic-Visit-BorivaliWest',
+        'google-Ad-Visit-Powai' => 'Organic-Visit-Powai',
+        'google-Ad-Visit-MulundRunwal' => 'Organic-Visit-MulundRunwal',
+        'google-Ad-Visit-Seawoods' => 'Organic-Visit-Seawoods',
+        'google-Ad-Visit-ThaneLodha' => 'Organic-Visit-ThaneLodha',
+        'google-Ad-Visit-VartakNagar' => 'Organic-Visit-VartakNagar',
+        'google-Ad-Visit-Malad' => 'Organic-Visit-Malad',
+        'google-Ad-Visit-Franchise' => 'organic-Ad-Visit-Franchise',
+        'Byke - Thane' => 'Organic-Visit-BykeThane',
+        'Gift Card' => 'GiftCard-Organic-Visit',
+    ];
+
+    return $map[$rowKey] ?? null;
+}
+
+function google_ads_event_label_with_organic(string $label, ?string $organicEvent, array $eventCounts): string
+{
+    if ($organicEvent === null || $organicEvent === '') {
+        return $label;
+    }
+
+    return $label . ' (' . (int) ($eventCounts[$organicEvent] ?? 0) . ')';
 }
 
 function google_ads_amplitude_url(string $event, string $startDate, string $endDate): string

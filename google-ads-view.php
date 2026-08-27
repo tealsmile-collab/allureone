@@ -6,14 +6,11 @@ require_google_ads_view_access();
 require_not_accounts_role();
 require_not_franchise_officer_role();
 
-$todayYmd = date('Ymd');
+require_once __DIR__ . '/includes/google_ads_amplitude.php';
+
 $selectedDateInput = trim((string) ($_GET['date'] ?? ''));
 if ($selectedDateInput === '') {
-    $selectedDateInput = date('Y-m-d');
-}
-$startDate = $todayYmd;
-if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDateInput) === 1) {
-    $startDate = str_replace('-', '', $selectedDateInput);
+    $selectedDateInput = google_ads_view_default_date_ymd();
 }
 
 $pageTitle = 'Google Ads View';
@@ -47,7 +44,7 @@ require __DIR__ . '/includes/layout_start.php';
             <table class="data">
                 <thead>
                     <tr>
-                        <th>Event Name</th>
+                        <th>Event Name (Organic)</th>
                         <th>Visits</th>
                         <th>Calls</th>
                         <th>WhatsApp</th>

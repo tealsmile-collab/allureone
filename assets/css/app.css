@@ -343,6 +343,24 @@ table.leads-conversion-summary-table td.leads-conversion-summary-table__num {
   color: #15803d;
   font-weight: 700;
 }
+.gift-expiry-date--passed {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.gift-monthly-summary-body {
+  padding: 1rem 1.25rem 1.25rem;
+}
+.gift-monthly-summary-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+  margin: 0 0 1rem;
+}
+.gift-monthly-summary-meta {
+  margin: 0 0 0.85rem;
+}
 
 /* Leads list: highlight converted status in green. */
 .lead-status--converted {

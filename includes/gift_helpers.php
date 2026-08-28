@@ -13,6 +13,62 @@ function format_purchase_date(?string $dt): string
     return date('d-M-y', $t);
 }
 
+const GIFT_CARD_VALIDITY_DAYS = 60;
+
+function gift_card_expiry_date_ymd(?string $orderDate): ?string
+{
+    if ($orderDate === null || trim($orderDate) === '') {
+        return null;
+    }
+    try {
+        $dt = new DateTime(trim($orderDate), new DateTimeZone('Asia/Kolkata'));
+        $dt->modify('+' . GIFT_CARD_VALIDITY_DAYS . ' days');
+
+        return $dt->format('Y-m-d');
+    } catch (Throwable $e) {
+        $t = strtotime((string) $orderDate);
+        if ($t === false) {
+            return null;
+        }
+
+        return date('Y-m-d', strtotime('+' . GIFT_CARD_VALIDITY_DAYS . ' days', $t));
+    }
+}
+
+function gift_card_expiry_date_display(?string $orderDate): string
+{
+    $expiryYmd = gift_card_expiry_date_ymd($orderDate);
+    if ($expiryYmd === null) {
+        return '—';
+    }
+
+    return format_purchase_date($expiryYmd);
+}
+
+function gift_card_is_expired(?string $orderDate): bool
+{
+    $expiryYmd = gift_card_expiry_date_ymd($orderDate);
+    if ($expiryYmd === null) {
+        return false;
+    }
+    try {
+        $todayIst = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+    } catch (Throwable $e) {
+        $todayIst = date('Y-m-d');
+    }
+
+    return $expiryYmd < $todayIst;
+}
+
+function gift_card_validity_today_ymd(): string
+{
+    try {
+        return (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+    } catch (Throwable $e) {
+        return date('Y-m-d');
+    }
+}
+
 function extract_gift_code(?string $raw): string
 {
     if ($raw === null || $raw === '') {
@@ -678,6 +734,130 @@ function gift_fetch_wp_sales_between(string $startDatetime, string $endDatetime)
         error_log('AllureOne gift_fetch_wp_sales_between failed: ' . $e->getMessage());
 
         return [];
+    }
+}
+
+/**
+ * Location-wise gift card sale totals for a calendar month (order post_date).
+ *
+ * @return array{
+ *   rows: list<array{location:string,total:float,count:int}>,
+ *   grand_total: float,
+ *   sale_count: int,
+ *   month_label: string
+ * }
+ */
+function gift_fetch_monthly_location_summary(int $year, int $month, ?string $locationFilter = null): array
+{
+    if ($year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
+        return [
+            'rows' => [],
+            'grand_total' => 0.0,
+            'sale_count' => 0,
+            'month_label' => '',
+        ];
+    }
+
+    $start = sprintf('%04d-%02d-01 00:00:00', $year, $month);
+    try {
+        $startDt = DateTime::createFromFormat('Y-m-d H:i:s', $start, new DateTimeZone('Asia/Kolkata'));
+    } catch (Throwable $e) {
+        $startDt = false;
+    }
+    if ($startDt === false) {
+        return [
+            'rows' => [],
+            'grand_total' => 0.0,
+            'sale_count' => 0,
+            'month_label' => '',
+        ];
+    }
+    $end = $startDt->format('Y-m-t') . ' 23:59:59';
+    $monthLabel = $startDt->format('F Y');
+    $locationFilter = $locationFilter !== null ? trim($locationFilter) : '';
+
+    try {
+        $pdo = wp_db();
+        $wpPrefix = wp_table_prefix();
+        $sql = "SELECT
+                location_label,
+                SUM(item_amount) AS total_sale,
+                COUNT(*) AS sale_count
+            FROM (
+                SELECT
+                    oi.order_item_id,
+                    CAST(MAX(CASE WHEN oim.meta_key = '_line_total' THEN oim.meta_value END) AS DECIMAL(20,2)) AS item_amount,
+                    NULLIF(TRIM(MAX(CASE WHEN pm.meta_key = 'billing_location' THEN pm.meta_value END)), '') AS location_label
+                FROM wp_woocommerce_order_items oi
+                JOIN wp_woocommerce_order_itemmeta oim ON oi.order_item_id = oim.order_item_id
+                JOIN wp_posts p ON p.ID = oi.order_id
+                LEFT JOIN wp_postmeta pm ON p.ID = pm.post_id
+                WHERE oi.order_item_type = 'line_item'
+                  AND oi.order_item_id IN (
+                      SELECT order_item_id
+                      FROM wp_woocommerce_order_itemmeta
+                      WHERE meta_key = '_ywgc_gift_card_code'
+                  )
+                  AND p.post_date >= :period_start
+                  AND p.post_date <= :period_end";
+        $params = [
+            'period_start' => $start,
+            'period_end' => $end,
+        ];
+        if ($locationFilter !== '') {
+            $sql .= "
+                  AND EXISTS (
+                      SELECT 1
+                      FROM wp_postmeta pmf
+                      WHERE pmf.post_id = oi.order_id
+                        AND pmf.meta_key = 'billing_location'
+                        AND LOWER(TRIM(pmf.meta_value)) = LOWER(TRIM(:location_filter))
+                  )";
+            $params['location_filter'] = $locationFilter;
+        }
+        $sql .= "
+                GROUP BY oi.order_item_id
+            ) gift_items
+            GROUP BY location_label
+            ORDER BY location_label ASC";
+        $sql = str_replace('wp_', $wpPrefix, $sql);
+        $st = $pdo->prepare($sql);
+        $st->execute($params);
+
+        $rows = [];
+        $grandTotal = 0.0;
+        $saleCount = 0;
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $loc = trim((string) ($row['location_label'] ?? ''));
+            if ($loc === '') {
+                $loc = 'Unknown';
+            }
+            $total = (float) ($row['total_sale'] ?? 0);
+            $count = (int) ($row['sale_count'] ?? 0);
+            $rows[] = [
+                'location' => $loc,
+                'total' => $total,
+                'count' => $count,
+            ];
+            $grandTotal += $total;
+            $saleCount += $count;
+        }
+
+        return [
+            'rows' => $rows,
+            'grand_total' => $grandTotal,
+            'sale_count' => $saleCount,
+            'month_label' => $monthLabel,
+        ];
+    } catch (PDOException $e) {
+        error_log('AllureOne gift_fetch_monthly_location_summary failed: ' . $e->getMessage());
+
+        return [
+            'rows' => [],
+            'grand_total' => 0.0,
+            'sale_count' => 0,
+            'month_label' => $monthLabel,
+        ];
     }
 }
 

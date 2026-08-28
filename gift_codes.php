@@ -7,12 +7,32 @@ require_login();
 require_not_franchise_officer_role();
 
 $user = current_user();
+$userRoleId = (int) ($user['role_id'] ?? 0);
 $userBranchId = (int) ($user['branch_id'] ?? 0);
+$canGiftMonthlySummaryAll = in_array($userRoleId, [ROLE_SUPERADMIN, ROLE_ADMIN, ROLE_ACCOUNTS], true);
+$canGiftMonthlySummaryManager = ($userRoleId === ROLE_MANAGER);
+$showGiftMonthlySummary = $canGiftMonthlySummaryAll || $canGiftMonthlySummaryManager;
+$summaryNowIst = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+$summaryCurYear = (int) $summaryNowIst->format('Y');
+$summaryCurMonth = (int) $summaryNowIst->format('n');
+$summaryYear = isset($_GET['summary_y']) ? (int) $_GET['summary_y'] : $summaryCurYear;
+$summaryMonth = isset($_GET['summary_m']) ? (int) $_GET['summary_m'] : $summaryCurMonth;
+if ($summaryYear < 2000 || $summaryYear > 2100) {
+    $summaryYear = $summaryCurYear;
+}
+if ($summaryMonth < 1 || $summaryMonth > 12) {
+    $summaryMonth = $summaryCurMonth;
+}
 $selectedItemId = isset($_GET['gift']) ? (int) $_GET['gift'] : 0;
 $listPerPage = 20;
 $listPage = max(1, (int) ($_GET['page'] ?? 1));
 $listTotal = 0;
 $listTotalPages = 1;
+$filterLocation = isset($_GET['location']) ? trim((string) $_GET['location']) : '';
+$filterValidity = isset($_GET['validity']) ? trim((string) $_GET['validity']) : 'all';
+if (!in_array($filterValidity, ['all', 'active', 'expired', 'redeemed'], true)) {
+    $filterValidity = 'all';
+}
 $branchLocality = '';
 /** @var array<int, string> branch id => locality label */
 $redeemedLocationBranches = [];
@@ -225,27 +245,50 @@ try {
     $baseSelect = str_replace('wp_', $wpPrefix, $baseSelect);
 
     $baseParams = [];
-    if ($branchLocality !== '' && gift_cards_filter_by_branch_locality_enabled()) {
-        $baseFromWhere .= "
-          AND EXISTS (
-              SELECT 1
-              FROM wp_postmeta pmf
-              WHERE pmf.post_id = oi.order_id
-                AND pmf.meta_key = 'billing_location'
-                AND LOWER(TRIM(pmf.meta_value)) = LOWER(TRIM(:branch_locality))
-          )";
-        $baseSelect .= "
-          AND EXISTS (
-              SELECT 1
-              FROM wp_postmeta pmf
-              WHERE pmf.post_id = oi.order_id
-                AND pmf.meta_key = 'billing_location'
-                AND LOWER(TRIM(pmf.meta_value)) = LOWER(TRIM(:branch_locality))
-          )";
-        $baseParams['branch_locality'] = $branchLocality;
+    $listFromWhere = $baseFromWhere;
+    $listSelect = $baseSelect;
+    $listParams = [];
+    $locationFilterValue = $filterLocation;
+    if ($locationFilterValue === '' && $branchLocality !== '' && gift_cards_filter_by_branch_locality_enabled()) {
+        $locationFilterValue = $branchLocality;
     }
-    $baseFromWhere = str_replace('wp_', $wpPrefix, $baseFromWhere);
-    $giftDebug['base_params'] = $baseParams;
+    if ($locationFilterValue !== '') {
+        $locationSql = "
+          AND EXISTS (
+              SELECT 1
+              FROM wp_postmeta pmf
+              WHERE pmf.post_id = oi.order_id
+                AND pmf.meta_key = 'billing_location'
+                AND LOWER(TRIM(pmf.meta_value)) = LOWER(TRIM(:filter_location))
+          )";
+        $listFromWhere .= $locationSql;
+        $listSelect .= $locationSql;
+        $listParams['filter_location'] = $locationFilterValue;
+    }
+    if ($filterValidity === 'active' || $filterValidity === 'expired' || $filterValidity === 'redeemed') {
+        if ($filterValidity === 'redeemed') {
+            $validitySql = "
+          AND p.post_status = 'wc-completed'";
+        } elseif ($filterValidity === 'active') {
+            $validitySql = "
+          AND DATE_ADD(DATE(p.post_date), INTERVAL " . GIFT_CARD_VALIDITY_DAYS . " DAY) >= :gift_validity_today
+          AND p.post_status <> 'wc-completed'";
+        } else {
+            $validitySql = "
+          AND DATE_ADD(DATE(p.post_date), INTERVAL " . GIFT_CARD_VALIDITY_DAYS . " DAY) < :gift_validity_today
+          AND p.post_status <> 'wc-completed'";
+        }
+        $listFromWhere .= $validitySql;
+        $listSelect .= $validitySql;
+        if ($filterValidity !== 'redeemed') {
+            $listParams['gift_validity_today'] = gift_card_validity_today_ymd();
+        }
+    }
+    $listFromWhere = str_replace('wp_', $wpPrefix, $listFromWhere);
+    $listSelect = str_replace('wp_', $wpPrefix, $listSelect);
+    $giftDebug['base_params'] = $listParams;
+    $giftDebug['filter_location'] = $filterLocation;
+    $giftDebug['filter_validity'] = $filterValidity;
 
     if ($selectedItemId > 0) {
         $detailSql = $baseSelect . "
@@ -254,8 +297,7 @@ try {
         ORDER BY p.post_date DESC
         LIMIT 1";
         $stmt = $pdo->prepare($detailSql);
-        $detailParams = $baseParams;
-        $detailParams['item_id'] = $selectedItemId;
+        $detailParams = ['item_id' => $selectedItemId];
         $giftDebug['mode'] = 'detail';
         $giftDebug['sql'] = $detailSql;
         $giftDebug['params'] = $detailParams;
@@ -311,28 +353,28 @@ try {
         $countSql = "SELECT COUNT(*)
             FROM (
                 SELECT oi.order_item_id
-                " . $baseFromWhere . "
+                " . $listFromWhere . "
                 GROUP BY oi.order_item_id
             ) t";
         $countStmt = $pdo->prepare($countSql);
-        $countStmt->execute($baseParams);
+        $countStmt->execute($listParams);
         $listTotal = (int) ($countStmt->fetchColumn() ?: 0);
         $listTotalPages = max(1, (int) ceil($listTotal / $listPerPage));
         $listPage = min($listPage, $listTotalPages);
         $offset = ($listPage - 1) * $listPerPage;
 
-        $listSql = $baseSelect . "
+        $listSql = $listSelect . "
             GROUP BY oi.order_item_id, oi.order_id, p.post_date, p.post_status
             ORDER BY p.post_date DESC
             LIMIT " . $listPerPage . " OFFSET " . $offset;
         $stmt = $pdo->prepare($listSql);
         $giftDebug['mode'] = 'list';
         $giftDebug['sql'] = $listSql;
-        $giftDebug['params'] = $baseParams;
+        $giftDebug['params'] = $listParams;
         $giftDebug['list_total'] = $listTotal;
         $giftDebug['list_page'] = $listPage;
         $giftDebug['list_total_pages'] = $listTotalPages;
-        $stmt->execute($baseParams);
+        $stmt->execute($listParams);
         $giftRows = $stmt->fetchAll();
         $giftDebug['row_count'] = count($giftRows);
     }
@@ -346,35 +388,186 @@ try {
     ];
 }
 
+$giftMonthlySummary = [
+    'rows' => [],
+    'grand_total' => 0.0,
+    'sale_count' => 0,
+    'month_label' => '',
+];
+$giftMonthlySummaryError = '';
+if ($showGiftMonthlySummary) {
+    $summaryLocationFilter = null;
+    if ($canGiftMonthlySummaryManager && !$canGiftMonthlySummaryAll) {
+        if ($branchLocality === '') {
+            $giftMonthlySummaryError = 'No branch linked to your account.';
+        } else {
+            $summaryLocationFilter = $branchLocality;
+        }
+    }
+    if ($giftMonthlySummaryError === '') {
+        $giftMonthlySummary = gift_fetch_monthly_location_summary($summaryYear, $summaryMonth, $summaryLocationFilter);
+    }
+}
+
 $pageTitle = 'Gift Card Sale';
 $activeNav = 'gift_codes';
+$listQueryBase = [];
+if ($filterLocation !== '') {
+    $listQueryBase['location'] = $filterLocation;
+}
+if ($filterValidity !== 'all') {
+    $listQueryBase['validity'] = $filterValidity;
+}
+if ($listPage > 1) {
+    $listQueryBase['page'] = $listPage;
+}
+if ($showGiftMonthlySummary && ($summaryYear !== $summaryCurYear || $summaryMonth !== $summaryCurMonth)) {
+    $listQueryBase['summary_y'] = $summaryYear;
+    $listQueryBase['summary_m'] = $summaryMonth;
+}
+$filterLocationSelected = $filterLocation;
+if ($filterLocationSelected === '' && $branchLocality !== '' && gift_cards_filter_by_branch_locality_enabled()) {
+    $filterLocationSelected = $branchLocality;
+}
+$giftListBackHref = 'gift_codes.php' . ($listQueryBase !== [] ? '?' . http_build_query($listQueryBase) : '');
+$giftDetailHref = static function (int $itemId) use ($listQueryBase): string {
+    return 'gift_codes.php?' . http_build_query(array_merge($listQueryBase, ['gift' => $itemId]));
+};
 require __DIR__ . '/includes/layout_start.php';
 ?>
+
+<?php if ($showGiftMonthlySummary): ?>
+<details class="card" id="gift-monthly-summary-card" open style="margin-bottom:1.5rem">
+    <summary class="card__head card__toggle">
+        <span class="card__toggle-inner">
+            <span>Monthly Gift Card Summary</span>
+            <span class="card__chevron" aria-hidden="true">▼</span>
+        </span>
+    </summary>
+    <div class="card__body gift-monthly-summary-body">
+        <form method="get" action="gift_codes.php" class="form form--inline-sales-period gift-monthly-summary-form">
+            <?php if ($filterLocation !== ''): ?>
+                <input type="hidden" name="location" value="<?= e($filterLocation) ?>">
+            <?php endif; ?>
+            <?php if ($filterValidity !== 'all'): ?>
+                <input type="hidden" name="validity" value="<?= e($filterValidity) ?>">
+            <?php endif; ?>
+            <?php if ($listPage > 1): ?>
+                <input type="hidden" name="page" value="<?= (int) $listPage ?>">
+            <?php endif; ?>
+            <div class="form__row form__row--month">
+                <label for="gift_summary_m">Month</label>
+                <select id="gift_summary_m" name="summary_m">
+                    <?php
+                    $summaryMonthNames = [1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April', 5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August', 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'];
+                    foreach ($summaryMonthNames as $mi => $label) {
+                        ?>
+                        <option value="<?= $mi ?>"<?= $summaryMonth === $mi ? ' selected' : '' ?>><?= e($label) ?></option>
+                        <?php
+                    }
+                    ?>
+                </select>
+            </div>
+            <div class="form__row form__row--year">
+                <label for="gift_summary_y">Year</label>
+                <select id="gift_summary_y" name="summary_y">
+                    <?php for ($yy = $summaryCurYear - 5; $yy <= $summaryCurYear + 1; $yy++): ?>
+                        <option value="<?= $yy ?>"<?= $summaryYear === $yy ? ' selected' : '' ?>><?= $yy ?></option>
+                    <?php endfor; ?>
+                </select>
+            </div>
+            <div class="form__row form__row--submit">
+                <button class="btn btn--primary" type="submit">Apply</button>
+            </div>
+        </form>
+        <?php if ($giftMonthlySummaryError !== ''): ?>
+            <p class="empty" style="margin:0"><?= e($giftMonthlySummaryError) ?></p>
+        <?php elseif (count($giftMonthlySummary['rows']) === 0): ?>
+            <p class="empty" style="margin:0">No gift card sales for <?= e((string) ($giftMonthlySummary['month_label'] ?? '')) ?>.</p>
+        <?php else: ?>
+            <p class="main__meta gift-monthly-summary-meta">
+                <?= e((string) ($giftMonthlySummary['month_label'] ?? '')) ?> ·
+                Total sale: <strong><?= e(format_amount($giftMonthlySummary['grand_total'])) ?></strong>
+                (<?= (int) ($giftMonthlySummary['sale_count'] ?? 0) ?> gift cards)
+            </p>
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Location</th>
+                            <th>Gift cards</th>
+                            <th>Total sale</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($giftMonthlySummary['rows'] as $summaryRow): ?>
+                            <tr>
+                                <td><?= e((string) ($summaryRow['location'] ?? '')) ?></td>
+                                <td><?= (int) ($summaryRow['count'] ?? 0) ?></td>
+                                <td><?= e(format_amount($summaryRow['total'] ?? 0)) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+</details>
+<?php endif; ?>
 
 <div class="card">
     <div class="card__head">
         <span>Recent gift codes</span>
     </div>
     <div class="card__body">
+        <?php if ($selectedItemId <= 0): ?>
+            <form method="get" action="gift_codes.php" class="form form--inline-sales-period" style="padding:1rem 1.25rem 0;display:flex;flex-wrap:wrap;gap:0.75rem 1rem;align-items:flex-end">
+                <?php if ($showGiftMonthlySummary && ($summaryYear !== $summaryCurYear || $summaryMonth !== $summaryCurMonth)): ?>
+                    <input type="hidden" name="summary_y" value="<?= (int) $summaryYear ?>">
+                    <input type="hidden" name="summary_m" value="<?= (int) $summaryMonth ?>">
+                <?php endif; ?>
+                <div class="form__row" style="margin:0">
+                    <label for="gift_filter_location">Location</label>
+                    <select id="gift_filter_location" name="location" style="min-width:12rem">
+                        <option value="">All locations</option>
+                        <?php foreach ($redeemedLocationBranches as $locOpt): ?>
+                            <option value="<?= e((string) $locOpt) ?>"<?= (strcasecmp($filterLocationSelected, (string) $locOpt) === 0) ? ' selected' : '' ?>><?= e((string) $locOpt) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form__row" style="margin:0">
+                    <label for="gift_filter_validity">Validity</label>
+                    <select id="gift_filter_validity" name="validity" style="min-width:10rem">
+                        <option value="all"<?= $filterValidity === 'all' ? ' selected' : '' ?>>All</option>
+                        <option value="active"<?= $filterValidity === 'active' ? ' selected' : '' ?>>Active</option>
+                        <option value="expired"<?= $filterValidity === 'expired' ? ' selected' : '' ?>>Expired</option>
+                        <option value="redeemed"<?= $filterValidity === 'redeemed' ? ' selected' : '' ?>>Redeemed</option>
+                    </select>
+                </div>
+                <div class="form__row form__row--submit" style="margin:0">
+                    <button type="submit" class="btn btn--primary">Apply</button>
+                </div>
+            </form>
+        <?php endif; ?>
         <?php if ($selectedItemId > 0): ?>
             <?php if (is_array($markRedeemedFlash)): ?>
                 <p class="alert alert--<?= ($markRedeemedFlash['type'] ?? '') === 'ok' ? 'ok' : 'error' ?>" style="margin:1rem 1.25rem 0"><?= e((string) ($markRedeemedFlash['text'] ?? '')) ?></p>
             <?php endif; ?>
             <?php if ($giftDetail === null): ?>
                 <p class="empty">Gift details not found.</p>
-                <p style="padding:0 1.25rem 1.25rem;margin:0"><a class="btn btn--ghost" href="gift_codes.php">Back</a></p>
+                <p style="padding:0 1.25rem 1.25rem;margin:0"><a class="btn btn--ghost" href="<?= e($giftListBackHref) ?>">Back</a></p>
             <?php else: ?>
                 <div style="padding:1.25rem">
                     <?php $detailOrderStatus = strtolower(trim((string) ($giftDetail['order_status'] ?? ''))); ?>
                     <div style="margin-top:0;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
                         <?php if ($detailOrderStatus !== 'completed'): ?>
-                            <form id="mark_redeemed_form" method="post" action="gift_codes.php?gift=<?= (int) ($giftDetail['order_item_id'] ?? 0) ?>" style="margin:0">
+                            <form id="mark_redeemed_form" method="post" action="<?= e($giftDetailHref((int) ($giftDetail['order_item_id'] ?? 0))) ?>" style="margin:0">
                                 <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                                 <input type="hidden" name="mark_item_id" value="<?= (int) ($giftDetail['order_item_id'] ?? 0) ?>">
                                 <button type="submit" class="btn btn--primary" name="mark_redeemed" value="1" onclick="return confirm('Mark this gift code as Redeemed?');">Mark Redeemed</button>
                             </form>
                         <?php endif; ?>
-                        <a class="btn btn--ghost" href="gift_codes.php">Back</a>
+                        <a class="btn btn--ghost" href="<?= e($giftListBackHref) ?>">Back</a>
                     </div>
                     <table class="data">
                         <tbody>
@@ -408,6 +601,8 @@ require __DIR__ . '/includes/layout_start.php';
                             </td></tr>
                             <tr><th>Amount</th><td><?= e(format_amount($giftDetail['amount'] ?? null)) ?></td></tr>
                             <tr><th>Order Date</th><td><?= e(format_purchase_date($giftDetail['post_date'] ?? null)) ?></td></tr>
+                            <?php $giftDetailExpired = gift_card_is_expired($giftDetail['post_date'] ?? null); ?>
+                            <tr><th>Expiry Date</th><td><span<?= $giftDetailExpired ? ' class="gift-expiry-date--passed"' : '' ?>><?= e(gift_card_expiry_date_display($giftDetail['post_date'] ?? null)) ?></span></td></tr>
                             <tr>
                                 <th>Redeemed Location</th>
                                 <td>
@@ -423,7 +618,7 @@ require __DIR__ . '/includes/layout_start.php';
                             </tr>
                         </tbody>
                     </table>
-                    <p style="margin-top:0.75rem;margin-bottom:0"><a class="btn btn--ghost" href="gift_codes.php">Back</a></p>
+                    <p style="margin-top:0.75rem;margin-bottom:0"><a class="btn btn--ghost" href="<?= e($giftListBackHref) ?>">Back</a></p>
                 </div>
             <?php endif; ?>
         <?php elseif (count($giftRows) === 0): ?>
@@ -449,13 +644,13 @@ require __DIR__ . '/includes/layout_start.php';
                             ?>
                             <tr>
                                 <td>
-                                    <a class="link--underlined" href="gift_codes.php?gift=<?= $itemId ?>"><?= $codeDisplay ?></a>
+                                    <a class="link--underlined" href="<?= e($giftDetailHref($itemId)) ?>"><?= $codeDisplay ?></a>
                                     <?php if ($isCompletedOrder): ?>
                                         <span class="gift-code-completed-check" title="Completed" aria-label="Completed">✓</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <a class="link--underlined" href="gift_codes.php?gift=<?= $itemId ?>"><?= e((string) ($gr['location'] ?? '')) ?></a>
+                                    <a class="link--underlined" href="<?= e($giftDetailHref($itemId)) ?>"><?= e((string) ($gr['location'] ?? '')) ?></a>
                                 </td>
                                 <td><?= e((string) ($gr['sender_name'] ?? '')) ?></td>
                                 <td class="<?= $isCompletedOrder ? 'gift-code-amount--completed' : '' ?>"><?= e(format_amount($gr['amount'] ?? null)) ?></td>
@@ -468,11 +663,11 @@ require __DIR__ . '/includes/layout_start.php';
             <?php if ($listTotal > $listPerPage): ?>
                 <nav class="leads-pagination" style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem 0.85rem;padding:1rem 1.25rem 1.15rem;margin:0;justify-content:center">
                     <?php if ($listPage > 1): ?>
-                        <a class="btn btn--ghost" href="gift_codes.php?<?= e(http_build_query(['page' => $listPage - 1])) ?>">Previous</a>
+                        <a class="btn btn--ghost" href="gift_codes.php?<?= e(http_build_query(array_merge($listQueryBase, ['page' => $listPage - 1]))) ?>">Previous</a>
                     <?php endif; ?>
                     <span style="font-size:.9rem;color:var(--muted, #64748b)">Page <?= (int) $listPage ?> of <?= (int) $listTotalPages ?></span>
                     <?php if ($listPage < $listTotalPages): ?>
-                        <a class="btn btn--ghost" href="gift_codes.php?<?= e(http_build_query(['page' => $listPage + 1])) ?>">Next</a>
+                        <a class="btn btn--ghost" href="gift_codes.php?<?= e(http_build_query(array_merge($listQueryBase, ['page' => $listPage + 1]))) ?>">Next</a>
                     <?php endif; ?>
                 </nav>
             <?php endif; ?>

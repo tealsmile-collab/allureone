@@ -47,9 +47,67 @@ function daily_sale_branch_is_excluded(array $branch): bool
     $bn = strtolower(trim((string) ($branch['business_name'] ?? '')));
     $hay = $loc . ' ' . $bn;
 
-    return str_contains($hay, 'vadodara')
-        || str_contains($hay, 'palghar')
-        || str_contains($hay, 'kharghar');
+    return str_contains($hay, 'vadodara');
+}
+
+/**
+ * @return array{is_dingg:bool, enable_sale_record:bool}
+ */
+function daily_sale_branch_flags(int $branchId): array
+{
+    if ($branchId <= 0) {
+        return ['is_dingg' => false, 'enable_sale_record' => false];
+    }
+    try {
+        $st = db()->prepare(
+            'SELECT isDingg, enableSaleRecord
+             FROM allureone_branch
+             WHERE id = :id
+             LIMIT 1'
+        );
+        $st->execute(['id' => $branchId]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return ['is_dingg' => false, 'enable_sale_record' => false];
+        }
+
+        return [
+            'is_dingg' => (int) ($row['isDingg'] ?? 0) === 1,
+            'enable_sale_record' => (int) ($row['enableSaleRecord'] ?? 0) === 1,
+        ];
+    } catch (Throwable $e) {
+        error_log('AllureOne daily_sale branch flags: ' . $e->getMessage());
+
+        return ['is_dingg' => false, 'enable_sale_record' => false];
+    }
+}
+
+function daily_sale_fetch_sale_record_total(int $branchId, string $dateYmd): ?float
+{
+    if ($branchId <= 0 || preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateYmd) !== 1) {
+        return null;
+    }
+    try {
+        $st = db()->prepare(
+            'SELECT TotalSale
+             FROM allureone_salerecord
+             WHERE BranchId = :b
+               AND SaleDate = :d
+               AND IsActive = 1
+             LIMIT 1'
+        );
+        $st->execute(['b' => $branchId, 'd' => $dateYmd]);
+        $val = $st->fetchColumn();
+        if ($val === false) {
+            return 0.0;
+        }
+
+        return (float) $val;
+    } catch (Throwable $e) {
+        error_log('AllureOne daily_sale sale record lookup: ' . $e->getMessage());
+
+        return null;
+    }
 }
 
 function daily_sale_parse_amount(mixed $val): ?float
@@ -154,6 +212,8 @@ function daily_sale_branch_order_rank(array $branch): int
         9 => ['vartak', 'thane vartak'],
         10 => ['boisar'],
         11 => ['ratnagiri'],
+        12 => ['kharghar'],
+        13 => ['palghar'],
     ];
     foreach ($rules as $rank => $needles) {
         foreach ($needles as $needle) {
@@ -297,32 +357,80 @@ function daily_sale_fetch_for_branch(string $token, string $startDate, string $l
  */
 function daily_sale_fetch_metrics(int $branchId, string $startDate): array
 {
-    $token = daily_sale_branch_session_key($branchId);
-    $metrics = null;
-    if ($token !== '') {
-        $metrics = daily_sale_fetch_for_branch($token, $startDate, 'null');
-        if ($metrics['error'] === null) {
-            return $metrics;
+    $flags = daily_sale_branch_flags($branchId);
+    $isDingg = $flags['is_dingg'];
+    $enableSaleRecord = $flags['enable_sale_record'];
+
+    $dinggMetrics = null;
+    if ($isDingg) {
+        $token = daily_sale_branch_session_key($branchId);
+        if ($token !== '') {
+            $dinggMetrics = daily_sale_fetch_for_branch($token, $startDate, 'null');
+            if ($dinggMetrics['error'] === null) {
+                // ok
+            } else {
+                $needsFallback = daily_sale_is_unauthorized_error(
+                    $dinggMetrics['error'] ?? null,
+                    (int) ($dinggMetrics['http'] ?? 0)
+                );
+                if ($needsFallback) {
+                    $adminTok = daily_sale_admin_fallback_token();
+                    if ($adminTok !== '' && $adminTok !== $token) {
+                        $fallback = daily_sale_fetch_for_branch($adminTok, $startDate, (string) $branchId);
+                        if ($fallback['error'] === null) {
+                            $dinggMetrics = $fallback;
+                        }
+                    }
+                }
+            }
+        } else {
+            $adminTok = daily_sale_admin_fallback_token();
+            if ($adminTok !== '') {
+                $fallback = daily_sale_fetch_for_branch($adminTok, $startDate, (string) $branchId);
+                if ($fallback['error'] === null) {
+                    $dinggMetrics = $fallback;
+                }
+            }
         }
     }
 
-    $needsFallback = ($token === '')
-        || ($metrics !== null && daily_sale_is_unauthorized_error($metrics['error'] ?? null, (int) ($metrics['http'] ?? 0)));
-    if (!$needsFallback) {
-        return $metrics ?? ['total_sale' => null, 'services' => null, 'membership' => null, 'error' => 'No session token'];
+    $saleRecordTotal = null;
+    if ($enableSaleRecord) {
+        $saleRecordTotal = daily_sale_fetch_sale_record_total($branchId, $startDate);
     }
 
-    $adminTok = daily_sale_admin_fallback_token();
-    if ($adminTok === '' || $adminTok === $token) {
-        return $metrics ?? ['total_sale' => null, 'services' => null, 'membership' => null, 'error' => 'No session token'];
+    if ($isDingg && $enableSaleRecord) {
+        $dinggTotal = ($dinggMetrics !== null && ($dinggMetrics['error'] ?? null) === null)
+            ? (float) ($dinggMetrics['total_sale'] ?? 0)
+            : 0.0;
+        $recordTotal = $saleRecordTotal ?? 0.0;
+
+        return [
+            'total_sale' => $dinggTotal + $recordTotal,
+            'services' => $dinggMetrics['services'] ?? null,
+            'membership' => $dinggMetrics['membership'] ?? null,
+            'error' => ($dinggMetrics === null && $saleRecordTotal === null) ? 'No sale data' : null,
+        ];
     }
 
-    $fallback = daily_sale_fetch_for_branch($adminTok, $startDate, (string) $branchId);
-    if ($fallback['error'] === null) {
-        return $fallback;
+    if ($enableSaleRecord) {
+        if ($saleRecordTotal === null) {
+            return ['total_sale' => null, 'services' => null, 'membership' => null, 'error' => 'Could not load sale record'];
+        }
+
+        return [
+            'total_sale' => $saleRecordTotal,
+            'services' => null,
+            'membership' => null,
+            'error' => null,
+        ];
     }
 
-    return $metrics ?? $fallback;
+    if ($dinggMetrics !== null) {
+        return $dinggMetrics;
+    }
+
+    return ['total_sale' => null, 'services' => null, 'membership' => null, 'error' => 'No session token'];
 }
 
 $action = trim((string) ($_GET['action'] ?? 'branches'));

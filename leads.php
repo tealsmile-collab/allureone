@@ -215,6 +215,30 @@ function leads_followup_boundaries_utc(string $preset, string $customYmd): ?arra
     return [$start->format('Y-m-d H:i:s'), $end->format('Y-m-d H:i:s')];
 }
 
+/**
+ * IST calendar month bounds for lead created date; returns inclusive UTC bounds for DB comparison.
+ *
+ * @return array{0:string,1:string}|null
+ */
+function leads_created_month_boundaries_utc(int $year, int $month): ?array
+{
+    if ($year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
+        return null;
+    }
+    try {
+        $tz = new DateTimeZone('Asia/Kolkata');
+        $utc = new DateTimeZone('UTC');
+        $start = new DateTime(sprintf('%04d-%02d-01 00:00:00', $year, $month), $tz);
+        $end = new DateTime($start->format('Y-m-t') . ' 23:59:59', $tz);
+        $start->setTimezone($utc);
+        $end->setTimezone($utc);
+
+        return [$start->format('Y-m-d H:i:s'), $end->format('Y-m-d H:i:s')];
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
 /** Qualify branch_id in scope WHERE for queries using alias `ml`. */
 function leads_scope_where_ml(string $scopeWhere): string
 {
@@ -484,6 +508,41 @@ if ($fBranchSel !== 'all') {
     $listFilterParams['f_branch'] = $fBranchSel;
 }
 
+try {
+    $summaryNowIst = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+} catch (Exception $e) {
+    $summaryNowIst = new DateTime('now');
+}
+$summaryCurYear = (int) $summaryNowIst->format('Y');
+$summaryCurMonth = (int) $summaryNowIst->format('n');
+$summaryYear = isset($_GET['summary_y']) ? (int) $_GET['summary_y'] : $summaryCurYear;
+$summaryMonth = isset($_GET['summary_m']) ? (int) $_GET['summary_m'] : $summaryCurMonth;
+if ($summaryYear < 2000 || $summaryYear > 2100) {
+    $summaryYear = $summaryCurYear;
+}
+if ($summaryMonth < 1 || $summaryMonth > 12) {
+    $summaryMonth = $summaryCurMonth;
+}
+$summaryMonthNames = [
+    1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April', 5 => 'May', 6 => 'June',
+    7 => 'July', 8 => 'August', 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December',
+];
+$summaryMonthLabel = ($summaryMonthNames[$summaryMonth] ?? 'Month') . ' ' . $summaryYear;
+$leadsSummaryOpen = isset($_GET['summary_open']);
+if ($summaryYear !== $summaryCurYear || $summaryMonth !== $summaryCurMonth) {
+    $listFilterParams['summary_y'] = $summaryYear;
+    $listFilterParams['summary_m'] = $summaryMonth;
+}
+if ($leadsSummaryOpen) {
+    $listFilterParams['summary_open'] = '1';
+    if (!isset($listFilterParams['summary_y'])) {
+        $listFilterParams['summary_y'] = $summaryYear;
+    }
+    if (!isset($listFilterParams['summary_m'])) {
+        $listFilterParams['summary_m'] = $summaryMonth;
+    }
+}
+
 $metaLeadCols = leads_meta_leads_column_map();
 if ($metaLeadCols === null && $loadError === '') {
     $loadError = 'Could not load leads data. The table allureone_meta_leads was not found (or is not readable). Confirm it exists in the database from config.php and check php_errors.log.';
@@ -658,6 +717,16 @@ try {
         $listFilterSql .= ' AND ' . $qMlBranchId . ' = :list_f_branch';
         $listFilterBind['list_f_branch'] = (int) $fBranchSel;
     }
+
+    $summaryFilterSql = '';
+    $summaryFilterBind = [];
+    $summaryMonthBounds = leads_created_month_boundaries_utc($summaryYear, $summaryMonth);
+    if ($summaryMonthBounds !== null && $qCreated !== null) {
+        $summaryFilterSql .= ' AND ' . $qCreated . ' >= :summ_created_a AND ' . $qCreated . ' <= :summ_created_b';
+        $summaryFilterBind['summ_created_a'] = $summaryMonthBounds[0];
+        $summaryFilterBind['summ_created_b'] = $summaryMonthBounds[1];
+    }
+
     if (($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $qMlBranchId !== null && $detailId <= 0) {
         try {
             // locality from branch master via branch_id; per-branch converted count / converted amount totals.
@@ -671,10 +740,10 @@ try {
                 . $convAmtSelectBr . ' '
                 . 'FROM ' . META_LEADS_TABLE_SQL . ' ml'
                 . ' LEFT JOIN `allureone_branch` br ON br.`id` = ' . $qMlBranchId
-                . $baseWhereMl . $listFilterSql
+                . $baseWhereMl . $summaryFilterSql
                 . ' GROUP BY ' . $qMlBranchId
                 . ' ORDER BY cnt DESC';
-            $aggBind = array_merge($branchBind, $listFilterBind, ['br_summ_conv_c' => $leadsConvertedStatusBindId]);
+            $aggBind = array_merge($branchBind, $summaryFilterBind, ['br_summ_conv_c' => $leadsConvertedStatusBindId]);
             if ($qAmtBranch !== null) {
                 $aggBind['br_summ_conv_a'] = $leadsConvertedStatusBindId;
             }
@@ -847,8 +916,8 @@ require __DIR__ . '/includes/layout_start.php';
     </div>
 <?php endif; ?>
 
-<?php if ($loadError === '' && $detailId <= 0 && ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $leadsBranchSummary !== []): ?>
-<details id="leads-summary-section" class="card leads-branch-summary-card">
+<?php if ($loadError === '' && $detailId <= 0 && ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN)): ?>
+<details id="leads-summary-section" class="card leads-branch-summary-card"<?= $leadsSummaryOpen ? ' open' : '' ?>>
     <summary class="card__head card__toggle">
         <span class="card__toggle-inner">
             <span>Leads Summary</span>
@@ -856,27 +925,42 @@ require __DIR__ . '/includes/layout_start.php';
         </span>
     </summary>
     <div class="card__body leads-branch-summary-card__body">
-        <?php if ($campaignFilterColumnAvailable): ?>
-        <form method="get" action="leads.php" class="leads-filters leads-summary-filters">
+        <form method="get" action="leads.php#leads-summary-section" class="leads-filters leads-summary-filters">
+            <input type="hidden" name="summary_open" value="1">
             <input type="hidden" name="f_status" value="<?= e($fStatusSel) ?>">
+            <?php if ($fBranchSel !== 'all'): ?>
+                <input type="hidden" name="f_branch" value="<?= e($fBranchSel) ?>">
+            <?php endif; ?>
+            <?php if ($fCampaignSel !== 'all'): ?>
+                <input type="hidden" name="f_campaign" value="<?= e($fCampaignSel) ?>">
+            <?php endif; ?>
             <?php if ($statusIsFollowUpForFilter): ?>
                 <input type="hidden" name="f_fu" value="<?= e($fFuSel) ?>">
                 <?php if ($fFuSel === 'custom' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fFuDateSel) === 1): ?>
                     <input type="hidden" name="f_fu_date" value="<?= e($fFuDateSel) ?>">
                 <?php endif; ?>
             <?php endif; ?>
-            <div class="form__row">
-                <label for="f_campaign_summary">Campaign</label>
-                <select id="f_campaign_summary" name="f_campaign">
-                    <option value="all"<?= $fCampaignSel === 'all' ? ' selected' : '' ?>>All</option>
-                    <?php foreach ($leadsCampaignFilterDbValue as $campSlug => $campLabel): ?>
-                    <option value="<?= e($campSlug) ?>"<?= $fCampaignSel === $campSlug ? ' selected' : '' ?>><?= e($campLabel) ?></option>
+            <div class="form__row form__row--month">
+                <label for="summary_m">Month</label>
+                <select id="summary_m" name="summary_m">
+                    <?php foreach ($summaryMonthNames as $mi => $label): ?>
+                        <option value="<?= $mi ?>"<?= $summaryMonth === $mi ? ' selected' : '' ?>><?= e($label) ?></option>
                     <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form__row form__row--year">
+                <label for="summary_y">Year</label>
+                <select id="summary_y" name="summary_y">
+                    <?php for ($yy = $summaryCurYear - 5; $yy <= $summaryCurYear + 1; $yy++): ?>
+                        <option value="<?= $yy ?>"<?= $summaryYear === $yy ? ' selected' : '' ?>><?= $yy ?></option>
+                    <?php endfor; ?>
                 </select>
             </div>
             <button type="submit" class="btn btn--primary">Apply</button>
         </form>
-        <?php endif; ?>
+        <?php if ($leadsBranchSummary === []): ?>
+            <p class="empty" style="margin:0">No leads for <?= e($summaryMonthLabel) ?>.</p>
+        <?php else: ?>
         <div class="table-wrap">
             <table class="data leads-summary-table">
                 <thead>
@@ -915,7 +999,7 @@ require __DIR__ . '/includes/layout_start.php';
                 </tfoot>
             </table>
         </div>
-        <p class="leads-branch-summary-note">Counts match current filters.</p>
+        <?php endif; ?>
     </div>
 </details>
 <?php endif; ?>
@@ -1082,6 +1166,14 @@ require __DIR__ . '/includes/layout_start.php';
         <?php else: ?>
             <p class="main__meta main__meta--mobile-visible leads-summary">Total leads received: <span class="leads-summary__count"><?= (int) $totalLeads ?></span></p>
             <form method="get" action="leads.php" class="leads-filters">
+                <?php if ($leadsSummaryOpen): ?>
+                    <input type="hidden" name="summary_open" value="1">
+                    <input type="hidden" name="summary_y" value="<?= (int) $summaryYear ?>">
+                    <input type="hidden" name="summary_m" value="<?= (int) $summaryMonth ?>">
+                <?php elseif ($summaryYear !== $summaryCurYear || $summaryMonth !== $summaryCurMonth): ?>
+                    <input type="hidden" name="summary_y" value="<?= (int) $summaryYear ?>">
+                    <input type="hidden" name="summary_m" value="<?= (int) $summaryMonth ?>">
+                <?php endif; ?>
                 <?php if (($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $branchFilterOptions !== []): ?>
                 <div class="form__row">
                     <label for="f_branch">Branch</label>

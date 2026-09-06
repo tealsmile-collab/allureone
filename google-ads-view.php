@@ -13,6 +13,8 @@ if ($selectedDateInput === '') {
     $selectedDateInput = google_ads_view_default_date_ymd();
 }
 
+$showCallsOrganic = ((int) (current_user()['role_id'] ?? 0) === ROLE_SUPERADMIN);
+
 $pageTitle = 'Google Ads View';
 $activeNav = 'google_ads_view';
 require __DIR__ . '/includes/layout_start.php';
@@ -46,7 +48,7 @@ require __DIR__ . '/includes/layout_start.php';
                     <tr>
                         <th>Event Name (Organic)</th>
                         <th>Visits</th>
-                        <th>Calls</th>
+                        <th>Calls<?= $showCallsOrganic ? ' (Organic)' : '' ?></th>
                         <th>WhatsApp</th>
                     </tr>
                 </thead>
@@ -82,6 +84,7 @@ require __DIR__ . '/includes/layout_start.php';
     var statusEl = document.getElementById('google-ads-view-status');
     var tableEl = document.getElementById('google-ads-view-table');
     var apiUrl = <?= json_encode(allureone_url('google-ads-view-api.php'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    var showCallsOrganic = <?= $showCallsOrganic ? 'true' : 'false' ?>;
     var loadingHtml = '<span class="google-ads-spinner" aria-hidden="true"></span>';
     var appliedDate = dateInput ? String(dateInput.value || '').trim() : '';
 
@@ -100,7 +103,7 @@ require __DIR__ . '/includes/layout_start.php';
         return d.innerHTML;
     }
 
-    function renderRows(results, total, totalCalls, totalWhatsapp) {
+    function renderRows(results, total, totalCalls, totalOrganicCalls, totalWhatsapp) {
         if (!bodyEl) return;
         if (!Array.isArray(results) || results.length === 0) {
             bodyEl.innerHTML = '<tr><td colspan="4">No event data found.</td></tr>';
@@ -112,6 +115,9 @@ require __DIR__ . '/includes/layout_start.php';
             var callCell = '—';
             if (row.call_event) {
                 callCell = String(Number(row.call_count || 0));
+                if (showCallsOrganic && row.organic_call_event) {
+                    callCell += ' (' + Number(row.organic_call_count || 0) + ')';
+                }
             }
             var waCell = '—';
             if (row.whatsapp_event) {
@@ -119,7 +125,11 @@ require __DIR__ . '/includes/layout_start.php';
             }
             html += '<tr><td>' + esc(row.event || '') + '</td><td>' + Number(row.count || 0) + '</td><td>' + callCell + '</td><td>' + waCell + '</td></tr>';
         }
-        html += '<tr><th>TOTAL</th><th>' + Number(total || 0) + '</th><th>' + Number(totalCalls || 0) + '</th><th>' + Number(totalWhatsapp || 0) + '</th></tr>';
+        var totalCallCell = String(Number(totalCalls || 0));
+        if (showCallsOrganic) {
+            totalCallCell += ' (' + Number(totalOrganicCalls || 0) + ')';
+        }
+        html += '<tr><th>TOTAL</th><th>' + Number(total || 0) + '</th><th>' + totalCallCell + '</th><th>' + Number(totalWhatsapp || 0) + '</th></tr>';
         bodyEl.innerHTML = html;
     }
 
@@ -160,6 +170,7 @@ require __DIR__ . '/includes/layout_start.php';
                     x.j.results || [],
                     Number(x.j.total || 0),
                     Number(x.j.total_calls || 0),
+                    Number(x.j.total_organic_calls || 0),
                     Number(x.j.total_whatsapp || 0)
                 );
             })

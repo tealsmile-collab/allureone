@@ -11,6 +11,8 @@ set_time_limit(120);
 
 require_once __DIR__ . '/includes/google_ads_amplitude.php';
 
+$showCallsOrganic = ((int) (current_user()['role_id'] ?? 0) === ROLE_SUPERADMIN);
+
 $apiKey = 'e616b0354f9af02d249bfe8942463141';
 $secretKey = 'dd2b761a626303a25249c9d57d6b2fb0';
 $selectedDateInput = trim((string) ($_GET['date'] ?? ''));
@@ -35,6 +37,7 @@ $visitEvents = [
     'google-Ad-Visit-ThaneLodha',
     'google-Ad-Visit-VartakNagar',
     'google-Ad-Visit-Malad',
+    'google-Ad-Visit-Manikonda-Hyderabad',
 ];
 
 /** Custom rows: display label + Amplitude event names per column */
@@ -99,11 +102,23 @@ foreach ($customRows as $customRow) {
             $amplitudeEvents[] = $ev;
         }
     }
+    if ($showCallsOrganic) {
+        $organicCallEv = google_ads_organic_call_event_for_row((string) ($customRow['event'] ?? ''));
+        if ($organicCallEv !== null) {
+            $amplitudeEvents[] = $organicCallEv;
+        }
+    }
 }
 foreach ($allVisitEvents as $visitEvent) {
     $organicEvent = google_ads_organic_event_for_row($visitEvent);
     if ($organicEvent !== null) {
         $amplitudeEvents[] = $organicEvent;
+    }
+    if ($showCallsOrganic) {
+        $organicCallEvent = google_ads_organic_call_event_for_row($visitEvent);
+        if ($organicCallEvent !== null) {
+            $amplitudeEvents[] = $organicCallEvent;
+        }
     }
 }
 
@@ -114,11 +129,14 @@ foreach ($visitEvents as $event) {
     $callEvent = google_ads_call_event_for_visit($event);
     $whatsappEvent = google_ads_whatsapp_event_for_visit($event);
     $organicEvent = google_ads_organic_event_for_row($event);
+    $organicCallEvent = $showCallsOrganic ? google_ads_organic_call_event_for_row($event) : null;
     $results[] = [
         'event' => google_ads_event_label_with_organic($event, $organicEvent, $eventCounts),
         'count' => $eventCounts[$event] ?? 0,
         'call_event' => $callEvent,
         'call_count' => $callEvent !== null ? ($eventCounts[$callEvent] ?? 0) : null,
+        'organic_call_event' => $organicCallEvent,
+        'organic_call_count' => $organicCallEvent !== null ? ($eventCounts[$organicCallEvent] ?? 0) : null,
         'whatsapp_event' => $whatsappEvent,
         'whatsapp_count' => $whatsappEvent !== null ? ($eventCounts[$whatsappEvent] ?? 0) : null,
     ];
@@ -130,11 +148,14 @@ foreach ($customRows as $customRow) {
     $waEv = (string) ($customRow['whatsapp_event'] ?? '');
     $organicEv = trim((string) ($customRow['organic_event'] ?? ''));
     $organicEvent = $organicEv !== '' ? $organicEv : null;
+    $organicCallEvent = $showCallsOrganic ? google_ads_organic_call_event_for_row($label) : null;
     $results[] = [
         'event' => google_ads_event_label_with_organic($label, $organicEvent, $eventCounts),
         'count' => $visitEv !== '' ? ($eventCounts[$visitEv] ?? 0) : 0,
         'call_event' => $callEv !== '' ? $callEv : null,
         'call_count' => $callEv !== '' ? ($eventCounts[$callEv] ?? 0) : null,
+        'organic_call_event' => $organicCallEvent,
+        'organic_call_count' => $organicCallEvent !== null ? ($eventCounts[$organicCallEvent] ?? 0) : null,
         'whatsapp_event' => $waEv !== '' ? $waEv : null,
         'whatsapp_count' => $waEv !== '' ? ($eventCounts[$waEv] ?? 0) : null,
     ];
@@ -143,11 +164,14 @@ foreach ($visitEventsBottom as $event) {
     $callEvent = google_ads_call_event_for_visit($event);
     $whatsappEvent = google_ads_whatsapp_event_for_visit($event);
     $organicEvent = google_ads_organic_event_for_row($event);
+    $organicCallEvent = $showCallsOrganic ? google_ads_organic_call_event_for_row($event) : null;
     $results[] = [
         'event' => google_ads_event_label_with_organic($event, $organicEvent, $eventCounts),
         'count' => $eventCounts[$event] ?? 0,
         'call_event' => $callEvent,
         'call_count' => $callEvent !== null ? ($eventCounts[$callEvent] ?? 0) : null,
+        'organic_call_event' => $organicCallEvent,
+        'organic_call_count' => $organicCallEvent !== null ? ($eventCounts[$organicCallEvent] ?? 0) : null,
         'whatsapp_event' => $whatsappEvent,
         'whatsapp_count' => $whatsappEvent !== null ? ($eventCounts[$whatsappEvent] ?? 0) : null,
     ];
@@ -155,8 +179,10 @@ foreach ($visitEventsBottom as $event) {
 
 $totalVisits = 0;
 $totalCalls = 0;
+$totalOrganicCalls = 0;
 $totalWhatsapp = 0;
 $countedCallEvents = [];
+$countedOrganicCallEvents = [];
 $countedWaEvents = [];
 foreach ($results as $row) {
     $totalVisits += (int) ($row['count'] ?? 0);
@@ -164,6 +190,11 @@ foreach ($results as $row) {
     if ($callEventKey !== '' && !isset($countedCallEvents[$callEventKey])) {
         $totalCalls += (int) ($row['call_count'] ?? 0);
         $countedCallEvents[$callEventKey] = true;
+    }
+    $organicCallEventKey = (string) ($row['organic_call_event'] ?? '');
+    if ($organicCallEventKey !== '' && !isset($countedOrganicCallEvents[$organicCallEventKey])) {
+        $totalOrganicCalls += (int) ($row['organic_call_count'] ?? 0);
+        $countedOrganicCallEvents[$organicCallEventKey] = true;
     }
     $waEventKey = (string) ($row['whatsapp_event'] ?? '');
     if ($waEventKey !== '' && !isset($countedWaEvents[$waEventKey])) {
@@ -178,5 +209,6 @@ echo json_encode([
     'results' => $results,
     'total' => $totalVisits,
     'total_calls' => $totalCalls,
+    'total_organic_calls' => $totalOrganicCalls,
     'total_whatsapp' => $totalWhatsapp,
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

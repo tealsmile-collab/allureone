@@ -57,6 +57,7 @@ function google_ads_whatsapp_event_for_visit(string $visitEvent): ?string
         'google-Ad-Visit-ThaneLodha' => 'google-Ad-WhatsApp-ThaneLodha',
         'google-Ad-Visit-VartakNagar' => 'google-Ad-WhatsApp-VartakNagar',
         'google-Ad-Visit-Malad' => 'google-Ad-WhatsApp-Malad',
+        'google-Ad-Visit-Manikonda-Hyderabad' => 'google-Ad-WhatsApp-Manikonda-Hyderabad',
     ];
 
     return $map[$visitEvent] ?? null;
@@ -77,6 +78,7 @@ function google_ads_organic_event_for_row(string $rowKey): ?string
         'google-Ad-Visit-ThaneLodha' => 'Organic-Visit-ThaneLodha',
         'google-Ad-Visit-VartakNagar' => 'Organic-Visit-VartakNagar',
         'google-Ad-Visit-Malad' => 'Organic-Visit-Malad',
+        'google-Ad-Visit-Manikonda-Hyderabad' => 'Organic-Visit-Manikonda-Hyderabad',
         'google-Ad-Visit-Franchise' => 'organic-Ad-Visit-Franchise',
         'Byke - Thane' => 'Organic-Visit-BykeThane',
         'Gift Card' => 'GiftCard-Organic-Visit',
@@ -85,8 +87,36 @@ function google_ads_organic_event_for_row(string $rowKey): ?string
     return $map[$rowKey] ?? null;
 }
 
+/**
+ * Organic call Amplitude event whose count is shown in brackets on Calls (Organic).
+ * Location suffix matches the Event Name column (after stripping google-Ad-Visit-).
+ */
+function google_ads_organic_call_event_for_row(string $rowKey): ?string
+{
+    $map = [
+        'google-Ad-Visit-Marol' => 'organic-Call-Marol',
+        'google-Ad-Visit-AndheriWest' => 'organic-Call-AndheriWest',
+        'google-Ad-Visit-BorivaliWest' => 'organic-Call-BorivaliWest',
+        'google-Ad-Visit-Powai' => 'organic-Call-Powai',
+        'google-Ad-Visit-MulundRunwal' => 'organic-Call-MulundRunwal',
+        'google-Ad-Visit-Seawoods' => 'organic-Call-Seawoods',
+        'google-Ad-Visit-ThaneLodha' => 'organic-Call-ThaneLodha',
+        'google-Ad-Visit-VartakNagar' => 'organic-Call-VartakNagar',
+        'google-Ad-Visit-Malad' => 'organic-Call-Malad',
+        'google-Ad-Visit-Manikonda-Hyderabad' => 'organic-Call-Manikonda-Hyderabad',
+        'Byke - Thane' => 'organic-Call-BykeThane',
+    ];
+
+    return $map[$rowKey] ?? null;
+}
+
 function google_ads_event_label_with_organic(string $label, ?string $organicEvent, array $eventCounts): string
 {
+    $visitPrefix = 'google-Ad-Visit-';
+    if (strncmp($label, $visitPrefix, strlen($visitPrefix)) === 0) {
+        $label = substr($label, strlen($visitPrefix));
+    }
+
     if ($organicEvent === null || $organicEvent === '') {
         return $label;
     }

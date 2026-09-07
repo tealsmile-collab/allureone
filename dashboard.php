@@ -836,6 +836,25 @@ if ($dailySaleNowIst->format('H:i') < '12:00') {
                 <tbody id="daily-sale-body"></tbody>
             </table>
         </div>
+        <div id="daily-sale-month-view" hidden>
+            <div class="daily-sale-month-toolbar">
+                <button type="button" class="btn btn--ghost" id="daily-sale-month-back">← Back</button>
+                <strong id="daily-sale-month-heading" class="daily-sale-month-heading">Monthly sale</strong>
+            </div>
+            <div class="table-wrap" id="daily-sale-month-table-wrap">
+                <table class="data" id="daily-sale-month-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Total Sale (₹)</th>
+                            <th>Membership (₹)</th>
+                            <th>Services (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="daily-sale-month-body"></tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </details>
 <style>
@@ -900,31 +919,48 @@ if ($dailySaleNowIst->format('H:i') < '12:00') {
 @keyframes dailySaleSpin {
     to { transform: rotate(360deg); }
 }
-#daily-sale-table-wrap {
+#daily-sale-table-wrap,
+#daily-sale-month-table-wrap {
     overflow-x: auto;
     max-width: 100%;
     margin-left: -0.2rem;
 }
-#daily-sale-table {
+#daily-sale-table,
+#daily-sale-month-table {
     width: 100%;
     border-collapse: collapse;
 }
 #daily-sale-table th,
-#daily-sale-table td {
+#daily-sale-table td,
+#daily-sale-month-table th,
+#daily-sale-month-table td {
     white-space: nowrap;
     padding: 0.35rem 0.45rem;
     font-size: 0.88rem;
 }
 #daily-sale-table th:first-child,
-#daily-sale-table td:first-child {
+#daily-sale-table td:first-child,
+#daily-sale-month-table th:first-child,
+#daily-sale-month-table td:first-child {
     padding-left: 0.35rem;
 }
-#daily-sale-table th {
+#daily-sale-table th,
+#daily-sale-month-table th {
     letter-spacing: 0.02em;
+}
+.daily-sale-month-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 0 0 0.75rem;
+}
+.daily-sale-month-heading {
+    font-size: 0.95rem;
+    color: #1e293b;
 }
 </style>
 <?php endif; ?>
-
 <?php if ($canReviewCancellations): ?>
 <?php
 $cancellationReviewOpen = count($pendingCancellationRows) > 0
@@ -1348,9 +1384,17 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
     var bodyEl = document.getElementById('daily-sale-body');
     var dateEl = document.getElementById('daily-sale-date');
     var viewBtn = document.getElementById('daily-sale-view');
+    var monthView = document.getElementById('daily-sale-month-view');
+    var monthHeading = document.getElementById('daily-sale-month-heading');
+    var monthBody = document.getElementById('daily-sale-month-body');
+    var monthBack = document.getElementById('daily-sale-month-back');
+    var dateRow = document.querySelector('.daily-sale-date-row');
     var apiUrl = <?= json_encode(allureone_url('daily_sale_api.php'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     var loading = false;
+    var monthLoading = false;
     var loadedDate = '';
+    var viewMode = 'branch'; // branch | month
+    var savedBranchHtml = '';
 
     function esc(s) {
         var d = document.createElement('div');
@@ -1377,6 +1421,18 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         return Math.round(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
     }
 
+    function formatDisplayDate(ymd) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ''))) {
+            return String(ymd || '');
+        }
+        var parts = String(ymd).split('-');
+        var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (isNaN(d.getTime())) {
+            return String(ymd);
+        }
+        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
     function setStatus(html, withSpinner) {
         if (!statusEl) {
             return;
@@ -1390,6 +1446,39 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         statusEl.innerHTML = (withSpinner ? '<span class="daily-sale-spinner" aria-hidden="true"></span>' : '') + '<span>' + html + '</span>';
     }
 
+    function showBranchView() {
+        viewMode = 'branch';
+        if (monthView) {
+            monthView.hidden = true;
+        }
+        if (dateRow) {
+            dateRow.style.display = '';
+        }
+        if (wrapEl) {
+            wrapEl.hidden = !(bodyEl && bodyEl.innerHTML);
+        }
+        if (bodyEl && savedBranchHtml) {
+            bodyEl.innerHTML = savedBranchHtml;
+            if (wrapEl) {
+                wrapEl.hidden = false;
+            }
+        }
+        setStatus('', false);
+    }
+
+    function showMonthView() {
+        viewMode = 'month';
+        if (wrapEl) {
+            wrapEl.hidden = true;
+        }
+        if (dateRow) {
+            dateRow.style.display = 'none';
+        }
+        if (monthView) {
+            monthView.hidden = false;
+        }
+    }
+
     function hideTable() {
         if (bodyEl) {
             bodyEl.innerHTML = '';
@@ -1397,22 +1486,124 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         if (wrapEl) {
             wrapEl.hidden = true;
         }
+        if (monthBody) {
+            monthBody.innerHTML = '';
+        }
+        if (monthView) {
+            monthView.hidden = true;
+        }
+        if (dateRow) {
+            dateRow.style.display = '';
+        }
+        savedBranchHtml = '';
         loadedDate = '';
+        viewMode = 'branch';
         setStatus('', false);
+    }
+
+    function openMonthView(branchId, branchName) {
+        var date = selectedDate();
+        if (!date || !branchId) {
+            return;
+        }
+        if (monthLoading || loading) {
+            return;
+        }
+        if (bodyEl) {
+            savedBranchHtml = bodyEl.innerHTML;
+        }
+        monthLoading = true;
+        showMonthView();
+        if (monthHeading) {
+            monthHeading.textContent = String(branchName || 'Branch') + ' — monthly sale';
+        }
+        if (monthBody) {
+            monthBody.innerHTML = '';
+        }
+        setStatus('Loading month sale…', true);
+
+        fetchJson(apiUrl + '?action=month&branch_id=' + encodeURIComponent(String(branchId)) + '&date=' + encodeURIComponent(date))
+            .then(function (j) {
+                var rows = Array.isArray(j.rows) ? j.rows : [];
+                var label = String(j.branch_name || branchName || 'Branch');
+                var monthLabel = String(j.month_label || '');
+                if (monthHeading) {
+                    monthHeading.textContent = monthLabel ? (label + ' — ' + monthLabel) : (label + ' — monthly sale');
+                }
+                if (!monthBody) {
+                    return;
+                }
+                if (rows.length === 0) {
+                    monthBody.innerHTML = '<tr><td colspan="4">No sale data for this month.</td></tr>';
+                    setStatus('', false);
+                    return;
+                }
+                var html = '';
+                var totalSale = 0;
+                var totalMembership = 0;
+                var totalServices = 0;
+                var hasSale = false;
+                var hasMembership = false;
+                var hasServices = false;
+                for (var i = 0; i < rows.length; i++) {
+                    var row = rows[i] || {};
+                    if (row.total_sale !== null && row.total_sale !== undefined && row.total_sale !== '') {
+                        totalSale += Number(row.total_sale) || 0;
+                        hasSale = true;
+                    }
+                    if (row.membership !== null && row.membership !== undefined && row.membership !== '') {
+                        totalMembership += Number(row.membership) || 0;
+                        hasMembership = true;
+                    }
+                    if (row.services !== null && row.services !== undefined && row.services !== '') {
+                        totalServices += Number(row.services) || 0;
+                        hasServices = true;
+                    }
+                    html += '<tr>' +
+                        '<td>' + esc(formatDisplayDate(row.date)) + '</td>' +
+                        '<td>' + esc(formatAmount(row.total_sale)) + '</td>' +
+                        '<td>' + esc(formatAmount(row.membership)) + '</td>' +
+                        '<td>' + esc(formatAmount(row.services)) + '</td>' +
+                        '</tr>';
+                }
+                html += '<tr>' +
+                    '<th scope="row">TOTAL</th>' +
+                    '<th>' + esc(hasSale ? formatAmount(totalSale) : '—') + '</th>' +
+                    '<th>' + esc(hasMembership ? formatAmount(totalMembership) : '—') + '</th>' +
+                    '<th>' + esc(hasServices ? formatAmount(totalServices) : '—') + '</th>' +
+                    '</tr>';
+                monthBody.innerHTML = html;
+                setStatus('', false);
+            })
+            .catch(function (err) {
+                if (monthBody) {
+                    monthBody.innerHTML = '';
+                }
+                setStatus(esc((err && err.message) ? String(err.message) : 'Could not load month sale.'), false);
+            })
+            .finally(function () {
+                monthLoading = false;
+            });
     }
 
     function appendRow(row) {
         if (!bodyEl) {
             return;
         }
+        var branchId = Number(row.branch_id || 0);
+        var branchName = String(row.branch_name || '');
+        var nameCell = esc(branchName);
+        if (branchId > 0) {
+            nameCell = '<a href="#" class="link--underlined daily-sale-branch-link" data-branch-id="' + esc(String(branchId)) + '" data-branch-name="' + esc(branchName) + '">' + esc(branchName) + '</a>';
+        }
         var tr = document.createElement('tr');
         tr.innerHTML =
-            '<td>' + esc(row.branch_name || '') + '</td>' +
+            '<td>' + nameCell + '</td>' +
             '<td>' + esc(formatAmount(row.total_sale)) + '</td>' +
             '<td>' + esc(formatAmount(row.membership)) + '</td>' +
             '<td>' + esc(formatAmount(row.services)) + '</td>';
         bodyEl.appendChild(tr);
-        if (wrapEl) {
+        if (wrapEl && viewMode === 'branch') {
             wrapEl.hidden = false;
         }
     }
@@ -1435,7 +1626,7 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
     }
 
     function loadDailySale() {
-        if (loading) {
+        if (loading || monthLoading) {
             return;
         }
         var date = selectedDate();
@@ -1444,6 +1635,8 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
             return;
         }
         loading = true;
+        viewMode = 'branch';
+        savedBranchHtml = '';
         if (viewBtn) {
             viewBtn.disabled = true;
         }
@@ -1452,6 +1645,15 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         }
         if (wrapEl) {
             wrapEl.hidden = true;
+        }
+        if (monthView) {
+            monthView.hidden = true;
+        }
+        if (dateRow) {
+            dateRow.style.display = '';
+        }
+        if (monthBody) {
+            monthBody.innerHTML = '';
         }
         setStatus('Loading branches…', true);
 
@@ -1469,6 +1671,9 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                     if (i >= branches.length) {
                         setStatus('', false);
                         loadedDate = fetchDate;
+                        if (bodyEl) {
+                            savedBranchHtml = bodyEl.innerHTML;
+                        }
                         return Promise.resolve();
                     }
                     var b = branches[i] || {};
@@ -1478,6 +1683,7 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                     var url = apiUrl + '?action=fetch&branch_id=' + encodeURIComponent(String(b.branch_id || '')) + '&date=' + encodeURIComponent(fetchDate);
                     return fetchJson(url).then(function (res) {
                         appendRow(res.row || {
+                            branch_id: b.branch_id || 0,
                             branch_name: b.branch_name || '',
                             total_sale: null,
                             services: null,
@@ -1486,6 +1692,7 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                         return next();
                     }).catch(function () {
                         appendRow({
+                            branch_id: b.branch_id || 0,
                             branch_name: b.branch_name || '',
                             total_sale: null,
                             services: null,
@@ -1505,6 +1712,29 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                     viewBtn.disabled = false;
                 }
             });
+    }
+
+    if (bodyEl) {
+        bodyEl.addEventListener('click', function (e) {
+            var t = e.target;
+            if (!t || !t.closest) {
+                return;
+            }
+            var link = t.closest('.daily-sale-branch-link');
+            if (!link) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            openMonthView(Number(link.getAttribute('data-branch-id') || 0), link.getAttribute('data-branch-name') || '');
+        });
+    }
+    if (monthBack) {
+        monthBack.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            showBranchView();
+        });
     }
 
     if (dateEl) {
@@ -1531,6 +1761,9 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         }
         var date = selectedDate();
         if (!date) {
+            return;
+        }
+        if (viewMode === 'month') {
             return;
         }
         // First expand (or after date change): load selected date (yesterday before 12:00 IST, else today).

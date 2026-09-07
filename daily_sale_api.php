@@ -110,6 +110,42 @@ function daily_sale_fetch_sale_record_total(int $branchId, string $dateYmd): ?fl
     }
 }
 
+/**
+ * Inclusive Y-m-d list for the month of $dateYmd, capped at today (IST) for current month.
+ *
+ * @return list<string>
+ */
+function daily_sale_month_date_list(string $dateYmd): array
+{
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateYmd) !== 1) {
+        return [];
+    }
+    try {
+        $tz = new DateTimeZone('Asia/Kolkata');
+        $anchor = new DateTime($dateYmd . ' 00:00:00', $tz);
+        $today = new DateTime('now', $tz);
+        $today->setTime(0, 0, 0);
+        $start = (clone $anchor)->modify('first day of this month');
+        $end = (clone $anchor)->modify('last day of this month');
+        if ($end > $today) {
+            $end = $today;
+        }
+        if ($end < $start) {
+            return [];
+        }
+        $out = [];
+        $cursor = clone $start;
+        while ($cursor <= $end) {
+            $out[] = $cursor->format('Y-m-d');
+            $cursor->modify('+1 day');
+        }
+
+        return $out;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
 function daily_sale_parse_amount(mixed $val): ?float
 {
     if ($val === null || $val === '') {
@@ -484,6 +520,77 @@ try {
                 'membership' => $metrics['membership'],
                 'error' => $metrics['error'],
             ],
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    if ($action === 'month') {
+        set_time_limit(300);
+        $branchId = isset($_GET['branch_id']) ? (int) $_GET['branch_id'] : 0;
+        if ($branchId <= 0) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Invalid branch_id.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $label = 'Branch #' . $branchId;
+        $st = db()->prepare('SELECT id, business_name, locality FROM allureone_branch WHERE id = :id LIMIT 1');
+        $st->execute(['id' => $branchId]);
+        $branch = $st->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($branch)) {
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'error' => 'Branch not found.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        if (daily_sale_branch_is_excluded($branch)) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Branch excluded.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $loc = trim((string) ($branch['locality'] ?? ''));
+        $bn = trim((string) ($branch['business_name'] ?? ''));
+        $label = $loc !== '' ? $loc : ($bn !== '' ? $bn : $label);
+
+        $dates = daily_sale_month_date_list($date);
+        if ($dates === []) {
+            echo json_encode([
+                'ok' => true,
+                'date' => $date,
+                'branch_id' => $branchId,
+                'branch_name' => $label,
+                'month_label' => '',
+                'rows' => [],
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        try {
+            $monthLabel = (new DateTime($dates[0] . ' 00:00:00', new DateTimeZone('Asia/Kolkata')))->format('F Y');
+        } catch (Throwable $e) {
+            $monthLabel = substr($dates[0], 0, 7);
+        }
+
+        $rows = [];
+        foreach ($dates as $dayYmd) {
+            $metrics = daily_sale_fetch_metrics($branchId, $dayYmd);
+            $rows[] = [
+                'date' => $dayYmd,
+                'total_sale' => $metrics['total_sale'],
+                'services' => $metrics['services'],
+                'membership' => $metrics['membership'],
+                'error' => $metrics['error'],
+            ];
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'date' => $date,
+            'branch_id' => $branchId,
+            'branch_name' => $label,
+            'month_label' => $monthLabel,
+            'start' => $dates[0],
+            'end' => $dates[count($dates) - 1],
+            'rows' => $rows,
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }

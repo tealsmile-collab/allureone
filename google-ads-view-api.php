@@ -15,16 +15,13 @@ $showCallsOrganic = ((int) (current_user()['role_id'] ?? 0) === ROLE_SUPERADMIN)
 
 $apiKey = 'e616b0354f9af02d249bfe8942463141';
 $secretKey = 'dd2b761a626303a25249c9d57d6b2fb0';
+$selectedPeriod = strtolower(trim((string) ($_GET['period'] ?? 'day')));
 $selectedDateInput = trim((string) ($_GET['date'] ?? ''));
-if ($selectedDateInput === '') {
-    $selectedDateInput = google_ads_view_default_date_ymd();
-}
-$startDate = date('Ymd');
-$endDate = $startDate;
-if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDateInput) === 1) {
-    $startDate = str_replace('-', '', $selectedDateInput);
-    $endDate = $startDate;
-}
+$bounds = google_ads_view_period_bounds($selectedPeriod, $selectedDateInput);
+$startDate = $bounds['start'];
+$endDate = $bounds['end'];
+$selectedPeriod = $bounds['period'];
+$selectedDateInput = $bounds['date'];
 
 /** @var list<string> Fixed display order (Franchise appended at bottom) */
 $visitEvents = [
@@ -205,7 +202,10 @@ foreach ($results as $row) {
 
 echo json_encode([
     'ok' => true,
+    'period' => $selectedPeriod,
     'date' => $selectedDateInput,
+    'start' => $startDate,
+    'end' => $endDate,
     'results' => $results,
     'total' => $totalVisits,
     'total_calls' => $totalCalls,

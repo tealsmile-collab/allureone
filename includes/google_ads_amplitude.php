@@ -20,6 +20,74 @@ function google_ads_view_default_date_ymd(): string
     return $nowIst->format('Y-m-d');
 }
 
+/**
+ * Resolve Amplitude start/end (Ymd) for Google Ads view period filters.
+ *
+ * @return array{start:string,end:string,period:string,date:string}
+ */
+function google_ads_view_period_bounds(string $period, string $selectedDateYmd = ''): array
+{
+    try {
+        $nowIst = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+    } catch (Throwable $e) {
+        $nowIst = new DateTime('now');
+    }
+
+    $period = strtolower(trim($period));
+    if (!in_array($period, ['day', 'last7', 'last_month', 'current_month'], true)) {
+        $period = 'day';
+    }
+
+    if ($period === 'last7') {
+        $end = clone $nowIst;
+        $start = (clone $nowIst)->modify('-6 days');
+
+        return [
+            'start' => $start->format('Ymd'),
+            'end' => $end->format('Ymd'),
+            'period' => $period,
+            'date' => $end->format('Y-m-d'),
+        ];
+    }
+
+    if ($period === 'last_month') {
+        $firstThisMonth = (clone $nowIst)->modify('first day of this month')->setTime(0, 0, 0);
+        $end = (clone $firstThisMonth)->modify('-1 day');
+        $start = (clone $end)->modify('first day of this month');
+
+        return [
+            'start' => $start->format('Ymd'),
+            'end' => $end->format('Ymd'),
+            'period' => $period,
+            'date' => $end->format('Y-m-d'),
+        ];
+    }
+
+    if ($period === 'current_month') {
+        $start = (clone $nowIst)->modify('first day of this month');
+        $end = clone $nowIst;
+
+        return [
+            'start' => $start->format('Ymd'),
+            'end' => $end->format('Ymd'),
+            'period' => $period,
+            'date' => $end->format('Y-m-d'),
+        ];
+    }
+
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDateYmd) !== 1) {
+        $selectedDateYmd = google_ads_view_default_date_ymd();
+    }
+    $ymd = str_replace('-', '', $selectedDateYmd);
+
+    return [
+        'start' => $ymd,
+        'end' => $ymd,
+        'period' => 'day',
+        'date' => $selectedDateYmd,
+    ];
+}
+
 function google_ads_call_event_for_visit(string $visitEvent): ?string
 {
     $useVisitCountAsCall = [

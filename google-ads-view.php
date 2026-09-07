@@ -8,6 +8,10 @@ require_not_franchise_officer_role();
 
 require_once __DIR__ . '/includes/google_ads_amplitude.php';
 
+$selectedPeriod = strtolower(trim((string) ($_GET['period'] ?? 'day')));
+if (!in_array($selectedPeriod, ['day', 'last7', 'last_month', 'current_month'], true)) {
+    $selectedPeriod = 'day';
+}
 $selectedDateInput = trim((string) ($_GET['date'] ?? ''));
 if ($selectedDateInput === '') {
     $selectedDateInput = google_ads_view_default_date_ymd();
@@ -27,16 +31,25 @@ require __DIR__ . '/includes/layout_start.php';
     <div class="card__body">
         <form method="get" action="google-ads-view.php" class="form form--invoice-search" style="padding:1rem 1.25rem 0">
             <p class="main__meta" style="width:100%;margin:0 0 0.4rem 0;font-size:0.8rem">
-                Note: This data shows client website visit count through Google Ads on selected date. Google Business Profile visits are not counted here.
+                Note: This data shows client website visit count through Google Ads for the selected period. Google Business Profile visits are not counted here.
             </p>
             <div class="form__row">
+                <label for="google_ads_view_period">Period</label>
+                <select id="google_ads_view_period" name="period">
+                    <option value="day"<?= $selectedPeriod === 'day' ? ' selected' : '' ?>>Day</option>
+                    <option value="last7"<?= $selectedPeriod === 'last7' ? ' selected' : '' ?>>Last 7 days</option>
+                    <option value="last_month"<?= $selectedPeriod === 'last_month' ? ' selected' : '' ?>>Last month</option>
+                    <option value="current_month"<?= $selectedPeriod === 'current_month' ? ' selected' : '' ?>>Current month</option>
+                </select>
+            </div>
+            <div class="form__row" id="google_ads_view_date_row"<?= $selectedPeriod !== 'day' ? ' style="display:none"' : '' ?>>
                 <label for="google_ads_view_date">Date</label>
                 <input type="date" id="google_ads_view_date" name="date" value="<?= e($selectedDateInput) ?>">
             </div>
             <div class="form__row form__row--submit">
                 <button type="submit" class="btn btn--primary">Apply</button>
-                <button type="button" id="google_ads_view_prev" class="btn btn--ghost" aria-label="Previous day" title="Previous day">←</button>
-                <button type="button" id="google_ads_view_next" class="btn btn--ghost" aria-label="Next day" title="Next day">→</button>
+                <button type="button" id="google_ads_view_prev" class="btn btn--ghost" aria-label="Previous day" title="Previous day"<?= $selectedPeriod !== 'day' ? ' style="display:none"' : '' ?>>←</button>
+                <button type="button" id="google_ads_view_next" class="btn btn--ghost" aria-label="Next day" title="Next day"<?= $selectedPeriod !== 'day' ? ' style="display:none"' : '' ?>>→</button>
             </div>
         </form>
         <div id="google-ads-view-status" class="main__meta" style="padding:0 1.25rem 1rem">
@@ -79,14 +92,30 @@ require __DIR__ . '/includes/layout_start.php';
 <script>
 (function () {
     var form = document.querySelector('form[action="google-ads-view.php"]');
+    var periodSelect = document.getElementById('google_ads_view_period');
     var dateInput = document.getElementById('google_ads_view_date');
+    var dateRow = document.getElementById('google_ads_view_date_row');
     var bodyEl = document.getElementById('google-ads-view-body');
     var statusEl = document.getElementById('google-ads-view-status');
     var tableEl = document.getElementById('google-ads-view-table');
+    var prevBtn = document.getElementById('google_ads_view_prev');
+    var nextBtn = document.getElementById('google_ads_view_next');
     var apiUrl = <?= json_encode(allureone_url('google-ads-view-api.php'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     var showCallsOrganic = <?= $showCallsOrganic ? 'true' : 'false' ?>;
     var loadingHtml = '<span class="google-ads-spinner" aria-hidden="true"></span>';
+    var appliedPeriod = periodSelect ? String(periodSelect.value || 'day') : 'day';
     var appliedDate = dateInput ? String(dateInput.value || '').trim() : '';
+
+    function isDayPeriod() {
+        return !periodSelect || String(periodSelect.value || 'day') === 'day';
+    }
+
+    function syncPeriodUi() {
+        var dayMode = isDayPeriod();
+        if (dateRow) dateRow.style.display = dayMode ? '' : 'none';
+        if (prevBtn) prevBtn.style.display = dayMode ? '' : 'none';
+        if (nextBtn) nextBtn.style.display = dayMode ? '' : 'none';
+    }
 
     function showTable() {
         if (tableEl) tableEl.style.display = '';
@@ -134,13 +163,18 @@ require __DIR__ . '/includes/layout_start.php';
     }
 
     function loadData() {
-        if (!dateInput) return;
-        var dateVal = String(dateInput.value || '').trim();
+        var periodVal = periodSelect ? String(periodSelect.value || 'day') : 'day';
+        var dateVal = dateInput ? String(dateInput.value || '').trim() : '';
+        appliedPeriod = periodVal;
         appliedDate = dateVal;
         showTable();
         if (statusEl) statusEl.innerHTML = loadingHtml;
         if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="4" style="text-align:center">' + loadingHtml + '</td></tr>';
-        fetch(apiUrl + '?date=' + encodeURIComponent(dateVal), {
+        var qs = 'period=' + encodeURIComponent(periodVal);
+        if (periodVal === 'day') {
+            qs += '&date=' + encodeURIComponent(dateVal);
+        }
+        fetch(apiUrl + '?' + qs, {
             credentials: 'same-origin'
         })
             .then(function (r) {
@@ -165,7 +199,14 @@ require __DIR__ . '/includes/layout_start.php';
                     if (bodyEl) bodyEl.innerHTML = '<tr><td colspan="4">' + esc(msg) + '</td></tr>';
                     return;
                 }
-                if (statusEl) statusEl.textContent = '';
+                if (statusEl) {
+                    var rangeLabel = '';
+                    if (x.j.start && x.j.end && String(x.j.start) !== String(x.j.end)) {
+                        rangeLabel = 'Showing ' + String(x.j.start).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3')
+                            + ' to ' + String(x.j.end).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
+                    }
+                    statusEl.textContent = rangeLabel;
+                }
                 renderRows(
                     x.j.results || [],
                     Number(x.j.total || 0),
@@ -181,23 +222,28 @@ require __DIR__ . '/includes/layout_start.php';
             });
     }
 
-    if (dateInput) {
-        dateInput.addEventListener('change', function () {
-            var nextDate = String(dateInput.value || '').trim();
-            if (nextDate !== appliedDate) {
-                hideTable();
-            }
-        });
-        dateInput.addEventListener('input', function () {
-            var nextDate = String(dateInput.value || '').trim();
-            if (nextDate !== appliedDate) {
-                hideTable();
-            }
+    function maybeHideOnChange() {
+        var nextPeriod = periodSelect ? String(periodSelect.value || 'day') : 'day';
+        var nextDate = dateInput ? String(dateInput.value || '').trim() : '';
+        if (nextPeriod !== appliedPeriod || (nextPeriod === 'day' && nextDate !== appliedDate)) {
+            hideTable();
+        }
+    }
+
+    if (periodSelect) {
+        periodSelect.addEventListener('change', function () {
+            syncPeriodUi();
+            maybeHideOnChange();
         });
     }
 
+    if (dateInput) {
+        dateInput.addEventListener('change', maybeHideOnChange);
+        dateInput.addEventListener('input', maybeHideOnChange);
+    }
+
     function shiftDate(days) {
-        if (!dateInput) return;
+        if (!dateInput || !isDayPeriod()) return;
         var cur = String(dateInput.value || '').trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(cur)) return;
         var parts = cur.split('-');
@@ -211,8 +257,6 @@ require __DIR__ . '/includes/layout_start.php';
         loadData();
     }
 
-    var prevBtn = document.getElementById('google_ads_view_prev');
-    var nextBtn = document.getElementById('google_ads_view_next');
     if (prevBtn) {
         prevBtn.addEventListener('click', function () {
             shiftDate(-1);
@@ -230,6 +274,7 @@ require __DIR__ . '/includes/layout_start.php';
             loadData();
         });
     }
+    syncPeriodUi();
     loadData();
 })();
 </script>

@@ -146,9 +146,9 @@ function sales_target_parse_amount(mixed $val): float
 }
 
 /**
- * MTD = sum of "total revenue" across sales-by-type rows (null → 0).
+ * MTD = sum of "invoice amount" across by_payment_mode report rows (null → 0).
  */
-function sales_target_parse_mtd_from_by_type(string $body): ?float
+function sales_target_parse_mtd_from_by_payment_mode(string $body): ?float
 {
     $decoded = json_decode($body, true);
     if (!is_array($decoded)) {
@@ -166,8 +166,8 @@ function sales_target_parse_mtd_from_by_type(string $body): ?float
         if (!is_array($row)) {
             continue;
         }
-        $rev = $row['total revenue'] ?? $row['total_revenue'] ?? null;
-        $sum += sales_target_parse_amount($rev);
+        $invoiceAmount = $row['invoice amount'] ?? $row['invoice_amount'] ?? null;
+        $sum += sales_target_parse_amount($invoiceAmount);
     }
 
     return $sum;
@@ -207,7 +207,7 @@ function sales_target_fetch_mtd_sales_report(string $token, string $startDate, s
 
     $params = [
         'start_date' => $startDate,
-        'report_type' => 'by_type',
+        'report_type' => 'by_payment_mode',
         'end_date' => $endDate,
         'locations' => $locations,
         'app_type' => 'web',
@@ -229,7 +229,7 @@ function sales_target_fetch_mtd_sales_report(string $token, string $startDate, s
         ];
     }
 
-    $mtd = sales_target_parse_mtd_from_by_type($body);
+    $mtd = sales_target_parse_mtd_from_by_payment_mode($body);
     if ($mtd === null) {
         return ['mtd' => null, 'error' => 'invalid_report', 'http' => $http];
     }

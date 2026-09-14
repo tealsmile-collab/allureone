@@ -24,6 +24,10 @@ if ($summaryMonth < 1 || $summaryMonth > 12) {
     $summaryMonth = $summaryCurMonth;
 }
 $selectedItemId = isset($_GET['gift']) ? (int) $_GET['gift'] : 0;
+$exportExcel = isset($_GET['export']) && trim((string) $_GET['export']) === 'excel';
+if ($exportExcel) {
+    $selectedItemId = 0;
+}
 $listPerPage = 20;
 $listPage = max(1, (int) ($_GET['page'] ?? 1));
 $listTotal = 0;
@@ -350,6 +354,83 @@ try {
             }
         }
     } else {
+        if ($exportExcel) {
+            set_time_limit(300);
+            $exportSql = $listSelect . "
+            GROUP BY oi.order_item_id, oi.order_id, p.post_date, p.post_status
+            ORDER BY p.post_date DESC";
+            $exportStmt = $pdo->prepare($exportSql);
+            $exportStmt->execute($listParams);
+            $exportRows = $exportStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            $filename = 'gift-codes-' . date('Y-m-d') . '.csv';
+            header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+
+            $out = fopen('php://output', 'wb');
+            if ($out === false) {
+                http_response_code(500);
+                echo 'Could not start export.';
+                exit;
+            }
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Order ID',
+                'Gift Code',
+                'Recipient Name',
+                'Recipient Mobile',
+                'Recipient Email',
+                'Message',
+                'Buyer Name',
+                'Buyer Phone',
+                'Location',
+                'Order Status',
+                'Razorpay Transaction',
+                'Amount',
+                'Order Date',
+                'Expiry Date',
+                'Redeemed Location',
+            ], ',', '"', '\\');
+
+            foreach ($exportRows as $er) {
+                $orderStatusRaw = strtolower(trim((string) ($er['order_status'] ?? '')));
+                $orderStatusDisplay = $orderStatusRaw === 'completed'
+                    ? 'Redeemed'
+                    : (string) ($er['order_status'] ?? '');
+                $location = trim((string) ($er['location'] ?? ''));
+                $rzpTxn = trim((string) ($er['transaction_id'] ?? ''));
+                if ($rzpTxn === '') {
+                    $rzpTxn = trim((string) ($er['razorpay_payment_id'] ?? ''));
+                }
+                $amountRaw = $er['amount'] ?? null;
+                $amountExport = ($amountRaw === null || $amountRaw === '')
+                    ? '0.00'
+                    : number_format((float) $amountRaw, 2, '.', '');
+
+                fputcsv($out, [
+                    (int) ($er['order_id'] ?? 0),
+                    extract_gift_code((string) ($er['gift_card_code'] ?? '')),
+                    (string) ($er['recipient_name'] ?? ''),
+                    (string) ($er['recipient_mobile'] ?? ''),
+                    extract_email_value((string) ($er['recipient_email'] ?? '')),
+                    (string) ($er['message'] ?? ''),
+                    (string) ($er['sender_name'] ?? ''),
+                    (string) ($er['buyer_phone'] ?? ''),
+                    $location,
+                    $orderStatusDisplay,
+                    $rzpTxn,
+                    $amountExport,
+                    format_purchase_date($er['post_date'] ?? null),
+                    gift_card_expiry_date_display($er['post_date'] ?? null),
+                    $location,
+                ], ',', '"', '\\');
+            }
+            fclose($out);
+            exit;
+        }
+
         $countSql = "SELECT COUNT(*)
             FROM (
                 SELECT oi.order_item_id
@@ -546,6 +627,12 @@ require __DIR__ . '/includes/layout_start.php';
                 </div>
                 <div class="form__row form__row--submit" style="margin:0">
                     <button type="submit" class="btn btn--primary">Apply</button>
+                    <?php
+                    $giftExportQuery = $listQueryBase;
+                    unset($giftExportQuery['page']);
+                    $giftExportQuery['export'] = 'excel';
+                    ?>
+                    <a class="btn btn--ghost" href="gift_codes.php?<?= e(http_build_query($giftExportQuery)) ?>">Export Excel</a>
                 </div>
             </form>
         <?php endif; ?>

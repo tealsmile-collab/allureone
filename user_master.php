@@ -258,15 +258,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$list = $pdo->query(
+$searchName = trim((string) ($_GET['q'] ?? ''));
+if (function_exists('mb_substr')) {
+    $searchName = mb_substr($searchName, 0, 100);
+} else {
+    $searchName = substr($searchName, 0, 100);
+}
+$listPerPage = 15;
+$listPage = max(1, (int) ($_GET['page'] ?? 1));
+$listWhereSql = '';
+$listWhereBind = [];
+if ($searchName !== '') {
+    $listWhereSql = ' WHERE u.FullName LIKE :q_name OR u.loginname LIKE :q_login';
+    $like = '%' . $searchName . '%';
+    $listWhereBind['q_name'] = $like;
+    $listWhereBind['q_login'] = $like;
+}
+
+$countStmt = $pdo->prepare(
+    'SELECT COUNT(*)
+     FROM allureone_users u
+     LEFT JOIN allureone_branch b ON b.id = u.BranchId
+     JOIN allureone_roles r ON r.id = u.RoleId'
+    . $listWhereSql
+);
+$countStmt->execute($listWhereBind);
+$listTotal = (int) $countStmt->fetchColumn();
+$listTotalPages = max(1, (int) ceil($listTotal / $listPerPage));
+if ($listPage > $listTotalPages) {
+    $listPage = $listTotalPages;
+}
+$listOffset = ($listPage - 1) * $listPerPage;
+
+$listStmt = $pdo->prepare(
     'SELECT u.id, u.loginname, u.FullName, u.MobileNo, u.EmailId, u.BranchId, u.RoleId, u.isactive, u.RecordSale, u.MetaConfig, u.GoogleAdsView, u.CrmSegments,
             b.business_name, b.locality, r.RoleName
      FROM allureone_users u
      LEFT JOIN allureone_branch b ON b.id = u.BranchId
-     JOIN allureone_roles r ON r.id = u.RoleId
-     ORDER BY u.id DESC
-     LIMIT 50'
-)->fetchAll();
+     JOIN allureone_roles r ON r.id = u.RoleId'
+    . $listWhereSql
+    . ' ORDER BY u.id DESC
+     LIMIT ' . (int) $listPerPage . ' OFFSET ' . (int) $listOffset
+);
+$listStmt->execute($listWhereBind);
+$list = $listStmt->fetchAll();
+
+$listQueryBase = [];
+if ($searchName !== '') {
+    $listQueryBase['q'] = $searchName;
+}
 
 $pageTitle = 'User Master';
 $activeNav = 'user';
@@ -291,10 +331,6 @@ require __DIR__ . '/includes/layout_start.php';
                        value="<?= e((string) ($editRow['loginname'] ?? '')) ?>">
             </div>
             <div class="form__row">
-                <label for="edit_password">New password <span class="hint">(optional)</span></label>
-                <input id="edit_password" name="password" type="password" maxlength="20" placeholder="Leave blank to keep current">
-            </div>
-            <div class="form__row">
                 <label for="edit_full_name">Full name</label>
                 <input id="edit_full_name" name="full_name" type="text" required maxlength="255"
                        value="<?= e((string) ($editRow['FullName'] ?? '')) ?>">
@@ -303,6 +339,18 @@ require __DIR__ . '/includes/layout_start.php';
                 <label for="edit_mobile_no">Mobile number</label>
                 <input id="edit_mobile_no" name="mobile_no" type="text" maxlength="20"
                        value="<?= e((string) ($editRow['MobileNo'] ?? '')) ?>">
+            </div>
+            <div class="form__row">
+                <label for="edit_password">New password <span class="hint">(optional)</span></label>
+                <div class="user-password-gen" data-password-gen data-name-input="edit_full_name" data-mobile-input="edit_mobile_no">
+                    <input id="edit_password" name="password" type="password" maxlength="20" placeholder="Leave blank to keep current" autocomplete="new-password">
+                    <button type="button" class="btn btn--ghost" data-password-generate>Generate</button>
+                    <button type="button" class="btn btn--ghost user-password-gen__copy" data-password-copy hidden title="Copy password" aria-label="Copy password">
+                        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
             <div class="form__row">
                 <label for="edit_email_id">Email ID</label>
@@ -373,8 +421,16 @@ require __DIR__ . '/includes/layout_start.php';
 </div>
 <?php endif; ?>
 
-<div class="card" style="margin-bottom:1.5rem">
-    <div class="card__head">New user</div>
+<?php
+$newUserOpen = (!$editId && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['_action'] ?? '') === 'create'));
+?>
+<details class="card" style="margin-bottom:1.5rem"<?= $newUserOpen ? ' open' : '' ?>>
+    <summary class="card__head card__toggle">
+        <span class="card__toggle-inner">
+            <span>New user</span>
+            <span class="card__chevron" aria-hidden="true">▼</span>
+        </span>
+    </summary>
     <div class="card__body" style="padding:1.25rem">
         <form class="form" method="post" action="user_master.php" style="max-width:480px" autocomplete="off">
             <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
@@ -385,10 +441,6 @@ require __DIR__ . '/includes/layout_start.php';
                        value="<?= (!$editId && isset($_POST['loginname']) && ($_POST['_action'] ?? '') === 'create') ? e((string) $_POST['loginname']) : '' ?>">
             </div>
             <div class="form__row">
-                <label for="password">Password <span class="hint">(optional)</span></label>
-                <input id="password" name="password" type="password" maxlength="20" placeholder="Optional">
-            </div>
-            <div class="form__row">
                 <label for="full_name">Full name</label>
                 <input id="full_name" name="full_name" type="text" required maxlength="255"
                        value="<?= (!$editId && isset($_POST['full_name']) && ($_POST['_action'] ?? '') === 'create') ? e((string) $_POST['full_name']) : '' ?>">
@@ -397,6 +449,18 @@ require __DIR__ . '/includes/layout_start.php';
                 <label for="mobile_no">Mobile number</label>
                 <input id="mobile_no" name="mobile_no" type="text" maxlength="20"
                        value="<?= (!$editId && isset($_POST['mobile_no']) && ($_POST['_action'] ?? '') === 'create') ? e((string) $_POST['mobile_no']) : '' ?>">
+            </div>
+            <div class="form__row">
+                <label for="password">New password <span class="hint">(optional)</span></label>
+                <div class="user-password-gen" data-password-gen data-name-input="full_name" data-mobile-input="mobile_no">
+                    <input id="password" name="password" type="password" maxlength="20" placeholder="Optional" autocomplete="new-password">
+                    <button type="button" class="btn btn--ghost" data-password-generate>Generate</button>
+                    <button type="button" class="btn btn--ghost user-password-gen__copy" data-password-copy hidden title="Copy password" aria-label="Copy password">
+                        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
             <div class="form__row">
                 <label for="email_id">Email ID</label>
@@ -455,13 +519,25 @@ require __DIR__ . '/includes/layout_start.php';
             <button class="btn btn--primary" type="submit">Create user</button>
         </form>
     </div>
-</div>
+</details>
 
 <div class="card">
-    <div class="card__head">Users (latest 50)</div>
+    <div class="card__head">Users<?= $listTotal > 0 ? ' (' . $listTotal . ')' : '' ?></div>
     <div class="card__body">
+        <form method="get" action="user_master.php" class="form form--invoice-search" style="padding:0 0 1rem">
+            <div class="form__row">
+                <label for="user_search_q">Search by name</label>
+                <input id="user_search_q" name="q" type="text" maxlength="100" value="<?= e($searchName) ?>" placeholder="Full name or login">
+            </div>
+            <div class="form__row form__row--submit">
+                <button type="submit" class="btn btn--primary">Search</button>
+                <?php if ($searchName !== ''): ?>
+                    <a class="btn btn--ghost" href="user_master.php">Clear</a>
+                <?php endif; ?>
+            </div>
+        </form>
         <?php if (count($list) === 0): ?>
-            <p class="empty">No users.</p>
+            <p class="empty"><?= $searchName !== '' ? 'No users matched your search.' : 'No users.' ?></p>
         <?php else: ?>
             <div class="table-wrap">
                 <table class="data">
@@ -470,14 +546,10 @@ require __DIR__ . '/includes/layout_start.php';
                             <th>Login</th>
                             <th>Full name</th>
                             <th>Mobile</th>
-                            <th>Email</th>
                             <th>Branch</th>
                             <th>Role</th>
                             <th>Active</th>
                             <th>Record Sale</th>
-                            <th>Meta Config</th>
-                            <th>Google Ads View</th>
-                            <th>CRM Segments</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -487,27 +559,184 @@ require __DIR__ . '/includes/layout_start.php';
                                 <td><?= e((string) $u['loginname']) ?></td>
                                 <td><?= e((string) $u['FullName']) ?></td>
                                 <td><?= e((string) ($u['MobileNo'] ?? '')) ?></td>
-                                <td><?= e((string) ($u['EmailId'] ?? '')) ?></td>
                                 <td>
-                                    <?= e((string) ($u['business_name'] ?? '—')) ?>
-                                    <?php if (($u['locality'] ?? '') !== ''): ?>
-                                        <?= ' - ' . e((string) $u['locality']) ?>
-                                    <?php endif; ?>
+                                    <?php
+                                    $branchLocality = trim((string) ($u['locality'] ?? ''));
+                                    $branchBusiness = trim((string) ($u['business_name'] ?? ''));
+                                    echo e($branchLocality !== '' ? $branchLocality : ($branchBusiness !== '' ? $branchBusiness : '—'));
+                                    ?>
                                 </td>
                                 <td><?= e((string) $u['RoleName']) ?></td>
                                 <td><?= ((int) $u['isactive'] === 1) ? 'Yes' : 'No' ?></td>
                                 <td><?= ((int) ($u['RecordSale'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
-                                <td><?= ((int) ($u['MetaConfig'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
-                                <td><?= ((int) ($u['GoogleAdsView'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
-                                <td><?= ((int) ($u['CrmSegments'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
-                                <td class="table-actions"><a href="user_master.php?edit=<?= (int) $u['id'] ?>">Edit</a></td>
+                                <td class="table-actions"><a href="user_master.php?<?= e(http_build_query(array_merge($listQueryBase, ['edit' => (int) $u['id']]))) ?>">Edit</a></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
+            <?php if ($listTotalPages > 1): ?>
+                <div class="form__actions" style="margin-top:1rem;align-items:center;gap:0.75rem">
+                    <?php if ($listPage > 1): ?>
+                        <a class="btn btn--ghost" href="user_master.php?<?= e(http_build_query(array_merge($listQueryBase, ['page' => $listPage - 1]))) ?>">Previous</a>
+                    <?php endif; ?>
+                    <span class="main__meta" style="margin:0">Page <?= (int) $listPage ?> of <?= (int) $listTotalPages ?></span>
+                    <?php if ($listPage < $listTotalPages): ?>
+                        <a class="btn btn--ghost" href="user_master.php?<?= e(http_build_query(array_merge($listQueryBase, ['page' => $listPage + 1]))) ?>">Next</a>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </div>
+
+<style>
+.user-password-gen {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+.user-password-gen input {
+    flex: 1 1 12rem;
+    min-width: 10rem;
+}
+.user-password-gen__copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem 0.55rem;
+}
+.user-password-gen__copy[hidden] {
+    display: none !important;
+}
+</style>
+<script>
+(function () {
+    function pickRandom(chars, count) {
+        var out = [];
+        var i;
+        if (!chars || !chars.length) {
+            return out;
+        }
+        for (i = 0; i < count; i++) {
+            out.push(chars.charAt(Math.floor(Math.random() * chars.length)));
+        }
+        return out;
+    }
+
+    function shuffle(arr) {
+        var i, j, tmp;
+        for (i = arr.length - 1; i > 0; i--) {
+            j = Math.floor(Math.random() * (i + 1));
+            tmp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = tmp;
+        }
+        return arr;
+    }
+
+    function lettersOnly(s) {
+        return String(s || '').replace(/[^A-Za-z]/g, '');
+    }
+
+    function digitsOnly(s) {
+        return String(s || '').replace(/\D/g, '');
+    }
+
+    function generatePassword(fullName, mobile) {
+        var nameChars = lettersOnly(fullName);
+        var mobileChars = digitsOnly(mobile);
+        if (!nameChars) {
+            nameChars = 'abcdefghijklmnopqrstuvwxyz';
+        }
+        if (!mobileChars) {
+            mobileChars = '0123456789';
+        }
+        var parts = []
+            .concat(pickRandom(mobileChars, 3))
+            .concat(pickRandom(nameChars, 4))
+            .concat(['@', '$'])
+            .concat(pickRandom('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 1));
+        return shuffle(parts).join('').slice(0, 10);
+    }
+
+    function bindPasswordGen(wrap) {
+        var nameId = wrap.getAttribute('data-name-input') || '';
+        var mobileId = wrap.getAttribute('data-mobile-input') || '';
+        var input = wrap.querySelector('input[name="password"]');
+        var genBtn = wrap.querySelector('[data-password-generate]');
+        var copyBtn = wrap.querySelector('[data-password-copy]');
+        if (!input || !genBtn) {
+            return;
+        }
+
+        genBtn.addEventListener('click', function () {
+            var nameEl = nameId ? document.getElementById(nameId) : null;
+            var mobileEl = mobileId ? document.getElementById(mobileId) : null;
+            var fullName = nameEl ? String(nameEl.value || '') : '';
+            var mobile = mobileEl ? String(mobileEl.value || '') : '';
+            if (!lettersOnly(fullName)) {
+                if (nameEl) {
+                    nameEl.focus();
+                }
+                window.alert('Enter full name before generating password.');
+                return;
+            }
+            if (!digitsOnly(mobile)) {
+                if (mobileEl) {
+                    mobileEl.focus();
+                }
+                window.alert('Enter mobile number before generating password.');
+                return;
+            }
+            input.type = 'text';
+            input.value = generatePassword(fullName, mobile);
+            if (copyBtn) {
+                copyBtn.hidden = false;
+            }
+            input.focus();
+            input.select();
+        });
+
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function () {
+                var val = String(input.value || '');
+                if (!val) {
+                    return;
+                }
+                function done() {
+                    var oldTitle = copyBtn.getAttribute('title') || 'Copy password';
+                    copyBtn.setAttribute('title', 'Copied');
+                    window.setTimeout(function () {
+                        copyBtn.setAttribute('title', oldTitle);
+                    }, 1200);
+                }
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(val).then(done).catch(function () {
+                        input.type = 'text';
+                        input.focus();
+                        input.select();
+                        try {
+                            document.execCommand('copy');
+                            done();
+                        } catch (e) {}
+                    });
+                } else {
+                    input.type = 'text';
+                    input.focus();
+                    input.select();
+                    try {
+                        document.execCommand('copy');
+                        done();
+                    } catch (e) {}
+                }
+            });
+        }
+    }
+
+    document.querySelectorAll('[data-password-gen]').forEach(bindPasswordGen);
+})();
+</script>
 
 <?php require __DIR__ . '/includes/layout_end.php'; ?>

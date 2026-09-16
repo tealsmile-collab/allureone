@@ -209,6 +209,26 @@ CREATE TABLE IF NOT EXISTS allureone_announcement_deliveries (
   CONSTRAINT fk_ann_delivery_sub FOREIGN KEY (subscription_id) REFERENCES allureone_push_subscriptions (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS allurehr_employee (
+  employeeId INT NOT NULL,
+  name VARCHAR(255) NOT NULL DEFAULT '',
+  NickName VARCHAR(255) NULL,
+  BranchID INT NULL,
+  RoleID INT NULL,
+  mobile VARCHAR(20) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (employeeId),
+  KEY idx_allurehr_emp_branch (BranchID),
+  KEY idx_allurehr_emp_role (RoleID),
+  CONSTRAINT fk_allurehr_emp_branch
+    FOREIGN KEY (BranchID) REFERENCES allureone_branch (id)
+    ON DELETE SET NULL,
+  CONSTRAINT fk_allurehr_emp_role
+    FOREIGN KEY (RoleID) REFERENCES allureone_roles (id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 INSERT INTO allureone_roles (id, RoleName, isActive) VALUES
   (1, 'Superadmin', 1),
   (2, 'admin', 1),

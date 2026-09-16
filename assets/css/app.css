@@ -62,7 +62,9 @@ a.link--underlined:hover {
   display: flex;
   flex-direction: column;
   padding: 1.25rem 0;
-  overflow: hidden;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   transition: opacity 0.2s ease, border-color 0.2s ease;
 }
 
@@ -102,11 +104,16 @@ a.link--underlined:hover {
 }
 
 .sidebar__nav {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 0 0.75rem;
+  min-height: 0;
+}
+
+.sidebar__nav > * {
+  flex-shrink: 0;
 }
 
 .sidebar__link {
@@ -126,6 +133,20 @@ a.link--underlined:hover {
   font-weight: 600;
 }
 
+.sidebar .sidebar__nav .sidebar__section-title,
+.sidebar__section-title,
+p.sidebar__section-title {
+  margin: 0.55rem 0 0.15rem;
+  padding: 0.35rem 0.75rem 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff !important;
+  line-height: 1.25;
+  flex-shrink: 0;
+}
+
 .sidebar__user-line {
   margin-left: 0.75rem;
   margin-right: 0.75rem;
@@ -143,6 +164,13 @@ a.link--underlined:hover {
   margin-top: 0;
   padding-top: 0.65rem;
   border-top: none;
+}
+
+/* HR employee list branch filter — keep inset from card left edge */
+#hr-emp-branch-filter {
+  margin: 0 !important;
+  padding: 0.85rem 1.25rem 0.65rem !important;
+  box-sizing: border-box;
 }
 
 .main {

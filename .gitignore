@@ -1,6 +1,9 @@
 # Local secrets — copy config.example.php to config.php
 /config.php
 
+# Environment secrets (greytHR credentials, etc.)
+/.env
+
 # Composer (vendor/ is committed for Hostinger auto-deploy — always use: composer install --prefer-dist)
 /composer.phar
 /vendor/**/.git

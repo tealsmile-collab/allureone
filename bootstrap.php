@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/includes/env.php';
+allureone_load_env();
+
 $config = require __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/app_path.php';
 

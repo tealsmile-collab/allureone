@@ -68,4 +68,16 @@ return [
         /** Secret for POST pwa_announcement_api.php — header X-Announcement-Api-Key */
         'announcement_api_key' => '',
     ],
+    'greythr' => [
+        'base_url' => 'https://api.greythr.com',
+        /** Company domain used for token host + x-greythr-domain header */
+        'domain' => 'allurethai.greythr.com',
+        'username' => '',
+        'password' => '',
+        'token_path' => '/uas/v1/oauth2/client-token',
+        'attendance_insights_path' => '/attendance/v2/employee/insights',
+        'attendance_muster_path' => '/attendance/v2/employee/muster',
+        /** Set true when server CA bundle is configured (php.ini curl.cainfo / openssl.cafile). */
+        'ssl_verify' => true,
+    ],
 ];

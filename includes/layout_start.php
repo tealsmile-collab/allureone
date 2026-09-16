@@ -16,7 +16,10 @@ $canSaleRecord = can_access_sale_record($user);
 $canMetaConfig = can_access_meta_config($user);
 $canGoogleAdsView = can_access_google_ads_view($user);
 $canCrmSegments = can_access_crm_segments($user);
+$canHr = can_access_hr($user);
 $homeHref = allureone_home_path_for_user($user);
+$appCssPath = __DIR__ . '/../assets/css/app.css';
+$appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -24,7 +27,14 @@ $homeHref = allureone_home_path_for_user($user);
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($pageTitle) ?> · <?= e($appName) ?></title>
-    <link rel="stylesheet" href="assets/css/app.css">
+    <link rel="stylesheet" href="assets/css/app.css?v=<?= e($appCssVer) ?>">
+    <style>
+    .sidebar .sidebar__section-title,
+    .sidebar__nav .sidebar__section-title,
+    p.sidebar__section-title {
+      color: #ffffff !important;
+    }
+    </style>
     <?php pwa_render_head_tags(); ?>
 </head>
 <body class="app" data-dingg-ls-key="<?= e(ALLUREONE_LS_DINGG_BEARER) ?>">
@@ -97,6 +107,11 @@ $homeHref = allureone_home_path_for_user($user);
             <?php endif; ?>
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && (((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN) || ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN))): ?>
                 <a class="sidebar__link<?= ($activeNav === 'announcements') ? ' is-active' : '' ?>" href="Announcement.php">Announcements</a>
+            <?php endif; ?>
+            <?php if ($canHr): ?>
+                <p class="sidebar__section-title" style="color:#ffffff !important">HR</p>
+                <a class="sidebar__link<?= ($activeNav === 'hr_attendance') ? ' is-active' : '' ?>" href="hr_attendance.php">Attendance</a>
+                <a class="sidebar__link<?= ($activeNav === 'hr_employees') ? ' is-active' : '' ?>" href="hr_employees.php">Employee List</a>
             <?php endif; ?>
             <a class="sidebar__link" href="logout.php">Logout</a>
             <?php if ($user && trim((string) ($user['full_name'] ?? '')) !== ''): ?>

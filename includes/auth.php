@@ -131,6 +131,27 @@ function require_crm_segments_access(): void
     }
 }
 
+function can_access_hr(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+    $roleId = (int) ($u['role_id'] ?? 0);
+
+    return $roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN;
+}
+
+function require_hr_access(): void
+{
+    require_login();
+    if (!can_access_hr()) {
+        http_response_code(403);
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied. HR is available to Admin and Superadmin only.</p><p><a href="' . htmlspecialchars(allureone_home_path_for_user(), ENT_QUOTES, 'UTF-8') . '">Home</a></p></body></html>';
+        exit;
+    }
+}
+
 function can_access_appointments(?array $user = null): bool
 {
     $u = $user ?? current_user();

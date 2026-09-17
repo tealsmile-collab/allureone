@@ -14,6 +14,10 @@ declare(strict_types=1);
  *   branch_name, source_name, campaign, remarks, amount,
  *   external_id (stored as leadgen_id), form_id, ad_id, status
  *
+ * Also accepts Gallabox-style envelopes (bodyParams) and aliases:
+ *   customer_Name, customer_phonenumber, branchID, conversationDetails
+ * Duplicate check is external_id + phone (not external_id alone).
+ *
  * Creates a row in allureone_meta_leads (same table as leads.php).
  */
 
@@ -80,6 +84,83 @@ function leads_api_normalize_phone(string $phone): string
     }
 
     return $digits;
+}
+
+/**
+ * Drop unsubstituted automation placeholders like {{customer_Name}}.
+ */
+function leads_api_clean_template(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    if (preg_match('/^\{\{.+\}\}$/', $value) === 1) {
+        return '';
+    }
+
+    return $value;
+}
+
+/**
+ * Flatten Gallabox / automation envelopes and map common aliases.
+ *
+ * @param array<string, mixed> $json
+ * @return array<string, mixed>
+ */
+function leads_api_normalize_payload(array $json): array
+{
+    foreach (['bodyParams', 'body', 'data', 'payload', 'params'] as $wrap) {
+        if (isset($json[$wrap]) && is_array($json[$wrap])) {
+            $json = array_merge($json, $json[$wrap]);
+        }
+    }
+
+    $pick = static function (array $src, array $keys): string {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $src)) {
+                continue;
+            }
+            $val = leads_api_clean_template(trim((string) $src[$key]));
+            if ($val !== '') {
+                return $val;
+            }
+        }
+
+        return '';
+    };
+
+    $leadName = $pick($json, ['lead_name', 'name', 'customer_Name', 'customer_name', 'customerName']);
+    $phoneRaw = $pick($json, [
+        'lead_phone_number',
+        'phone',
+        'mobile',
+        'customer_phonenumber',
+        'customer_phone_number',
+        'customer_phone',
+        'customerPhone',
+    ]);
+    $branchRaw = $pick($json, ['branch_id', 'branchID', 'branchId', 'BranchID']);
+    $branchNameHint = $pick($json, ['branch_name', 'location', 'branchName']);
+    $sourceName = $pick($json, ['source_name', 'sourceName', 'source']);
+    $campaign = $pick($json, ['campaign', 'Campaiign']);
+    $remarks = $pick($json, ['remarks', 'conversationDetails', 'conversation_details', 'notes']);
+    $externalId = $pick($json, ['external_id', 'leadgen_id', 'conversation_id', 'message_id']);
+
+    return [
+        'lead_name' => $leadName,
+        'lead_phone_number' => $phoneRaw,
+        'branch_id' => $branchRaw !== '' ? (int) $branchRaw : 0,
+        'branch_name' => $branchNameHint,
+        'source_name' => $sourceName !== '' ? $sourceName : 'Lead Engine',
+        'campaign' => $campaign,
+        'remarks' => $remarks,
+        'external_id' => $externalId,
+        'form_id' => $pick($json, ['form_id']),
+        'ad_id' => $pick($json, ['ad_id']),
+        'status' => $json['status'] ?? null,
+        'amount' => $json['amount'] ?? null,
+    ];
 }
 
 /**
@@ -182,18 +263,19 @@ if (!is_array($json)) {
     exit;
 }
 
-$leadName = trim((string) ($json['lead_name'] ?? $json['name'] ?? ''));
-$phoneRaw = trim((string) ($json['lead_phone_number'] ?? $json['phone'] ?? $json['mobile'] ?? ''));
-$branchId = (int) ($json['branch_id'] ?? 0);
-$branchNameHint = trim((string) ($json['branch_name'] ?? $json['location'] ?? ''));
-$sourceName = trim((string) ($json['source_name'] ?? $json['sourceName'] ?? 'Lead Engine'));
-$campaign = trim((string) ($json['campaign'] ?? $json['Campaiign'] ?? ''));
-$remarks = trim((string) ($json['remarks'] ?? ''));
-$externalId = trim((string) ($json['external_id'] ?? $json['leadgen_id'] ?? ''));
-$formId = trim((string) ($json['form_id'] ?? ''));
-$adId = trim((string) ($json['ad_id'] ?? ''));
-$statusIn = $json['status'] ?? null;
-$amountIn = $json['amount'] ?? null;
+$payload = leads_api_normalize_payload($json);
+$leadName = (string) $payload['lead_name'];
+$phoneRaw = (string) $payload['lead_phone_number'];
+$branchId = (int) $payload['branch_id'];
+$branchNameHint = (string) $payload['branch_name'];
+$sourceName = (string) $payload['source_name'];
+$campaign = (string) $payload['campaign'];
+$remarks = (string) $payload['remarks'];
+$externalId = (string) $payload['external_id'];
+$formId = (string) $payload['form_id'];
+$adId = (string) $payload['ad_id'];
+$statusIn = $payload['status'] ?? null;
+$amountIn = $payload['amount'] ?? null;
 
 if ($leadName === '') {
     http_response_code(400);
@@ -259,22 +341,25 @@ if (function_exists('mb_substr')) {
 }
 
 try {
+    // Duplicate only when same external_id AND same phone.
+    // Gallabox often sends a static external_id like "1"; phone must differ for a new lead.
     if ($externalId !== '') {
         $dup = db()->prepare(
             'SELECT id
              FROM allureone_meta_leads
              WHERE leadgen_id = :lid
+               AND lead_phone_number = :phone
              ORDER BY id DESC
              LIMIT 1'
         );
-        $dup->execute(['lid' => $externalId]);
+        $dup->execute(['lid' => $externalId, 'phone' => $phone]);
         $existingId = (int) ($dup->fetchColumn() ?: 0);
         if ($existingId > 0) {
             echo json_encode([
                 'ok' => true,
                 'duplicate' => true,
                 'id' => $existingId,
-                'message' => 'Lead already exists for this external_id.',
+                'message' => 'Lead already exists for this external_id and phone.',
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             exit;
         }

@@ -62,6 +62,39 @@ function leads_format_datetime_ist_full(?string $utcDateTime): string
     }
 }
 
+/**
+ * Normalize lead source for list display: Organic / Insta-Fb / other non-empty label.
+ */
+function leads_source_display_label(?string $sourceName, ?string $campaign): string
+{
+    $src = strtolower(trim((string) ($sourceName ?? '')));
+    $camp = strtolower(trim((string) ($campaign ?? '')));
+    if ($src === 'insta-fb') {
+        return 'Insta-Fb';
+    }
+    if ($src === 'organic' || $camp === 'organic') {
+        return 'Organic';
+    }
+    $raw = trim((string) ($sourceName ?? ''));
+
+    return $raw !== '' ? $raw : '';
+}
+
+/** Status cell text: "New (Organic)", "New (Insta-Fb)", or status alone. */
+function leads_status_with_source(string $statusLabel, ?string $sourceName, ?string $campaign): string
+{
+    $status = trim($statusLabel);
+    if ($status === '') {
+        $status = '—';
+    }
+    $source = leads_source_display_label($sourceName, $campaign);
+    if ($source === '') {
+        return $status;
+    }
+
+    return $status . ' (' . $source . ')';
+}
+
 function leads_parse_datetime_local_to_mysql_utc(string $value): ?string
 {
     $raw = trim($value);
@@ -352,8 +385,8 @@ $totalLeads = 0;
 $leadsBranchSummary = [];
 /** @var array{received:int,converted:int,amount_total:string}|null Branch-scoped list conversion row (role 3); null if not loaded. */
 $leadsConversionSummary = null;
-/** Set in data try: meta leads has a campaign column (Campaiign / campaign). */
-$campaignFilterColumnAvailable = false;
+/** Set in data try: meta leads has sourceName and/or campaign columns for Source filter. */
+$sourceFilterAvailable = false;
 /** @var array<string,string> Active branch choices for admin branch filter (id => label). */
 $branchFilterOptions = [];
 $loadError = '';
@@ -474,18 +507,25 @@ if (!$statusIsFollowUpForFilter) {
     $fFuDateSel = '';
 }
 
-/** GET `f_campaign` slug => exact value stored in meta leads campaign column (see Meta/index.php inserts). */
-$leadsCampaignFilterDbValue = [
-    'mothers_day' => 'Mothers Day Campaign',
-    'fathers_day' => 'Fathers Day Campaign',
+/** GET `f_source` / `summary_source` slug => display label (matches sourceName / Campaiign). */
+$leadsSourceFilterOptions = [
+    'organic' => 'Organic',
+    'insta_fb' => 'Insta-Fb',
 ];
-$leadsCampaignDefault = 'all';
-$fCampaignSel = isset($_GET['f_campaign']) ? trim((string) $_GET['f_campaign']) : $leadsCampaignDefault;
-if ($fCampaignSel === '') {
-    $fCampaignSel = $leadsCampaignDefault;
+$leadsSourceDefault = 'all';
+$fSourceSel = isset($_GET['f_source']) ? trim((string) $_GET['f_source']) : $leadsSourceDefault;
+if ($fSourceSel === '') {
+    $fSourceSel = $leadsSourceDefault;
 }
-if ($fCampaignSel !== 'all' && !isset($leadsCampaignFilterDbValue[$fCampaignSel])) {
-    $fCampaignSel = $leadsCampaignDefault;
+if ($fSourceSel !== 'all' && !isset($leadsSourceFilterOptions[$fSourceSel])) {
+    $fSourceSel = $leadsSourceDefault;
+}
+$summarySourceSel = isset($_GET['summary_source']) ? trim((string) $_GET['summary_source']) : $leadsSourceDefault;
+if ($summarySourceSel === '') {
+    $summarySourceSel = $leadsSourceDefault;
+}
+if ($summarySourceSel !== 'all' && !isset($leadsSourceFilterOptions[$summarySourceSel])) {
+    $summarySourceSel = $leadsSourceDefault;
 }
 $fBranchSel = isset($_GET['f_branch']) ? trim((string) $_GET['f_branch']) : 'all';
 if ($fBranchSel === '') {
@@ -501,8 +541,8 @@ if ($statusIsFollowUpForFilter) {
         $listFilterParams['f_fu_date'] = $fFuDateSel;
     }
 }
-if ($fCampaignSel !== 'all') {
-    $listFilterParams['f_campaign'] = $fCampaignSel;
+if ($fSourceSel !== 'all') {
+    $listFilterParams['f_source'] = $fSourceSel;
 }
 if ($fBranchSel !== 'all') {
     $listFilterParams['f_branch'] = $fBranchSel;
@@ -532,6 +572,9 @@ $leadsSummaryOpen = isset($_GET['summary_open']);
 if ($summaryYear !== $summaryCurYear || $summaryMonth !== $summaryCurMonth) {
     $listFilterParams['summary_y'] = $summaryYear;
     $listFilterParams['summary_m'] = $summaryMonth;
+}
+if ($summarySourceSel !== 'all') {
+    $listFilterParams['summary_source'] = $summarySourceSel;
 }
 if ($leadsSummaryOpen) {
     $listFilterParams['summary_open'] = '1';
@@ -669,7 +712,8 @@ try {
     $qCreated = leads_ml_qualify_ml($map, ['Created_Datetime', 'created_datetime', 'DateTime']);
     $qFollowupCol = leads_ml_qualify_ml($map, ['followup_datetime', 'Followup_Datetime']);
     $qCampaignCol = leads_ml_qualify_ml($map, ['Campaiign', 'Campaign', 'campaign']);
-    $campaignFilterColumnAvailable = ($qCampaignCol !== null);
+    $qSourceCol = leads_ml_qualify_ml($map, ['sourceName', 'SourceName']);
+    $sourceFilterAvailable = ($qSourceCol !== null || $qCampaignCol !== null);
 
     foreach (['id' => $qId, 'lead_name' => $qLeadName, 'lead_phone_number' => $qPhone, 'status' => $qStatus] as $needKey => $q) {
         if ($q === null) {
@@ -693,12 +737,22 @@ try {
             $listFilterBind['list_fu_b'] = $fuBounds[1];
         }
     }
-    if ($fCampaignSel !== 'all' && $qCampaignCol !== null) {
-        $dbCampFilter = $leadsCampaignFilterDbValue[$fCampaignSel] ?? '';
-        if ($dbCampFilter !== '') {
-            $listFilterSql .= ' AND TRIM(IFNULL(' . $qCampaignCol . ', \'\')) = :list_f_campaign';
-            $listFilterBind['list_f_campaign'] = $dbCampFilter;
+    if ($fSourceSel === 'organic') {
+        $organicParts = [];
+        if ($qSourceCol !== null) {
+            $organicParts[] = 'LOWER(TRIM(IFNULL(' . $qSourceCol . ', \'\'))) = :list_f_source_organic';
+            $listFilterBind['list_f_source_organic'] = 'organic';
         }
+        if ($qCampaignCol !== null) {
+            $organicParts[] = 'LOWER(TRIM(IFNULL(' . $qCampaignCol . ', \'\'))) = :list_f_source_organic_camp';
+            $listFilterBind['list_f_source_organic_camp'] = 'organic';
+        }
+        if ($organicParts !== []) {
+            $listFilterSql .= ' AND (' . implode(' OR ', $organicParts) . ')';
+        }
+    } elseif ($fSourceSel === 'insta_fb' && $qSourceCol !== null) {
+        $listFilterSql .= ' AND LOWER(TRIM(IFNULL(' . $qSourceCol . ', \'\'))) = :list_f_source_insta';
+        $listFilterBind['list_f_source_insta'] = 'insta-fb';
     }
 
     $leadsConvertedStatusBindId = -1;
@@ -725,6 +779,23 @@ try {
         $summaryFilterSql .= ' AND ' . $qCreated . ' >= :summ_created_a AND ' . $qCreated . ' <= :summ_created_b';
         $summaryFilterBind['summ_created_a'] = $summaryMonthBounds[0];
         $summaryFilterBind['summ_created_b'] = $summaryMonthBounds[1];
+    }
+    if ($summarySourceSel === 'organic') {
+        $summOrganicParts = [];
+        if ($qSourceCol !== null) {
+            $summOrganicParts[] = 'LOWER(TRIM(IFNULL(' . $qSourceCol . ', \'\'))) = :summ_f_source_organic';
+            $summaryFilterBind['summ_f_source_organic'] = 'organic';
+        }
+        if ($qCampaignCol !== null) {
+            $summOrganicParts[] = 'LOWER(TRIM(IFNULL(' . $qCampaignCol . ', \'\'))) = :summ_f_source_organic_camp';
+            $summaryFilterBind['summ_f_source_organic_camp'] = 'organic';
+        }
+        if ($summOrganicParts !== []) {
+            $summaryFilterSql .= ' AND (' . implode(' OR ', $summOrganicParts) . ')';
+        }
+    } elseif ($summarySourceSel === 'insta_fb' && $qSourceCol !== null) {
+        $summaryFilterSql .= ' AND LOWER(TRIM(IFNULL(' . $qSourceCol . ', \'\'))) = :summ_f_source_insta';
+        $summaryFilterBind['summ_f_source_insta'] = 'insta-fb';
     }
 
     if (($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $qMlBranchId !== null && $detailId <= 0) {
@@ -883,6 +954,8 @@ try {
         $listSel[] = ($qCreated !== null ? $qCreated . ' AS Created_Datetime' : 'NULL AS Created_Datetime');
         $listSel[] = ($qBranchName !== null ? $qBranchName . ' AS branch_name' : 'NULL AS branch_name');
         $listSel[] = $qStatus . ' AS status';
+        $listSel[] = ($qSourceCol !== null ? $qSourceCol . ' AS sourceName' : 'NULL AS sourceName');
+        $listSel[] = ($qCampaignCol !== null ? $qCampaignCol . ' AS Campaiign' : 'NULL AS Campaiign');
 
         $dataSql = 'SELECT ' . implode(', ', $listSel) . '
                     FROM ' . META_LEADS_TABLE_SQL . ' ml' . $baseWhereMl . $listFilterSql . '
@@ -893,14 +966,26 @@ try {
         $rows = $dataStmt->fetchAll();
         foreach ($rows as $ir => $lr) {
             $rsid = (int) ($lr['status'] ?? 0);
-            $rows[$ir]['status_label'] = $statusIdToLabel[$rsid] ?? ($rsid > 0 ? 'Status #' . $rsid : '—');
+            $statusLabel = $statusIdToLabel[$rsid] ?? ($rsid > 0 ? 'Status #' . $rsid : '—');
+            $rows[$ir]['status_label'] = $statusLabel;
             $rows[$ir]['status_key'] = $statusIdToKey[$rsid] ?? '';
+            $rows[$ir]['status_with_source'] = leads_status_with_source(
+                $statusLabel,
+                isset($lr['sourceName']) ? (string) $lr['sourceName'] : null,
+                isset($lr['Campaiign']) ? (string) $lr['Campaiign'] : null
+            );
         }
     }
 } catch (Throwable $e) {
     error_log('AllureOne leads page failed: ' . $e->getMessage() . ' [' . $e->getCode() . ']');
     $loadError = 'Could not load leads data.';
 }
+}
+
+if ($listPage > 1) {
+    $listFilterParams['page'] = $listPage;
+} else {
+    unset($listFilterParams['page']);
 }
 
 $pageTitle = 'Leads';
@@ -931,8 +1016,8 @@ require __DIR__ . '/includes/layout_start.php';
             <?php if ($fBranchSel !== 'all'): ?>
                 <input type="hidden" name="f_branch" value="<?= e($fBranchSel) ?>">
             <?php endif; ?>
-            <?php if ($fCampaignSel !== 'all'): ?>
-                <input type="hidden" name="f_campaign" value="<?= e($fCampaignSel) ?>">
+            <?php if ($fSourceSel !== 'all'): ?>
+                <input type="hidden" name="f_source" value="<?= e($fSourceSel) ?>">
             <?php endif; ?>
             <?php if ($statusIsFollowUpForFilter): ?>
                 <input type="hidden" name="f_fu" value="<?= e($fFuSel) ?>">
@@ -956,10 +1041,21 @@ require __DIR__ . '/includes/layout_start.php';
                     <?php endfor; ?>
                 </select>
             </div>
+            <?php if ($sourceFilterAvailable): ?>
+            <div class="form__row">
+                <label for="summary_source">Source</label>
+                <select id="summary_source" name="summary_source">
+                    <option value="all"<?= $summarySourceSel === 'all' ? ' selected' : '' ?>>All</option>
+                    <?php foreach ($leadsSourceFilterOptions as $srcSlug => $srcLabel): ?>
+                    <option value="<?= e($srcSlug) ?>"<?= $summarySourceSel === $srcSlug ? ' selected' : '' ?>><?= e($srcLabel) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
             <button type="submit" class="btn btn--primary">Apply</button>
         </form>
         <?php if ($leadsBranchSummary === []): ?>
-            <p class="empty" style="margin:0">No leads for <?= e($summaryMonthLabel) ?>.</p>
+            <p class="empty" style="margin:0">No leads for <?= e($summaryMonthLabel) ?><?= $summarySourceSel !== 'all' ? ' (' . e($leadsSourceFilterOptions[$summarySourceSel] ?? $summarySourceSel) . ')' : '' ?>.</p>
         <?php else: ?>
         <div class="table-wrap">
             <table class="data leads-summary-table">
@@ -1080,7 +1176,7 @@ require __DIR__ . '/includes/layout_start.php';
                             <tr><th>Lead Date</th><td><?= e(leads_format_datetime_ist_full((string) ($detailRow['Created_Datetime'] ?? ''))) ?></td></tr>
                         </tbody>
                     </table>
-                    <form method="post" action="leads.php?id=<?= (int) ($detailRow['id'] ?? 0) ?>" style="margin-top:0.9rem">
+                    <form method="post" action="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['id' => (int) ($detailRow['id'] ?? 0)]))) ?>" style="margin-top:0.9rem">
                         <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="lead_id" value="<?= (int) ($detailRow['id'] ?? 0) ?>">
                         <div class="form__row" style="margin-bottom:0.75rem">
@@ -1170,9 +1266,17 @@ require __DIR__ . '/includes/layout_start.php';
                     <input type="hidden" name="summary_open" value="1">
                     <input type="hidden" name="summary_y" value="<?= (int) $summaryYear ?>">
                     <input type="hidden" name="summary_m" value="<?= (int) $summaryMonth ?>">
-                <?php elseif ($summaryYear !== $summaryCurYear || $summaryMonth !== $summaryCurMonth): ?>
-                    <input type="hidden" name="summary_y" value="<?= (int) $summaryYear ?>">
-                    <input type="hidden" name="summary_m" value="<?= (int) $summaryMonth ?>">
+                    <?php if ($summarySourceSel !== 'all'): ?>
+                        <input type="hidden" name="summary_source" value="<?= e($summarySourceSel) ?>">
+                    <?php endif; ?>
+                <?php elseif ($summaryYear !== $summaryCurYear || $summaryMonth !== $summaryCurMonth || $summarySourceSel !== 'all'): ?>
+                    <?php if ($summaryYear !== $summaryCurYear || $summaryMonth !== $summaryCurMonth): ?>
+                        <input type="hidden" name="summary_y" value="<?= (int) $summaryYear ?>">
+                        <input type="hidden" name="summary_m" value="<?= (int) $summaryMonth ?>">
+                    <?php endif; ?>
+                    <?php if ($summarySourceSel !== 'all'): ?>
+                        <input type="hidden" name="summary_source" value="<?= e($summarySourceSel) ?>">
+                    <?php endif; ?>
                 <?php endif; ?>
                 <?php if (($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $branchFilterOptions !== []): ?>
                 <div class="form__row">
@@ -1194,13 +1298,13 @@ require __DIR__ . '/includes/layout_start.php';
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <?php if ($campaignFilterColumnAvailable): ?>
+                <?php if ($sourceFilterAvailable): ?>
                 <div class="form__row">
-                    <label for="f_campaign">Campaign</label>
-                    <select id="f_campaign" name="f_campaign">
-                        <option value="all"<?= $fCampaignSel === 'all' ? ' selected' : '' ?>>All</option>
-                        <?php foreach ($leadsCampaignFilterDbValue as $campSlug => $campLabel): ?>
-                        <option value="<?= e($campSlug) ?>"<?= $fCampaignSel === $campSlug ? ' selected' : '' ?>><?= e($campLabel) ?></option>
+                    <label for="f_source">Source</label>
+                    <select id="f_source" name="f_source">
+                        <option value="all"<?= $fSourceSel === 'all' ? ' selected' : '' ?>>All</option>
+                        <?php foreach ($leadsSourceFilterOptions as $srcSlug => $srcLabel): ?>
+                        <option value="<?= e($srcSlug) ?>"<?= $fSourceSel === $srcSlug ? ' selected' : '' ?>><?= e($srcLabel) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -1304,7 +1408,7 @@ require __DIR__ . '/includes/layout_start.php';
                                         <?php endif; ?>
                                     </td>
                                     <?php $rowStatusKey = strtolower(trim((string) ($row['status_key'] ?? ''))); ?>
-                                    <td class="lead-list-col lead-list-col--status<?= $rowStatusKey === 'converted' ? ' lead-status--converted' : '' ?>" data-label="Status"><?= e((string) ($row['status_label'] ?? '—')) ?></td>
+                                    <td class="lead-list-col lead-list-col--status<?= $rowStatusKey === 'converted' ? ' lead-status--converted' : '' ?>" data-label="Status"><?= e((string) ($row['status_with_source'] ?? $row['status_label'] ?? '—')) ?></td>
                                     <td class="lead-list-col lead-list-col--date" data-label="Date">
                                         <span class="lead-list-date lead-list-date--full"><?= e(leads_format_date_ist_dm((string) ($row['Created_Datetime'] ?? ''))) ?></span>
                                         <span class="lead-list-date lead-list-date--short"><?= e(leads_format_date_ist_dd_mmm((string) ($row['Created_Datetime'] ?? ''))) ?></span>

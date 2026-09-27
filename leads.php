@@ -555,6 +555,27 @@ try {
 }
 $summaryCurYear = (int) $summaryNowIst->format('Y');
 $summaryCurMonth = (int) $summaryNowIst->format('n');
+$summaryMonthNames = [
+    1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April', 5 => 'May', 6 => 'June',
+    7 => 'July', 8 => 'August', 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December',
+];
+
+/** List month filter: 'all' = no month filter; future months resolve to previous year. */
+$fMonthRaw = isset($_GET['f_month']) ? trim((string) $_GET['f_month']) : (string) $summaryCurMonth;
+$fMonthIsAll = ($fMonthRaw === 'all' || $fMonthRaw === '');
+$fMonthSel = $fMonthIsAll ? 0 : (int) $fMonthRaw;
+if (!$fMonthIsAll && ($fMonthSel < 1 || $fMonthSel > 12)) {
+    $fMonthSel = $summaryCurMonth;
+    $fMonthIsAll = false;
+}
+$listMonthYear = 0;
+$listMonthLabel = 'all months';
+if (!$fMonthIsAll) {
+    $listMonthYear = ($fMonthSel > $summaryCurMonth) ? ($summaryCurYear - 1) : $summaryCurYear;
+    $listMonthLabel = strtolower($summaryMonthNames[$fMonthSel] ?? 'month') . ' ' . $listMonthYear;
+}
+$listFilterParams['f_month'] = $fMonthIsAll ? 'all' : $fMonthSel;
+
 $summaryYear = isset($_GET['summary_y']) ? (int) $_GET['summary_y'] : $summaryCurYear;
 $summaryMonth = isset($_GET['summary_m']) ? (int) $_GET['summary_m'] : $summaryCurMonth;
 if ($summaryYear < 2000 || $summaryYear > 2100) {
@@ -563,10 +584,6 @@ if ($summaryYear < 2000 || $summaryYear > 2100) {
 if ($summaryMonth < 1 || $summaryMonth > 12) {
     $summaryMonth = $summaryCurMonth;
 }
-$summaryMonthNames = [
-    1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April', 5 => 'May', 6 => 'June',
-    7 => 'July', 8 => 'August', 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December',
-];
 $summaryMonthLabel = ($summaryMonthNames[$summaryMonth] ?? 'Month') . ' ' . $summaryYear;
 $leadsSummaryOpen = isset($_GET['summary_open']);
 if ($summaryYear !== $summaryCurYear || $summaryMonth !== $summaryCurMonth) {
@@ -753,6 +770,15 @@ try {
     } elseif ($fSourceSel === 'insta_fb' && $qSourceCol !== null) {
         $listFilterSql .= ' AND LOWER(TRIM(IFNULL(' . $qSourceCol . ', \'\'))) = :list_f_source_insta';
         $listFilterBind['list_f_source_insta'] = 'insta-fb';
+    }
+
+    if (!$fMonthIsAll) {
+        $listMonthBounds = leads_created_month_boundaries_utc($listMonthYear, $fMonthSel);
+        if ($listMonthBounds !== null && $qCreated !== null) {
+            $listFilterSql .= ' AND ' . $qCreated . ' >= :list_f_month_a AND ' . $qCreated . ' <= :list_f_month_b';
+            $listFilterBind['list_f_month_a'] = $listMonthBounds[0];
+            $listFilterBind['list_f_month_b'] = $listMonthBounds[1];
+        }
     }
 
     $leadsConvertedStatusBindId = -1;
@@ -1019,6 +1045,7 @@ require __DIR__ . '/includes/layout_start.php';
             <?php if ($fSourceSel !== 'all'): ?>
                 <input type="hidden" name="f_source" value="<?= e($fSourceSel) ?>">
             <?php endif; ?>
+            <input type="hidden" name="f_month" value="<?= e($fMonthIsAll ? 'all' : (string) $fMonthSel) ?>">
             <?php if ($statusIsFollowUpForFilter): ?>
                 <input type="hidden" name="f_fu" value="<?= e($fFuSel) ?>">
                 <?php if ($fFuSel === 'custom' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fFuDateSel) === 1): ?>
@@ -1309,6 +1336,17 @@ require __DIR__ . '/includes/layout_start.php';
                     </select>
                 </div>
                 <?php endif; ?>
+                <div class="form__row form__row--month">
+                    <label for="f_month">Month</label>
+                    <select id="f_month" name="f_month"
+                            data-cur-month="<?= (int) $summaryCurMonth ?>"
+                            data-cur-year="<?= (int) $summaryCurYear ?>">
+                        <option value="all"<?= $fMonthIsAll ? ' selected' : '' ?>>All</option>
+                        <?php foreach ($summaryMonthNames as $mi => $label): ?>
+                            <option value="<?= $mi ?>"<?= !$fMonthIsAll && $fMonthSel === $mi ? ' selected' : '' ?>><?= e($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
                 <?php if ($followUpFilterStatusId !== null && $followUpFilterStatusId > 0): ?>
                 <div id="leads_filter_fu_wrap" class="leads-filter-fu-inner" style="display:<?= $statusIsFollowUpForFilter ? 'flex' : 'none' ?>;" data-follow-up-status-id="<?= (int) $followUpFilterStatusId ?>">
                     <div class="form__row">
@@ -1329,6 +1367,7 @@ require __DIR__ . '/includes/layout_start.php';
                 </div>
                 <?php endif; ?>
                 <button type="submit" class="btn btn--primary">Apply</button>
+                <span id="leads_month_hint" class="leads-month-hint" style="font-size:.9rem;color:var(--muted, #64748b);align-self:center">showing data of <?= e($listMonthLabel) ?></span>
             </form>
             <script>
             (function () {
@@ -1336,6 +1375,24 @@ require __DIR__ . '/includes/layout_start.php';
                 var wrapCustom = document.getElementById('leads_fu_custom_wrap');
                 var fuRow = document.getElementById('leads_filter_fu_wrap');
                 var st = document.getElementById('f_status');
+                var monthEl = document.getElementById('f_month');
+                var monthHint = document.getElementById('leads_month_hint');
+                var monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+
+                function updateMonthHint() {
+                    if (!monthEl || !monthHint) return;
+                    var raw = String(monthEl.value || '');
+                    if (raw === 'all') {
+                        monthHint.textContent = 'showing data of all months';
+                        return;
+                    }
+                    var m = parseInt(raw, 10);
+                    var curM = parseInt(String(monthEl.getAttribute('data-cur-month') || '0'), 10);
+                    var curY = parseInt(String(monthEl.getAttribute('data-cur-year') || '0'), 10);
+                    if (!(m >= 1 && m <= 12) || !(curM >= 1 && curM <= 12) || !(curY > 0)) return;
+                    var y = m > curM ? (curY - 1) : curY;
+                    monthHint.textContent = 'showing data of ' + monthNames[m - 1] + ' ' + y;
+                }
 
                 function toggleCustom() {
                     if (!fu || !wrapCustom) return;
@@ -1368,6 +1425,10 @@ require __DIR__ . '/includes/layout_start.php';
                 if (st && fuRow) {
                     st.addEventListener('change', syncFuRow);
                     syncFuRow();
+                }
+                if (monthEl) {
+                    monthEl.addEventListener('change', updateMonthHint);
+                    updateMonthHint();
                 }
             })();
             </script>

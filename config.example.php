@@ -45,7 +45,7 @@ return [
         'filter_gift_cards_by_branch_locality' => false,
         /** Secret for wp-giftcard-cron.php when invoked via HTTP (Hostinger cron wget/curl). CLI runs do not require this. */
         'giftcard_cron_key' => '',
-        /** Secret for POST leads_api.php — header X-Leads-Api-Key (external lead engines). */
+        /** Secret for POST leads_api.php / GET check_membership_api.php — header X-Leads-Api-Key (external engines). */
         'leads_api_key' => '',
         /** Timezone for gift card sale window in wp-giftcard-cron.php */
         'giftcard_cron_timezone' => 'Asia/Kolkata',

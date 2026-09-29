@@ -4,8 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 require_crm_segments_access();
 $user = current_user();
-$roleId = (int) ($user['role_id'] ?? 0);
-$isSuperadmin = ($roleId === ROLE_SUPERADMIN);
+$canImportSegments = can_access_crm_segments($user);
 
 /** @var list<array<string,mixed>> */
 $branches = [];
@@ -365,7 +364,7 @@ require __DIR__ . '/includes/layout_start.php';
                                     <?php foreach ($segmentList as $seg): ?>
                                         <tr data-segment-id="<?= (int) ($seg['id'] ?? 0) ?>">
                                             <td>
-                                                <?php if ($isSuperadmin): ?>
+                                                <?php if ($canImportSegments): ?>
                                                     <a class="link--underlined" href="crmsetup.php?<?= e(http_build_query(['branch' => (int) ($selectedBranch['id'] ?? 0), 'segment' => (int) ($seg['id'] ?? 0), 'page' => 1])) ?>">
                                                         <?= e((string) ($seg['name'] ?? '')) ?>
                                                     </a>
@@ -382,7 +381,7 @@ require __DIR__ . '/includes/layout_start.php';
                     <?php endif; ?>
                 <?php endif; ?>
 
-                <?php if ($selectedSegmentId > 0): ?>
+                <?php if ($selectedSegmentId > 0 && $canImportSegments): ?>
                     <p style="margin:0 0 0.65rem">
                         <a class="btn btn--ghost" href="crmsetup.php?<?= e(http_build_query(['branch' => (int) ($selectedBranch['id'] ?? 0)])) ?>">Back to Segments List</a>
                     </p>

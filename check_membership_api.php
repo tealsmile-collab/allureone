@@ -4,13 +4,18 @@ declare(strict_types=1);
 /**
  * CheckMembership API — package / membership balance for a client mobile.
  *
- * GET check_membership_api.php?clientMobileNumber=98XXXXXXXX[&branch_id=3000]
+ * POST check_membership_api.php
  * Header: X-Leads-Api-Key: <secret>  (or Authorization: Bearer <secret>)
+ *         Content-Type: application/json
  * Config: app.leads_api_key in config.php (same key as leads_api.php)
+ *
+ * JSON body:
+ *   mobile (required)
+ *   branchid (optional) — also accepts branch_id / branchID
  *
  * Flow:
  *  1) Find customer via Dingg vendor/customer_list (branch session).
- *  2) If branch_id omitted, try each active Dingg branch until found.
+ *  2) If branchid omitted, try each active Dingg branch until found.
  *  3) Fetch packages via vendor/customer/other?type=packages.
  *  4) Return active membership balance text(s).
  */
@@ -255,7 +260,7 @@ function cm_format_hours(float $hours): string
  * @param list<array<string,mixed>> $packages
  * @return list<string>
  */
-function cm_membership_texts(array $packages, string $clientName): array
+function cm_membership_texts(array $packages): array
 {
     $lines = [];
     foreach ($packages as $pkg) {
@@ -285,8 +290,7 @@ function cm_membership_texts(array $packages, string $clientName): array
         if ($locality === '') {
             $locality = trim((string) ($loc['business_name'] ?? 'branch'));
         }
-        $lines[] = $clientName
-            . ' - Membership in '
+        $lines[] = 'Membership in '
             . $locality
             . ' - '
             . cm_format_hours($usedHours)
@@ -307,8 +311,8 @@ function cm_json_out(int $http, array $payload): void
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-    cm_json_out(405, ['ok' => false, 'error' => 'Method not allowed. Use GET.']);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    cm_json_out(405, ['ok' => false, 'error' => 'Method not allowed. Use POST.']);
 }
 
 $expectedKey = cm_api_expected_key();
@@ -324,13 +328,19 @@ if ($providedKey === '' || !hash_equals($expectedKey, $providedKey)) {
     cm_json_out(401, ['ok' => false, 'error' => 'Invalid or missing API key. Send header X-Leads-Api-Key.']);
 }
 
-$mobileRaw = trim((string) ($_GET['clientMobileNumber'] ?? $_GET['client_mobile_number'] ?? $_GET['mobile'] ?? ''));
-$branchRaw = trim((string) ($_GET['branch_id'] ?? $_GET['branchID'] ?? $_GET['branchId'] ?? ''));
+$raw = file_get_contents('php://input');
+$json = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+if (!is_array($json)) {
+    cm_json_out(400, ['ok' => false, 'error' => 'Invalid JSON body.']);
+}
+
+$mobileRaw = trim((string) ($json['mobile'] ?? $json['clientMobileNumber'] ?? $json['client_mobile_number'] ?? ''));
+$branchRaw = trim((string) ($json['branchid'] ?? $json['branch_id'] ?? $json['branchID'] ?? $json['branchId'] ?? ''));
 $branchIdFilter = $branchRaw !== '' ? (int) $branchRaw : 0;
 
 $mobile = cm_normalize_phone($mobileRaw);
 if ($mobile === '' || (strlen($mobile) !== 12 && strlen($mobile) !== 10)) {
-    cm_json_out(400, ['ok' => false, 'error' => 'clientMobileNumber is required (10-digit or 91XXXXXXXXXX).']);
+    cm_json_out(400, ['ok' => false, 'error' => 'mobile is required (10-digit or 91XXXXXXXXXX).']);
 }
 if (strlen($mobile) === 10) {
     $mobile = '91' . $mobile;
@@ -359,54 +369,32 @@ foreach ($branches as $branch) {
 }
 
 if ($found === null || $foundBranch === null) {
-    cm_json_out(404, [
-        'ok' => false,
-        'error' => 'Customer not found for this mobile number.',
-        'clientMobileNumber' => $mobile,
+    cm_json_out(200, [
+        'ok' => true,
+        'message' => 'No details found',
     ]);
 }
 
 $userId = (int) ($found['user_id'] ?? 0);
 $historyId = (int) ($found['history_id'] ?? 0);
-$clientName = (string) ($found['client_name'] ?? 'Client');
 $pkgRes = cm_fetch_packages((string) $foundBranch['session_key'], $userId, $historyId);
 if (!($pkgRes['ok'] ?? false)) {
-    cm_json_out(502, [
-        'ok' => false,
-        'error' => (string) ($pkgRes['error'] ?? 'Could not load membership packages.'),
-        'user_id' => $userId,
-        'history_id' => $historyId,
-        'client_name' => $clientName,
-        'branch_id' => (int) $foundBranch['id'],
+    cm_json_out(200, [
+        'ok' => true,
+        'message' => 'No details found',
     ]);
 }
 
 $packages = is_array($pkgRes['packages'] ?? null) ? $pkgRes['packages'] : [];
-$memberships = cm_membership_texts($packages, $clientName);
-$expiredCount = 0;
-foreach ($packages as $pkg) {
-    if (!is_array($pkg)) {
-        continue;
-    }
-    if ((float) ($pkg['currentValue'] ?? 0) <= 0) {
-        $expiredCount++;
-    }
+$memberships = cm_membership_texts($packages);
+if ($memberships === []) {
+    cm_json_out(200, [
+        'ok' => true,
+        'message' => 'No details found',
+    ]);
 }
 
 cm_json_out(200, [
     'ok' => true,
-    'client_name' => $clientName,
-    'clientMobileNumber' => $mobile,
-    'user_id' => $userId,
-    'history_id' => $historyId,
-    'branch_id' => (int) $foundBranch['id'],
-    'branch_name' => (string) ($foundBranch['business_name'] ?? ''),
-    'locality' => (string) ($foundBranch['locality'] ?? ''),
-    'memberships' => $memberships,
-    'membership_text' => $memberships !== [] ? implode("\n", $memberships) : '',
-    'has_active_membership' => $memberships !== [],
-    'expired_package_count' => $expiredCount,
-    'message' => $memberships !== []
-        ? 'Active membership found.'
-        : ($expiredCount > 0 ? 'Customer found; membership expired or no balance.' : 'Customer found; no packages.'),
+    'message' => implode("\n", $memberships),
 ]);

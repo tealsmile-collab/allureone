@@ -778,3 +778,90 @@ function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 
         return $empty;
     }
 }
+
+/**
+ * All local employees assigned to a branch (for attendance swipes).
+ *
+ * @return list<array{employeeId:int,name:string}>
+ */
+function allurehr_employees_by_branch(int $branchId): array
+{
+    allurehr_ensure_employee_table();
+    if ($branchId <= 0) {
+        return [];
+    }
+    try {
+        $st = db()->prepare(
+            'SELECT employeeId, name
+             FROM allurehr_employee
+             WHERE BranchID = :branch
+             ORDER BY name ASC, employeeId ASC'
+        );
+        $st->execute(['branch' => $branchId]);
+        $out = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $id = (int) ($row['employeeId'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $out[] = [
+                'employeeId' => $id,
+                'name' => trim((string) ($row['name'] ?? '')),
+            ];
+        }
+
+        return $out;
+    } catch (Throwable $e) {
+        error_log('AllureOne allurehr employees by branch: ' . $e->getMessage());
+
+        return [];
+    }
+}
+
+/**
+ * All local employees with branch locality (for admin/superadmin today attendance).
+ * Only rows with BranchID set are included.
+ *
+ * @return list<array{employeeId:int,name:string,branch_id:int,locality:string}>
+ */
+function allurehr_employees_all_with_locality(): array
+{
+    allurehr_ensure_employee_table();
+    try {
+        $st = db()->query(
+            'SELECT e.employeeId, e.name, e.BranchID,
+                    TRIM(IFNULL(b.locality, \'\')) AS locality,
+                    TRIM(IFNULL(b.business_name, \'\')) AS business_name
+             FROM allurehr_employee e
+             LEFT JOIN allureone_branch b ON b.id = e.BranchID
+             WHERE e.BranchID IS NOT NULL AND e.BranchID > 0
+             ORDER BY locality ASC, e.name ASC, e.employeeId ASC'
+        );
+        $out = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $id = (int) ($row['employeeId'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $locality = trim((string) ($row['locality'] ?? ''));
+            if ($locality === '') {
+                $locality = trim((string) ($row['business_name'] ?? ''));
+            }
+            if ($locality === '') {
+                $locality = 'Branch #' . (int) ($row['BranchID'] ?? 0);
+            }
+            $out[] = [
+                'employeeId' => $id,
+                'name' => trim((string) ($row['name'] ?? '')),
+                'branch_id' => (int) ($row['BranchID'] ?? 0),
+                'locality' => $locality,
+            ];
+        }
+
+        return $out;
+    } catch (Throwable $e) {
+        error_log('AllureOne allurehr employees all with locality: ' . $e->getMessage());
+
+        return [];
+    }
+}

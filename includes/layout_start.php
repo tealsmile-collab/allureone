@@ -17,6 +17,7 @@ $canMetaConfig = can_access_meta_config($user);
 $canGoogleAdsView = can_access_google_ads_view($user);
 $canCrmSegments = can_access_crm_segments($user);
 $canHr = can_access_hr($user);
+$canHrAttendance = can_access_hr_attendance($user);
 $homeHref = allureone_home_path_for_user($user);
 $appCssPath = __DIR__ . '/../assets/css/app.css';
 $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
@@ -108,10 +109,14 @@ $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
             <?php if ($user && !$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole && (((int) ($user['role_id'] ?? 0) === ROLE_SUPERADMIN) || ((int) ($user['role_id'] ?? 0) === ROLE_ADMIN))): ?>
                 <a class="sidebar__link<?= ($activeNav === 'announcements') ? ' is-active' : '' ?>" href="Announcement.php">Announcements</a>
             <?php endif; ?>
-            <?php if ($canHr): ?>
+            <?php if ($canHrAttendance || $canHr): ?>
                 <p class="sidebar__section-title" style="color:#ffffff !important">HR</p>
+                <?php if ($canHrAttendance): ?>
                 <a class="sidebar__link<?= ($activeNav === 'hr_attendance') ? ' is-active' : '' ?>" href="hr_attendance.php">Attendance</a>
+                <?php endif; ?>
+                <?php if ($canHr): ?>
                 <a class="sidebar__link<?= ($activeNav === 'hr_employees') ? ' is-active' : '' ?>" href="hr_employees.php">Employee List</a>
+                <?php endif; ?>
             <?php endif; ?>
             <a class="sidebar__link" href="logout.php">Logout</a>
             <?php if ($user && trim((string) ($user['full_name'] ?? '')) !== ''): ?>

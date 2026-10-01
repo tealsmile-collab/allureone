@@ -142,12 +142,28 @@ function can_access_hr(?array $user = null): bool
     return $roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN;
 }
 
+/** Attendance page/menu — available to every logged-in user. */
+function can_access_hr_attendance(?array $user = null): bool
+{
+    return is_array($user ?? current_user());
+}
+
 function require_hr_access(): void
 {
     require_login();
     if (!can_access_hr()) {
         http_response_code(403);
         echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied. HR is available to Admin and Superadmin only.</p><p><a href="' . htmlspecialchars(allureone_home_path_for_user(), ENT_QUOTES, 'UTF-8') . '">Home</a></p></body></html>';
+        exit;
+    }
+}
+
+function require_hr_attendance_access(): void
+{
+    require_login();
+    if (!can_access_hr_attendance()) {
+        http_response_code(403);
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied.</p><p><a href="' . htmlspecialchars(allureone_home_path_for_user(), ENT_QUOTES, 'UTF-8') . '">Home</a></p></body></html>';
         exit;
     }
 }

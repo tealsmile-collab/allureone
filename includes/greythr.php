@@ -643,10 +643,227 @@ function greythr_insight_average(array $insights, string $type): string
     return '';
 }
 
+/**
+ * Employee attendance swipes for a date range.
+ *
+ * @return array{ok:bool,list:list<array<string,mixed>>,error?:string}
+ */
+function greythr_employee_swipes(int $employeeId, string $startYmd, string $endYmd, bool $systemSwipes = true): array
+{
+    $batch = greythr_employee_swipes_batch([$employeeId], $startYmd, $endYmd, $systemSwipes, 1);
+
+    return $batch[$employeeId] ?? ['ok' => false, 'list' => [], 'error' => 'Swipe request failed.'];
+}
+
+/**
+ * Fetch swipes for many employees in parallel (curl_multi) to avoid page timeouts.
+ *
+ * @param list<int> $employeeIds
+ * @return array<int, array{ok:bool,list:list<array<string,mixed>>,error?:string}>
+ */
+function greythr_employee_swipes_batch(array $employeeIds, string $startYmd, string $endYmd, bool $systemSwipes = true, int $concurrency = 8): array
+{
+    $out = [];
+    $ids = [];
+    foreach ($employeeIds as $rawId) {
+        $id = (int) $rawId;
+        if ($id > 0) {
+            $ids[$id] = true;
+        }
+    }
+    $ids = array_keys($ids);
+    if ($ids === []) {
+        return [];
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $startYmd) !== 1 || preg_match('/^\d{4}-\d{2}-\d{2}$/', $endYmd) !== 1) {
+        foreach ($ids as $id) {
+            $out[$id] = ['ok' => false, 'list' => [], 'error' => 'Invalid start/end date.'];
+        }
+
+        return $out;
+    }
+
+    $tokenRes = greythr_get_access_token(false);
+    if (!($tokenRes['ok'] ?? false)) {
+        $err = (string) ($tokenRes['error'] ?? 'Missing greytHR token.');
+        foreach ($ids as $id) {
+            $out[$id] = ['ok' => false, 'list' => [], 'error' => $err];
+        }
+
+        return $out;
+    }
+    $token = (string) ($tokenRes['token'] ?? '');
+    $domain = greythr_domain();
+    $base = greythr_base_url();
+    $sslVerify = greythr_ssl_verify();
+    $concurrency = max(1, min(15, $concurrency));
+    $query = http_build_query(
+        [
+            'start' => $startYmd,
+            'end' => $endYmd,
+            'systemSwipes' => $systemSwipes ? 'true' : 'false',
+        ],
+        '',
+        '&',
+        PHP_QUERY_RFC3986
+    );
+
+    $chunks = array_chunk($ids, $concurrency);
+    foreach ($chunks as $chunk) {
+        $mh = curl_multi_init();
+        if ($mh === false) {
+            foreach ($chunk as $id) {
+                $out[$id] = ['ok' => false, 'list' => [], 'error' => 'curl_multi_init failed'];
+            }
+            continue;
+        }
+        /** @var array<int, \CurlHandle|resource> $handles */
+        $handles = [];
+        foreach ($chunk as $id) {
+            $url = $base . '/attendance/v2/employee/' . $id . '/swipes?' . $query;
+            $ch = curl_init($url);
+            if ($ch === false) {
+                $out[$id] = ['ok' => false, 'list' => [], 'error' => 'curl_init failed'];
+                continue;
+            }
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPGET => true,
+                CURLOPT_HTTPHEADER => [
+                    'Accept: application/json',
+                    'ACCESS-TOKEN: ' . $token,
+                    'x-greythr-domain: ' . $domain,
+                ],
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_SSL_VERIFYPEER => $sslVerify,
+                CURLOPT_SSL_VERIFYHOST => $sslVerify ? 2 : 0,
+            ]);
+            curl_multi_add_handle($mh, $ch);
+            $handles[$id] = $ch;
+        }
+
+        $running = null;
+        do {
+            $mrc = curl_multi_exec($mh, $running);
+            if ($running > 0) {
+                curl_multi_select($mh, 1.0);
+            }
+        } while ($running > 0 && $mrc === CURLM_OK);
+
+        $needRetry = [];
+        foreach ($handles as $id => $ch) {
+            $body = (string) curl_multi_getcontent($ch);
+            $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err = (string) curl_error($ch);
+            curl_multi_remove_handle($mh, $ch);
+            if (PHP_VERSION_ID < 80500) {
+                curl_close($ch);
+            }
+            if ($err !== '') {
+                $out[$id] = ['ok' => false, 'list' => [], 'error' => $err];
+                continue;
+            }
+            if ($http === 401 || $http === 403) {
+                $needRetry[] = $id;
+                continue;
+            }
+            $json = json_decode($body, true);
+            $list = is_array($json) ? ($json['list'] ?? ($json['data'] ?? [])) : [];
+            if (!is_array($list)) {
+                $list = [];
+            }
+            $out[$id] = [
+                'ok' => $http >= 200 && $http < 300,
+                'list' => array_values(array_filter($list, 'is_array')),
+                'error' => ($http >= 200 && $http < 300) ? null : ('HTTP ' . $http),
+            ];
+            if ($out[$id]['error'] === null) {
+                unset($out[$id]['error']);
+            }
+        }
+        if (PHP_VERSION_ID < 80500) {
+            curl_multi_close($mh);
+        }
+
+        if ($needRetry !== []) {
+            $refresh = greythr_get_access_token(true);
+            $token = ($refresh['ok'] ?? false) ? (string) ($refresh['token'] ?? $token) : $token;
+            foreach ($needRetry as $id) {
+                $single = greythr_api_request('GET', '/attendance/v2/employee/' . $id . '/swipes', [
+                    'start' => $startYmd,
+                    'end' => $endYmd,
+                    'systemSwipes' => $systemSwipes ? 'true' : 'false',
+                ]);
+                if (!($single['ok'] ?? false)) {
+                    $out[$id] = [
+                        'ok' => false,
+                        'list' => [],
+                        'error' => (string) ($single['error'] ?? ('HTTP ' . (int) ($single['http'] ?? 0))),
+                    ];
+                    continue;
+                }
+                $json = is_array($single['json'] ?? null) ? $single['json'] : [];
+                $list = $json['list'] ?? ($json['data'] ?? []);
+                if (!is_array($list)) {
+                    $list = [];
+                }
+                $out[$id] = [
+                    'ok' => true,
+                    'list' => array_values(array_filter($list, 'is_array')),
+                ];
+            }
+        }
+    }
+
+    return $out;
+}
+
+/**
+ * First IN and last OUT punch times from swipes list.
+ *
+ * @param list<array<string,mixed>> $swipes
+ * @return array{in_time:string,out_time:string}
+ */
+function greythr_swipes_in_out(array $swipes): array
+{
+    $inRaw = '';
+    $outRaw = '';
+    foreach ($swipes as $swipe) {
+        if (!is_array($swipe)) {
+            continue;
+        }
+        $punch = trim((string) ($swipe['punchDateTime'] ?? ''));
+        if ($punch === '') {
+            continue;
+        }
+        $indicator = strtoupper(trim((string) ($swipe['inOutIndicator'] ?? '')));
+        if ($indicator === 'IN') {
+            if ($inRaw === '' || strcmp($punch, $inRaw) < 0) {
+                $inRaw = $punch;
+            }
+        } elseif ($indicator === 'OUT') {
+            if ($outRaw === '' || strcmp($punch, $outRaw) > 0) {
+                $outRaw = $punch;
+            }
+        } elseif ($indicator === '' && $inRaw === '') {
+            // Fallback: first punch as IN when indicator missing.
+            $inRaw = $punch;
+        }
+    }
+    $inDisp = greythr_format_clock($inRaw);
+    $outDisp = greythr_format_clock($outRaw);
+
+    return [
+        'in_time' => $inDisp !== '' ? $inDisp : '',
+        'out_time' => $outDisp !== '' ? $outDisp : '',
+    ];
+}
+
 function greythr_is_present_intime(string $inTime): bool
 {
     $t = trim($inTime);
-    if ($t === '' || $t === '00:00' || $t === '0:00' || $t === '00:00:00') {
+    if ($t === '' || $t === '—' || $t === '00:00' || $t === '0:00' || $t === '00:00:00') {
         return false;
     }
 

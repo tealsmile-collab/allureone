@@ -234,6 +234,7 @@ SQL
 CREATE TABLE IF NOT EXISTS allurehr_employee (
   employeeId INT NOT NULL,
   name VARCHAR(255) NOT NULL DEFAULT '',
+  employeeNo VARCHAR(50) NULL,
   NickName VARCHAR(255) NULL,
   BranchID INT NULL,
   RoleID INT NULL,

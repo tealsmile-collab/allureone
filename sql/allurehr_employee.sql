@@ -5,6 +5,7 @@ SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS allurehr_employee (
   employeeId INT NOT NULL,
   name VARCHAR(255) NOT NULL DEFAULT '',
+  employeeNo VARCHAR(50) NULL,
   NickName VARCHAR(255) NULL,
   BranchID INT NULL,
   RoleID INT NULL,
@@ -26,3 +27,4 @@ CREATE TABLE IF NOT EXISTS allurehr_employee (
 -- ALTER TABLE allurehr_employee ADD COLUMN RoleID INT NULL AFTER BranchID;
 -- ALTER TABLE allurehr_employee ADD KEY idx_allurehr_emp_role (RoleID);
 -- ALTER TABLE allurehr_employee ADD COLUMN mobile VARCHAR(20) NULL AFTER RoleID;
+-- ALTER TABLE allurehr_employee ADD COLUMN employeeNo VARCHAR(50) NULL AFTER name;

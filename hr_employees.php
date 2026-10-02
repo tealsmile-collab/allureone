@@ -420,11 +420,12 @@ $monthNames = [
                     </select>
                 </div>
                 <div class="form__row" style="margin:0;min-width:14rem;flex:1 1 14rem">
-                    <label for="hr_list_name">Employee name</label>
-                    <input id="hr_list_name" name="name" type="text" maxlength="100" value="<?= e($filterName) ?>" placeholder="Search by name">
+                    <label for="hr_list_name">Employee name / number</label>
+                    <input id="hr_list_name" name="name" type="text" maxlength="100" value="<?= e($filterName) ?>" placeholder="Search by name or emp. no">
                 </div>
-                <div class="form__row form__row--submit" style="margin:0">
+                <div class="form__row form__row--submit" style="margin:0;display:flex;align-items:center;gap:0.65rem">
                     <button type="submit" class="btn btn--primary">Search</button>
+                    <a class="btn btn--ghost" href="hr_employees.php">Clear</a>
                 </div>
             </form>
             <?php if ($error === null && count($employees) === 0): ?>
@@ -446,6 +447,8 @@ $monthNames = [
                                 if ($name === '') {
                                     $name = 'Employee #' . $eid;
                                 }
+                                $empNo = trim((string) ($emp['employeeNo'] ?? ''));
+                                $displayName = $empNo !== '' ? ($name . ' (' . $empNo . ')') : $name;
                                 $locality = trim((string) ($emp['locality'] ?? ''));
                                 $rowQuery = $hrListQuery + ['id' => $eid] + ($page > 1 ? ['page' => $page] : []);
                                 $rowDetailHref = 'hr_employees.php?' . http_build_query($rowQuery);
@@ -454,9 +457,9 @@ $monthNames = [
                                     <td><?= e($locality) ?></td>
                                     <td>
                                         <?php if ($eid > 0): ?>
-                                            <a class="link--underlined" href="<?= e($rowDetailHref) ?>"><?= e($name) ?></a>
+                                            <a class="link--underlined" href="<?= e($rowDetailHref) ?>"><?= e($displayName) ?></a>
                                         <?php else: ?>
-                                            <?= e($name) ?>
+                                            <?= e($displayName) ?>
                                         <?php endif; ?>
                                     </td>
                                 </tr>

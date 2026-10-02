@@ -18,6 +18,7 @@ function allurehr_ensure_employee_table(): void
             'CREATE TABLE IF NOT EXISTS allurehr_employee (
                 employeeId INT NOT NULL,
                 name VARCHAR(255) NOT NULL DEFAULT \'\',
+                employeeNo VARCHAR(50) NULL,
                 NickName VARCHAR(255) NULL,
                 BranchID INT NULL,
                 RoleID INT NULL,
@@ -42,6 +43,10 @@ function allurehr_ensure_employee_table(): void
         if (!$mobileCol) {
             $pdo->exec('ALTER TABLE allurehr_employee ADD COLUMN mobile VARCHAR(20) NULL AFTER RoleID');
         }
+        $empNoCol = $pdo->query("SHOW COLUMNS FROM allurehr_employee LIKE 'employeeNo'")->fetch();
+        if (!$empNoCol) {
+            $pdo->exec('ALTER TABLE allurehr_employee ADD COLUMN employeeNo VARCHAR(50) NULL AFTER name');
+        }
     } catch (Throwable $e) {
         error_log('AllureOne allurehr_employee ensure table: ' . $e->getMessage());
     }
@@ -64,7 +69,7 @@ function allurehr_normalize_mobile(?string $raw): ?string
 }
 
 /**
- * Upsert employeeId + name + mobile (never overwrite NickName / BranchID / RoleID).
+ * Upsert employeeId + name + employeeNo + mobile (never overwrite NickName / BranchID / RoleID).
  * Mobile: set when DB blank, or when API value differs from stored.
  *
  * @param list<array<string,mixed>> $employees
@@ -78,10 +83,11 @@ function allurehr_upsert_employees_from_api(array $employees): array
     try {
         $pdo = db();
         $stmt = $pdo->prepare(
-            'INSERT INTO allurehr_employee (employeeId, name, mobile)
-             VALUES (:id, :name, :mobile)
+            'INSERT INTO allurehr_employee (employeeId, name, employeeNo, mobile)
+             VALUES (:id, :name, :empno, :mobile)
              ON DUPLICATE KEY UPDATE
                name = IF(VALUES(name) <> \'\', VALUES(name), name),
+               employeeNo = IF(VALUES(employeeNo) IS NOT NULL AND VALUES(employeeNo) <> \'\', VALUES(employeeNo), employeeNo),
                mobile = CASE
                  WHEN VALUES(mobile) IS NULL OR VALUES(mobile) = \'\' THEN mobile
                  WHEN mobile IS NULL OR mobile = \'\' OR mobile <> VALUES(mobile) THEN VALUES(mobile)
@@ -104,8 +110,16 @@ function allurehr_upsert_employees_from_api(array $employees): array
             if ($name === '') {
                 $name = 'Employee #' . $id;
             }
+            $empNo = trim((string) ($emp['employeeNo'] ?? ''));
+            if ($empNo === '') {
+                $empNo = null;
+            } elseif (function_exists('mb_substr')) {
+                $empNo = mb_substr($empNo, 0, 50);
+            } else {
+                $empNo = substr($empNo, 0, 50);
+            }
             $mobile = allurehr_normalize_mobile(isset($emp['mobile']) ? (string) $emp['mobile'] : null);
-            $stmt->execute(['id' => $id, 'name' => $name, 'mobile' => $mobile]);
+            $stmt->execute(['id' => $id, 'name' => $name, 'empno' => $empNo, 'mobile' => $mobile]);
             // rowCount is 1 for insert, 2 for update on MySQL with ON DUPLICATE KEY
             $rc = $stmt->rowCount();
             if ($rc === 1) {
@@ -729,7 +743,7 @@ function allurehr_active_branch_options(): array
 /**
  * Paginated employee list from allurehr_employee, optional BranchID / name filter.
  *
- * @return array{rows: list<array{employeeId:int,name:string,mobile:string,locality:string}>, total:int, total_pages:int}
+ * @return array{rows: list<array{employeeId:int,name:string,employeeNo:string,mobile:string,locality:string}>, total:int, total_pages:int}
  */
 function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 0, string $nameSearch = ''): array
 {
@@ -747,10 +761,11 @@ function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 
             $params['branch'] = $branchId;
         }
         if ($nameSearch !== '') {
-            $whereParts[] = '(e.name LIKE :name_q OR IFNULL(e.NickName, \'\') LIKE :name_q2)';
+            $whereParts[] = '(e.name LIKE :name_q OR IFNULL(e.NickName, \'\') LIKE :name_q2 OR IFNULL(e.employeeNo, \'\') LIKE :name_q3)';
             $like = '%' . $nameSearch . '%';
             $params['name_q'] = $like;
             $params['name_q2'] = $like;
+            $params['name_q3'] = $like;
         }
         $where = $whereParts !== [] ? (' WHERE ' . implode(' AND ', $whereParts)) : '';
         $countSt = $pdo->prepare('SELECT COUNT(*) FROM allurehr_employee e' . $where);
@@ -761,7 +776,7 @@ function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 
             $page = $totalPages;
         }
         $offset = ($page - 1) * $perPage;
-        $sql = 'SELECT e.employeeId, e.name, e.mobile, TRIM(IFNULL(b.locality, \'\')) AS locality
+        $sql = 'SELECT e.employeeId, e.name, e.employeeNo, e.mobile, TRIM(IFNULL(b.locality, \'\')) AS locality
                 FROM allurehr_employee e
                 LEFT JOIN allureone_branch b ON b.id = e.BranchID'
             . $where
@@ -774,6 +789,7 @@ function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 
             $rows[] = [
                 'employeeId' => (int) ($row['employeeId'] ?? 0),
                 'name' => (string) ($row['name'] ?? ''),
+                'employeeNo' => trim((string) ($row['employeeNo'] ?? '')),
                 'mobile' => (string) ($row['mobile'] ?? ''),
                 'locality' => trim((string) ($row['locality'] ?? '')),
             ];

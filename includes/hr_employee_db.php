@@ -727,24 +727,32 @@ function allurehr_active_branch_options(): array
 }
 
 /**
- * Paginated employee list from allurehr_employee, optional BranchID filter.
+ * Paginated employee list from allurehr_employee, optional BranchID / name filter.
  *
  * @return array{rows: list<array{employeeId:int,name:string,mobile:string,locality:string}>, total:int, total_pages:int}
  */
-function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 0): array
+function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 0, string $nameSearch = ''): array
 {
     allurehr_ensure_employee_table();
     $page = max(1, $page);
     $perPage = max(1, min(100, $perPage));
+    $nameSearch = trim($nameSearch);
     $empty = ['rows' => [], 'total' => 0, 'total_pages' => 1];
     try {
         $pdo = db();
-        $where = '';
+        $whereParts = [];
         $params = [];
         if ($branchId > 0) {
-            $where = ' WHERE e.BranchID = :branch';
+            $whereParts[] = 'e.BranchID = :branch';
             $params['branch'] = $branchId;
         }
+        if ($nameSearch !== '') {
+            $whereParts[] = '(e.name LIKE :name_q OR IFNULL(e.NickName, \'\') LIKE :name_q2)';
+            $like = '%' . $nameSearch . '%';
+            $params['name_q'] = $like;
+            $params['name_q2'] = $like;
+        }
+        $where = $whereParts !== [] ? (' WHERE ' . implode(' AND ', $whereParts)) : '';
         $countSt = $pdo->prepare('SELECT COUNT(*) FROM allurehr_employee e' . $where);
         $countSt->execute($params);
         $total = (int) $countSt->fetchColumn();

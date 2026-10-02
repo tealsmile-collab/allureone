@@ -41,6 +41,12 @@ $localEmployee = null;
 $branchOptions = allurehr_active_branch_options();
 $roleOptions = allurehr_role_options();
 $filterBranchId = max(0, (int) ($_GET['branch'] ?? 0));
+$filterName = isset($_GET['name']) ? trim((string) $_GET['name']) : '';
+if (function_exists('mb_substr')) {
+    $filterName = mb_substr($filterName, 0, 100);
+} else {
+    $filterName = substr($filterName, 0, 100);
+}
 
 if ($employeeId > 0 && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_local_hr'])) {
     if (!csrf_validate($_POST['_csrf'] ?? null)) {
@@ -123,13 +129,13 @@ if ($employeeId > 0) {
         }
     }
 } else {
-    $list = allurehr_list_local_employees($page, $perPage, $filterBranchId);
+    $list = allurehr_list_local_employees($page, $perPage, $filterBranchId, $filterName);
     $employees = $list['rows'];
     $totalPages = max(1, (int) ($list['total_pages'] ?? 1));
     $totalElements = (int) ($list['total'] ?? count($employees));
     if ($page > $totalPages) {
         $page = $totalPages;
-        $list = allurehr_list_local_employees($page, $perPage, $filterBranchId);
+        $list = allurehr_list_local_employees($page, $perPage, $filterBranchId, $filterName);
         $employees = $list['rows'];
         $totalPages = max(1, (int) ($list['total_pages'] ?? 1));
         $totalElements = (int) ($list['total'] ?? count($employees));
@@ -162,6 +168,9 @@ $empName = is_array($employee) ? greythr_employee_display_name($employee) : '';
 $hrListQuery = [];
 if ($filterBranchId > 0) {
     $hrListQuery['branch'] = $filterBranchId;
+}
+if ($filterName !== '') {
+    $hrListQuery['name'] = $filterName;
 }
 $listParams = $hrListQuery;
 if ($page > 1) {
@@ -400,15 +409,22 @@ $monthNames = [
                 </table>
             </div>
         <?php elseif ($employeeId <= 0): ?>
-            <form method="get" action="hr_employees.php" class="form form--inline-sales-period" id="hr-emp-branch-filter" autocomplete="off" style="margin:0;padding:0.85rem 1.25rem 0.65rem;box-sizing:border-box">
+            <form method="get" action="hr_employees.php" class="form form--inline-sales-period" id="hr-emp-branch-filter" autocomplete="off" style="margin:0;padding:0.85rem 1.25rem 0.65rem;box-sizing:border-box;display:flex;flex-wrap:wrap;align-items:flex-end;gap:0.75rem 1rem">
                 <div class="form__row" style="margin:0;min-width:14rem">
                     <label for="hr_list_branch">Branch</label>
-                    <select id="hr_list_branch" name="branch" onchange="this.form.submit()">
+                    <select id="hr_list_branch" name="branch">
                         <option value="">All branches</option>
                         <?php foreach ($branchOptions as $b): ?>
                             <option value="<?= (int) $b['id'] ?>"<?= $filterBranchId === (int) $b['id'] ? ' selected' : '' ?>><?= e($b['label']) ?></option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+                <div class="form__row" style="margin:0;min-width:14rem;flex:1 1 14rem">
+                    <label for="hr_list_name">Employee name</label>
+                    <input id="hr_list_name" name="name" type="text" maxlength="100" value="<?= e($filterName) ?>" placeholder="Search by name">
+                </div>
+                <div class="form__row form__row--submit" style="margin:0">
+                    <button type="submit" class="btn btn--primary">Search</button>
                 </div>
             </form>
             <?php if ($error === null && count($employees) === 0): ?>

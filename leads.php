@@ -13,6 +13,12 @@ if ($roleId !== ROLE_SUPERADMIN && $roleId !== ROLE_ADMIN && $roleId !== 3) {
     exit('Forbidden');
 }
 
+$exportExcel = isset($_GET['export']) && trim((string) $_GET['export']) === 'excel';
+if ($exportExcel && $roleId !== ROLE_SUPERADMIN) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+
 function leads_format_date_ist_dm(?string $utcDateTime): string
 {
     $raw = trim((string) ($utcDateTime ?? ''));
@@ -798,6 +804,71 @@ try {
         $listFilterBind['list_f_branch'] = (int) $fBranchSel;
     }
 
+    if ($exportExcel && $roleId === ROLE_SUPERADMIN) {
+        set_time_limit(300);
+        $orderByExport = ($qCreated !== null) ? $qCreated : $qId;
+        $exportSel = [
+            $qId . ' AS id',
+            $qLeadName . ' AS lead_name',
+            $qPhone . ' AS lead_phone_number',
+        ];
+        $exportSel[] = ($qCreated !== null ? $qCreated . ' AS Created_Datetime' : 'NULL AS Created_Datetime');
+        $exportSel[] = ($qBranchName !== null ? $qBranchName . ' AS branch_name' : 'NULL AS branch_name');
+        $exportSel[] = $qStatus . ' AS status';
+        $exportSel[] = ($qSourceCol !== null ? $qSourceCol . ' AS sourceName' : 'NULL AS sourceName');
+        $exportSel[] = ($qCampaignCol !== null ? $qCampaignCol . ' AS Campaiign' : 'NULL AS Campaiign');
+        $exportSel[] = ($qFollowupCol !== null ? $qFollowupCol . ' AS followup_datetime' : 'NULL AS followup_datetime');
+
+        $exportSql = 'SELECT ' . implode(', ', $exportSel) . '
+                      FROM ' . META_LEADS_TABLE_SQL . ' ml' . $baseWhereMl . $listFilterSql . '
+                      ORDER BY ' . $orderByExport . ' DESC, ' . $qId . ' DESC';
+        $exportStmt = db()->prepare($exportSql);
+        $exportStmt->execute(array_merge($branchBind, $listFilterBind));
+
+        $filename = 'leads-' . date('Y-m-d') . '.csv';
+        header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        $out = fopen('php://output', 'wb');
+        if ($out === false) {
+            http_response_code(500);
+            echo 'Could not start export.';
+            exit;
+        }
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, [
+            'Location',
+            'Name',
+            'Number',
+            'Status',
+            'Source',
+            'Date',
+            'Follow-up',
+        ], ',', '"', '\\');
+
+        while (($er = $exportStmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            $rsid = (int) ($er['status'] ?? 0);
+            $statusLabel = $statusIdToLabel[$rsid] ?? ($rsid > 0 ? 'Status #' . $rsid : '');
+            $sourceLabel = leads_source_display_label(
+                isset($er['sourceName']) ? (string) $er['sourceName'] : null,
+                isset($er['Campaiign']) ? (string) $er['Campaiign'] : null
+            );
+            fputcsv($out, [
+                (string) ($er['branch_name'] ?? ''),
+                (string) ($er['lead_name'] ?? ''),
+                (string) ($er['lead_phone_number'] ?? ''),
+                $statusLabel,
+                $sourceLabel,
+                leads_format_datetime_ist_full(isset($er['Created_Datetime']) ? (string) $er['Created_Datetime'] : null),
+                leads_format_datetime_ist_full(isset($er['followup_datetime']) ? (string) $er['followup_datetime'] : null),
+            ], ',', '"', '\\');
+        }
+        fclose($out);
+        exit;
+    }
+
     $summaryFilterSql = '';
     $summaryFilterBind = [];
     $summaryMonthBounds = leads_created_month_boundaries_utc($summaryYear, $summaryMonth);
@@ -1005,7 +1076,20 @@ try {
 } catch (Throwable $e) {
     error_log('AllureOne leads page failed: ' . $e->getMessage() . ' [' . $e->getCode() . ']');
     $loadError = 'Could not load leads data.';
+    if ($exportExcel && $roleId === ROLE_SUPERADMIN) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo 'Could not export leads.';
+        exit;
+    }
 }
+}
+
+if ($exportExcel && $roleId === ROLE_SUPERADMIN && $loadError !== '') {
+    http_response_code(500);
+    header('Content-Type: text/plain; charset=UTF-8');
+    echo 'Could not export leads.';
+    exit;
 }
 
 if ($listPage > 1) {
@@ -1367,6 +1451,14 @@ require __DIR__ . '/includes/layout_start.php';
                 </div>
                 <?php endif; ?>
                 <button type="submit" class="btn btn--primary">Apply</button>
+                <?php if ($roleId === ROLE_SUPERADMIN): ?>
+                    <?php
+                    $leadsExportQuery = $listFilterParams;
+                    unset($leadsExportQuery['page']);
+                    $leadsExportQuery['export'] = 'excel';
+                    ?>
+                    <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query($leadsExportQuery)) ?>">Export Excel</a>
+                <?php endif; ?>
                 <span id="leads_month_hint" class="leads-month-hint" style="font-size:.9rem;color:var(--muted, #64748b);align-self:center">showing data of <?= e($listMonthLabel) ?></span>
             </form>
             <script>

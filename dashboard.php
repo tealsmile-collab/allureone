@@ -756,13 +756,284 @@ try {
 
 $invoice_input_pattern = '[^\'"%&()#:<>?\\[\\]]+';
 
+$canShowDashboardLeads = in_array($userRoleId, [ROLE_SUPERADMIN, ROLE_ADMIN, ROLE_MANAGER], true);
+$dashLeadsRows = [];
+$dashLeadsTotal = 0;
+$dashLeadsPage = 1;
+$dashLeadsTotalPages = 1;
+$dashLeadsPerPage = 10;
+$dashLeadsLoadError = '';
+$dashLeadsSourceFilterAvailable = false;
+$dashLeadsBranchOptions = [];
+$dashLeadsStatusOptions = [];
+$dashLeadsStatusIdToKey = [];
+$dashLeadsStatusIdToLabel = [];
+$dashLeadsFollowUpStatusId = null;
+$dashLeadsNewStatusId = null;
+$dashLeadsSourceFilterOptions = [
+    'organic' => 'Organic',
+    'insta_fb' => 'Insta-Fb',
+];
+$dashLeadsMonthNames = [
+    1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April', 5 => 'May', 6 => 'June',
+    7 => 'July', 8 => 'August', 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December',
+];
+$dashLeadsFStatus = 'all';
+$dashLeadsFSource = 'all';
+$dashLeadsFBranch = 'all';
+$dashLeadsFFu = 'all';
+$dashLeadsFFuDate = '';
+$dashLeadsFMonthIsAll = true;
+$dashLeadsFMonthSel = 0;
+$dashLeadsMonthLabel = 'all months';
+$dashLeadsCurMonth = (int) (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('n');
+$dashLeadsCurYear = (int) (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y');
+$dashLeadsListParams = [];
+$dashLeadsStatusIsFollowUp = false;
+
+if ($canShowDashboardLeads) {
+    require_once __DIR__ . '/includes/leads_helpers.php';
+    try {
+        $statusStmt = db()->prepare(
+            "SELECT id, status_key, status_label
+             FROM allureone_leads_status
+             WHERE is_active = 1
+               AND applies_to IN ('all', 'meta')
+             ORDER BY sort_order ASC, id ASC"
+        );
+        $statusStmt->execute();
+        foreach ($statusStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $statusRow) {
+            $sid = (int) ($statusRow['id'] ?? 0);
+            if ($sid <= 0) {
+                continue;
+            }
+            $skey = trim((string) ($statusRow['status_key'] ?? ''));
+            $slabel = trim((string) ($statusRow['status_label'] ?? ''));
+            if ($slabel === '') {
+                continue;
+            }
+            $dashLeadsStatusOptions[] = ['id' => $sid, 'key' => $skey, 'label' => $slabel];
+            $dashLeadsStatusIdToKey[$sid] = $skey;
+            $dashLeadsStatusIdToLabel[$sid] = $slabel;
+            if ($skey === 'new') {
+                $dashLeadsNewStatusId = $sid;
+            }
+            if ($skey === 'follow_up') {
+                $dashLeadsFollowUpStatusId = $sid;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('AllureOne dashboard leads status load failed: ' . $e->getMessage());
+    }
+
+    if ($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN) {
+        try {
+            $branchFilterStmt = db()->query(
+                'SELECT id, locality, business_name
+                 FROM allureone_branch
+                 WHERE isActive = 1
+                 ORDER BY locality ASC, business_name ASC, id ASC'
+            );
+            foreach ($branchFilterStmt->fetchAll(PDO::FETCH_ASSOC) as $bRow) {
+                $bid = (int) ($bRow['id'] ?? 0);
+                if ($bid <= 0) {
+                    continue;
+                }
+                $loc = trim((string) ($bRow['locality'] ?? ''));
+                $bn = trim((string) ($bRow['business_name'] ?? ''));
+                $dashLeadsBranchOptions[(string) $bid] = $loc !== '' ? $loc : ($bn !== '' ? $bn : ('Branch #' . $bid));
+            }
+        } catch (Throwable $e) {
+            error_log('AllureOne dashboard leads branch filter failed: ' . $e->getMessage());
+        }
+    }
+
+    $defaultStatus = $dashLeadsNewStatusId !== null ? (string) $dashLeadsNewStatusId : 'all';
+    $dashLeadsFStatus = isset($_GET['f_status']) ? trim((string) $_GET['f_status']) : $defaultStatus;
+    if ($dashLeadsFStatus === '') {
+        $dashLeadsFStatus = $defaultStatus;
+    }
+    if ($dashLeadsFStatus !== 'all' && !isset($dashLeadsStatusIdToLabel[(int) $dashLeadsFStatus])) {
+        $dashLeadsFStatus = $defaultStatus;
+    }
+
+    $dashLeadsFSource = isset($_GET['f_source']) ? trim((string) $_GET['f_source']) : 'all';
+    if ($dashLeadsFSource === '' || ($dashLeadsFSource !== 'all' && !isset($dashLeadsSourceFilterOptions[$dashLeadsFSource]))) {
+        $dashLeadsFSource = 'all';
+    }
+
+    $dashLeadsFBranch = isset($_GET['f_branch']) ? trim((string) $_GET['f_branch']) : 'all';
+    if ($dashLeadsFBranch === '' || ($dashLeadsFBranch !== 'all' && !isset($dashLeadsBranchOptions[$dashLeadsFBranch]))) {
+        $dashLeadsFBranch = 'all';
+    }
+
+    $dashLeadsFFu = isset($_GET['f_fu']) ? trim((string) $_GET['f_fu']) : 'all';
+    $fuAllowed = ['all', 'today', 'tomorrow', 'week', 'month', 'custom'];
+    if (!in_array($dashLeadsFFu, $fuAllowed, true)) {
+        $dashLeadsFFu = 'all';
+    }
+    $dashLeadsFFuDate = isset($_GET['f_fu_date']) ? trim((string) $_GET['f_fu_date']) : '';
+    $dashLeadsStatusIsFollowUp = ($dashLeadsFollowUpStatusId !== null
+        && $dashLeadsFStatus !== 'all'
+        && (int) $dashLeadsFStatus === (int) $dashLeadsFollowUpStatusId);
+    if (!$dashLeadsStatusIsFollowUp) {
+        $dashLeadsFFu = 'all';
+        $dashLeadsFFuDate = '';
+    }
+
+    $fMonthRaw = isset($_GET['f_month']) ? trim((string) $_GET['f_month']) : 'all';
+    $dashLeadsFMonthIsAll = ($fMonthRaw === 'all' || $fMonthRaw === '');
+    $dashLeadsFMonthSel = $dashLeadsFMonthIsAll ? 0 : (int) $fMonthRaw;
+    if (!$dashLeadsFMonthIsAll && ($dashLeadsFMonthSel < 1 || $dashLeadsFMonthSel > 12)) {
+        $dashLeadsFMonthSel = $dashLeadsCurMonth;
+        $dashLeadsFMonthIsAll = false;
+    }
+    $listMonthYear = 0;
+    if (!$dashLeadsFMonthIsAll) {
+        $listMonthYear = ($dashLeadsFMonthSel > $dashLeadsCurMonth) ? ($dashLeadsCurYear - 1) : $dashLeadsCurYear;
+        $dashLeadsMonthLabel = strtolower($dashLeadsMonthNames[$dashLeadsFMonthSel] ?? 'month') . ' ' . $listMonthYear;
+    }
+
+    $dashLeadsPage = max(1, (int) ($_GET['lead_page'] ?? 1));
+    $dashLeadsListParams = ['f_status' => $dashLeadsFStatus, 'f_month' => $dashLeadsFMonthIsAll ? 'all' : $dashLeadsFMonthSel];
+    if ($dashLeadsFSource !== 'all') {
+        $dashLeadsListParams['f_source'] = $dashLeadsFSource;
+    }
+    if ($dashLeadsFBranch !== 'all') {
+        $dashLeadsListParams['f_branch'] = $dashLeadsFBranch;
+    }
+    if ($dashLeadsStatusIsFollowUp) {
+        $dashLeadsListParams['f_fu'] = $dashLeadsFFu;
+        if ($dashLeadsFFu === 'custom' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dashLeadsFFuDate) === 1) {
+            $dashLeadsListParams['f_fu_date'] = $dashLeadsFFuDate;
+        }
+    }
+
+    $map = leads_meta_leads_column_map();
+    if ($map === null || $map === []) {
+        $dashLeadsLoadError = 'Could not load leads data.';
+    } else {
+        try {
+            $isBranchScopedRole = $userRoleId === ROLE_MANAGER;
+            $branchScope = leads_ml_branch_scope_where($map, $isBranchScopedRole, $userBranchId);
+            $qId = leads_ml_qualify_ml($map, ['id']);
+            $qLeadName = leads_ml_qualify_ml($map, ['lead_name']);
+            $qPhone = leads_ml_qualify_ml($map, ['lead_phone_number', 'Lead_Phone_Number', 'phone_number']);
+            $qBranchName = leads_ml_qualify_ml($map, ['branch_name']);
+            $qStatus = leads_ml_qualify_ml($map, ['status']);
+            $qCreated = leads_ml_qualify_ml($map, ['Created_Datetime', 'created_datetime', 'DateTime']);
+            $qFollowupCol = leads_ml_qualify_ml($map, ['followup_datetime', 'Followup_Datetime']);
+            $qCampaignCol = leads_ml_qualify_ml($map, ['Campaiign', 'Campaign', 'campaign']);
+            $qSourceCol = leads_ml_qualify_ml($map, ['sourceName', 'SourceName']);
+            $dashLeadsSourceFilterAvailable = ($qSourceCol !== null || $qCampaignCol !== null);
+            if ($qId === null || $qLeadName === null || $qPhone === null || $qStatus === null) {
+                throw new RuntimeException('Missing required leads columns');
+            }
+
+            $baseWhereMl = $branchScope['sql'];
+            $branchBind = $branchScope['params'];
+            $listFilterSql = '';
+            $listFilterBind = [];
+
+            if ($dashLeadsFStatus !== 'all') {
+                $listFilterSql .= ' AND ' . $qStatus . ' = :list_f_status';
+                $listFilterBind['list_f_status'] = (int) $dashLeadsFStatus;
+            }
+            if ($dashLeadsStatusIsFollowUp && $dashLeadsFFu !== 'all' && $qFollowupCol !== null) {
+                $fuBounds = leads_followup_boundaries_utc($dashLeadsFFu, $dashLeadsFFuDate);
+                if ($fuBounds !== null) {
+                    $listFilterSql .= ' AND ' . $qFollowupCol . ' IS NOT NULL AND ' . $qFollowupCol . ' >= :list_fu_a AND ' . $qFollowupCol . ' <= :list_fu_b';
+                    $listFilterBind['list_fu_a'] = $fuBounds[0];
+                    $listFilterBind['list_fu_b'] = $fuBounds[1];
+                }
+            }
+            if ($dashLeadsFSource === 'organic') {
+                $organicParts = [];
+                if ($qSourceCol !== null) {
+                    $organicParts[] = 'LOWER(TRIM(IFNULL(' . $qSourceCol . ', \'\'))) = :list_f_source_organic';
+                    $listFilterBind['list_f_source_organic'] = 'organic';
+                }
+                if ($qCampaignCol !== null) {
+                    $organicParts[] = 'LOWER(TRIM(IFNULL(' . $qCampaignCol . ', \'\'))) = :list_f_source_organic_camp';
+                    $listFilterBind['list_f_source_organic_camp'] = 'organic';
+                }
+                if ($organicParts !== []) {
+                    $listFilterSql .= ' AND (' . implode(' OR ', $organicParts) . ')';
+                }
+            } elseif ($dashLeadsFSource === 'insta_fb' && $qSourceCol !== null) {
+                $listFilterSql .= ' AND LOWER(TRIM(IFNULL(' . $qSourceCol . ', \'\'))) = :list_f_source_insta';
+                $listFilterBind['list_f_source_insta'] = 'insta-fb';
+            }
+            if (!$dashLeadsFMonthIsAll && $qCreated !== null) {
+                $listMonthBounds = leads_created_month_boundaries_utc($listMonthYear, $dashLeadsFMonthSel);
+                if ($listMonthBounds !== null) {
+                    $listFilterSql .= ' AND ' . $qCreated . ' >= :list_f_month_a AND ' . $qCreated . ' <= :list_f_month_b';
+                    $listFilterBind['list_f_month_a'] = $listMonthBounds[0];
+                    $listFilterBind['list_f_month_b'] = $listMonthBounds[1];
+                }
+            }
+            $qMlBranchId = leads_ml_qualify_ml($map, ['branch_id', 'BranchId']);
+            if (($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN) && $dashLeadsFBranch !== 'all' && $qMlBranchId !== null) {
+                $listFilterSql .= ' AND ' . $qMlBranchId . ' = :list_f_branch';
+                $listFilterBind['list_f_branch'] = (int) $dashLeadsFBranch;
+            }
+
+            $countSql = 'SELECT COUNT(*) FROM ' . META_LEADS_TABLE_SQL . ' ml' . $baseWhereMl . $listFilterSql;
+            $countStmt = db()->prepare($countSql);
+            $countStmt->execute(array_merge($branchBind, $listFilterBind));
+            $dashLeadsTotal = (int) ($countStmt->fetchColumn() ?: 0);
+            $dashLeadsTotalPages = max(1, (int) ceil($dashLeadsTotal / $dashLeadsPerPage));
+            $dashLeadsPage = min($dashLeadsPage, $dashLeadsTotalPages);
+            $offset = ($dashLeadsPage - 1) * $dashLeadsPerPage;
+            $orderBy = ($qCreated !== null) ? $qCreated : $qId;
+
+            $listSel = [
+                $qId . ' AS id',
+                $qLeadName . ' AS lead_name',
+                $qPhone . ' AS lead_phone_number',
+                ($qCreated !== null ? $qCreated . ' AS Created_Datetime' : 'NULL AS Created_Datetime'),
+                ($qBranchName !== null ? $qBranchName . ' AS branch_name' : 'NULL AS branch_name'),
+                $qStatus . ' AS status',
+                ($qSourceCol !== null ? $qSourceCol . ' AS sourceName' : 'NULL AS sourceName'),
+                ($qCampaignCol !== null ? $qCampaignCol . ' AS Campaiign' : 'NULL AS Campaiign'),
+            ];
+            $dataSql = 'SELECT ' . implode(', ', $listSel) . '
+                        FROM ' . META_LEADS_TABLE_SQL . ' ml' . $baseWhereMl . $listFilterSql . '
+                        ORDER BY ' . $orderBy . ' DESC, ' . $qId . ' DESC
+                        LIMIT ' . (int) $dashLeadsPerPage . ' OFFSET ' . (int) $offset;
+            $dataStmt = db()->prepare($dataSql);
+            $dataStmt->execute(array_merge($branchBind, $listFilterBind));
+            $dashLeadsRows = $dataStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            foreach ($dashLeadsRows as $ir => $lr) {
+                $rsid = (int) ($lr['status'] ?? 0);
+                $statusLabel = $dashLeadsStatusIdToLabel[$rsid] ?? ($rsid > 0 ? 'Status #' . $rsid : '—');
+                $dashLeadsRows[$ir]['status_label'] = $statusLabel;
+                $dashLeadsRows[$ir]['status_key'] = $dashLeadsStatusIdToKey[$rsid] ?? '';
+                $dashLeadsRows[$ir]['status_with_source'] = leads_status_with_source(
+                    $statusLabel,
+                    isset($lr['sourceName']) ? (string) $lr['sourceName'] : null,
+                    isset($lr['Campaiign']) ? (string) $lr['Campaiign'] : null
+                );
+            }
+        } catch (Throwable $e) {
+            error_log('AllureOne dashboard leads list failed: ' . $e->getMessage());
+            $dashLeadsLoadError = 'Could not load leads data.';
+            $dashLeadsRows = [];
+        }
+    }
+
+    if ($dashLeadsPage > 1) {
+        $dashLeadsListParams['lead_page'] = $dashLeadsPage;
+    }
+}
+
 $pageTitle = 'Dashboard';
 $activeNav = 'dashboard';
 require __DIR__ . '/includes/layout_start.php';
 ?>
 
 <?php ob_start(); ?>
-<details class="card<?= $canReviewCancellations ? ' card--spaced-top' : '' ?>" open>
+<details class="card<?= ($canReviewCancellations || ($canShowDashboardLeads && $selectedItemId <= 0)) ? ' card--spaced-top' : '' ?>" open>
     <summary class="card__head card__toggle">
         <span class="card__toggle-inner">
             <span>Invoice cancellation request</span>
@@ -961,6 +1232,7 @@ if ($dailySaleNowIst->format('H:i') < '12:00') {
 }
 </style>
 <?php endif; ?>
+
 <?php if ($canReviewCancellations): ?>
 <?php
 $cancellationReviewOpen = count($pendingCancellationRows) > 0
@@ -1056,6 +1328,212 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         <?php endif; ?>
     </div>
 </details>
+<?php endif; ?>
+
+<?php if ($canShowDashboardLeads && $selectedItemId <= 0): ?>
+<div id="dashboard-leads-section" class="card<?= ($canDailySale || $canReviewCancellations) ? ' card--spaced-top' : '' ?>">
+    <div class="card__head" style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap">
+        <span>Leads</span>
+        <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query($dashLeadsListParams)) ?>">Open Leads</a>
+    </div>
+    <div class="card__body">
+        <?php if ($dashLeadsLoadError !== ''): ?>
+            <p class="alert alert--error" style="margin:1rem 1.25rem"><?= e($dashLeadsLoadError) ?></p>
+        <?php else: ?>
+            <p class="main__meta main__meta--mobile-visible leads-summary">Total leads received: <span class="leads-summary__count"><?= (int) $dashLeadsTotal ?></span></p>
+            <form method="get" action="dashboard.php" class="leads-filters">
+                <?php if (($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN) && $dashLeadsBranchOptions !== []): ?>
+                <div class="form__row">
+                    <label for="dash_f_branch">Branch</label>
+                    <select id="dash_f_branch" name="f_branch">
+                        <option value="all"<?= $dashLeadsFBranch === 'all' ? ' selected' : '' ?>>All</option>
+                        <?php foreach ($dashLeadsBranchOptions as $branchFilterId => $branchFilterLabel): ?>
+                            <option value="<?= e((string) $branchFilterId) ?>"<?= $dashLeadsFBranch === (string) $branchFilterId ? ' selected' : '' ?>><?= e($branchFilterLabel) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+                <div class="form__row">
+                    <label for="dash_f_status">Status</label>
+                    <select id="dash_f_status" name="f_status">
+                        <option value="all"<?= $dashLeadsFStatus === 'all' ? ' selected' : '' ?>>All</option>
+                        <?php foreach ($dashLeadsStatusOptions as $stOpt): ?>
+                            <option value="<?= (int) ($stOpt['id'] ?? 0) ?>"<?= $dashLeadsFStatus !== 'all' && (int) $dashLeadsFStatus === (int) ($stOpt['id'] ?? 0) ? ' selected' : '' ?>><?= e((string) ($stOpt['label'] ?? '')) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php if ($dashLeadsSourceFilterAvailable): ?>
+                <div class="form__row">
+                    <label for="dash_f_source">Source</label>
+                    <select id="dash_f_source" name="f_source">
+                        <option value="all"<?= $dashLeadsFSource === 'all' ? ' selected' : '' ?>>All</option>
+                        <?php foreach ($dashLeadsSourceFilterOptions as $srcSlug => $srcLabel): ?>
+                        <option value="<?= e($srcSlug) ?>"<?= $dashLeadsFSource === $srcSlug ? ' selected' : '' ?>><?= e($srcLabel) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+                <div class="form__row form__row--month">
+                    <label for="dash_f_month">Month</label>
+                    <select id="dash_f_month" name="f_month"
+                            data-cur-month="<?= (int) $dashLeadsCurMonth ?>"
+                            data-cur-year="<?= (int) $dashLeadsCurYear ?>">
+                        <option value="all"<?= $dashLeadsFMonthIsAll ? ' selected' : '' ?>>All</option>
+                        <?php foreach ($dashLeadsMonthNames as $mi => $label): ?>
+                            <option value="<?= $mi ?>"<?= !$dashLeadsFMonthIsAll && $dashLeadsFMonthSel === $mi ? ' selected' : '' ?>><?= e($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php if ($dashLeadsFollowUpStatusId !== null && $dashLeadsFollowUpStatusId > 0): ?>
+                <div id="dash_leads_filter_fu_wrap" class="leads-filter-fu-inner" style="display:<?= $dashLeadsStatusIsFollowUp ? 'flex' : 'none' ?>;" data-follow-up-status-id="<?= (int) $dashLeadsFollowUpStatusId ?>">
+                    <div class="form__row">
+                        <label for="dash_f_fu">Follow-up date range</label>
+                        <select id="dash_f_fu" name="f_fu">
+                            <option value="all"<?= $dashLeadsFFu === 'all' ? ' selected' : '' ?>>All</option>
+                            <option value="today"<?= $dashLeadsFFu === 'today' ? ' selected' : '' ?>>Today</option>
+                            <option value="tomorrow"<?= $dashLeadsFFu === 'tomorrow' ? ' selected' : '' ?>>Tomorrow</option>
+                            <option value="week"<?= $dashLeadsFFu === 'week' ? ' selected' : '' ?>>This week</option>
+                            <option value="month"<?= $dashLeadsFFu === 'month' ? ' selected' : '' ?>>This month</option>
+                            <option value="custom"<?= $dashLeadsFFu === 'custom' ? ' selected' : '' ?>>Custom</option>
+                        </select>
+                    </div>
+                    <div class="form__row" id="dash_leads_fu_custom_wrap"<?= $dashLeadsStatusIsFollowUp && $dashLeadsFFu === 'custom' ? '' : ' style="display:none"' ?>>
+                        <label for="dash_f_fu_date">Follow-up date</label>
+                        <input type="date" id="dash_f_fu_date" name="f_fu_date" value="<?= e($dashLeadsFFuDate) ?>">
+                    </div>
+                </div>
+                <?php endif; ?>
+                <button type="submit" class="btn btn--primary">Apply</button>
+                <span id="dash_leads_month_hint" class="leads-month-hint" style="font-size:.9rem;color:var(--muted, #64748b);align-self:center">showing data of <?= e($dashLeadsMonthLabel) ?></span>
+            </form>
+            <script>
+            (function () {
+                var fu = document.getElementById('dash_f_fu');
+                var wrapCustom = document.getElementById('dash_leads_fu_custom_wrap');
+                var fuRow = document.getElementById('dash_leads_filter_fu_wrap');
+                var st = document.getElementById('dash_f_status');
+                var monthEl = document.getElementById('dash_f_month');
+                var monthHint = document.getElementById('dash_leads_month_hint');
+                var monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+
+                function updateMonthHint() {
+                    if (!monthEl || !monthHint) return;
+                    var raw = String(monthEl.value || '');
+                    if (raw === 'all') {
+                        monthHint.textContent = 'showing data of all months';
+                        return;
+                    }
+                    var m = parseInt(raw, 10);
+                    var curM = parseInt(String(monthEl.getAttribute('data-cur-month') || '0'), 10);
+                    var curY = parseInt(String(monthEl.getAttribute('data-cur-year') || '0'), 10);
+                    if (!(m >= 1 && m <= 12) || !(curM >= 1 && curM <= 12) || !(curY > 0)) return;
+                    var y = m > curM ? (curY - 1) : curY;
+                    monthHint.textContent = 'showing data of ' + monthNames[m - 1] + ' ' + y;
+                }
+
+                function toggleCustom() {
+                    if (!fu || !wrapCustom) return;
+                    wrapCustom.style.display = (fu.value === 'custom') ? '' : 'none';
+                }
+
+                function syncFuRow() {
+                    if (!fuRow || !st || !fu) return;
+                    var fid = parseInt(String(fuRow.getAttribute('data-follow-up-status-id') || '0'), 10);
+                    if (!(fid > 0)) {
+                        fuRow.style.display = 'none';
+                        return;
+                    }
+                    var showRow = String(st.value) !== 'all' && parseInt(String(st.value), 10) === fid;
+                    fuRow.style.display = showRow ? 'flex' : 'none';
+                    if (!showRow) {
+                        fu.value = 'all';
+                        wrapCustom = document.getElementById('dash_leads_fu_custom_wrap');
+                        if (wrapCustom) wrapCustom.style.display = 'none';
+                        var dt = document.getElementById('dash_f_fu_date');
+                        if (dt) dt.value = '';
+                    }
+                    toggleCustom();
+                }
+
+                if (fu && wrapCustom) {
+                    fu.addEventListener('change', toggleCustom);
+                    toggleCustom();
+                }
+                if (st && fuRow) {
+                    st.addEventListener('change', syncFuRow);
+                    syncFuRow();
+                }
+                if (monthEl) {
+                    monthEl.addEventListener('change', updateMonthHint);
+                    updateMonthHint();
+                }
+            })();
+            </script>
+            <?php if ($dashLeadsRows === []): ?>
+                <p class="empty">No leads found.</p>
+            <?php else: ?>
+                <div class="table-wrap table-wrap--leads-mobile">
+                    <?php $dashMetaLeadsLocClass = ($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN) ? ' data--meta-leads--with-loc' : ''; ?>
+                    <table class="data data--meta-leads<?= $dashMetaLeadsLocClass ?>">
+                        <thead>
+                            <tr>
+                                <?php if ($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN): ?>
+                                    <th class="lead-list-col lead-list-col--loc">Location</th>
+                                <?php endif; ?>
+                                <th class="lead-list-col lead-list-col--name">Name</th>
+                                <th class="lead-list-col lead-list-col--phone">Number</th>
+                                <th class="lead-list-col lead-list-col--status">Status</th>
+                                <th class="lead-list-col lead-list-col--date">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($dashLeadsRows as $row):
+                                $cellPhone = (string) ($row['lead_phone_number'] ?? '');
+                                $cellWa = leads_whatsapp_chat_url($cellPhone);
+                                $leadDetailParams = $dashLeadsListParams;
+                                unset($leadDetailParams['lead_page']);
+                                $leadDetailParams['id'] = (int) ($row['id'] ?? 0);
+                                ?>
+                                <tr>
+                                    <?php if ($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN): ?>
+                                        <td class="lead-list-col lead-list-col--loc" data-label="Location"><?= e((string) ($row['branch_name'] ?? '')) ?></td>
+                                    <?php endif; ?>
+                                    <td class="lead-list-col lead-list-col--name" data-label="Name"><a class="link--underlined" href="leads.php?<?= e(http_build_query($leadDetailParams)) ?>"><?= e((string) ($row['lead_name'] ?? '')) ?></a></td>
+                                    <td class="lead-list-col lead-list-col--phone" data-label="Number">
+                                        <?php if ($cellWa !== null): ?>
+                                            <a class="link--underlined" href="<?= e($cellWa) ?>" target="_blank" rel="noopener noreferrer"><?= e($cellPhone) ?></a>
+                                        <?php elseif ($cellPhone !== ''): ?>
+                                            <?= e($cellPhone) ?>
+                                        <?php else: ?>
+                                            —
+                                        <?php endif; ?>
+                                    </td>
+                                    <?php $rowStatusKey = strtolower(trim((string) ($row['status_key'] ?? ''))); ?>
+                                    <td class="lead-list-col lead-list-col--status<?= $rowStatusKey === 'converted' ? ' lead-status--converted' : '' ?>" data-label="Status"><?= e((string) ($row['status_with_source'] ?? $row['status_label'] ?? '—')) ?></td>
+                                    <td class="lead-list-col lead-list-col--date" data-label="Date">
+                                        <span class="lead-list-date lead-list-date--full"><?= e(leads_format_date_ist_dm((string) ($row['Created_Datetime'] ?? ''))) ?></span>
+                                        <span class="lead-list-date lead-list-date--short"><?= e(leads_format_date_ist_dd_mmm((string) ($row['Created_Datetime'] ?? ''))) ?></span>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php if ($dashLeadsTotal > $dashLeadsPerPage): ?>
+                    <nav class="leads-pagination" style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem 0.85rem;padding:1rem 1.25rem 1.15rem;margin:0;justify-content:center">
+                        <?php if ($dashLeadsPage > 1): ?>
+                            <a class="btn btn--ghost" href="dashboard.php?<?= e(http_build_query(array_merge($dashLeadsListParams, ['lead_page' => $dashLeadsPage - 1]))) ?>">Previous</a>
+                        <?php endif; ?>
+                        <span style="font-size:.9rem;color:var(--muted, #64748b)">Page <?= (int) $dashLeadsPage ?> of <?= (int) $dashLeadsTotalPages ?></span>
+                        <?php if ($dashLeadsPage < $dashLeadsTotalPages): ?>
+                            <a class="btn btn--ghost" href="dashboard.php?<?= e(http_build_query(array_merge($dashLeadsListParams, ['lead_page' => $dashLeadsPage + 1]))) ?>">Next</a>
+                        <?php endif; ?>
+                    </nav>
+                <?php endif; ?>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+</div>
 <?php endif; ?>
 
 <?php if ($selectedItemId <= 0 && $canShowInvoiceCancellationRequest): ?>

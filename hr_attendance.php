@@ -306,7 +306,7 @@ require __DIR__ . '/includes/layout_start.php';
                         <?php foreach ($rows as $r): ?>
                             <tr>
                                 <td>
-                                    <?php if ((int) $r['employee_id'] > 0): ?>
+                                    <?php if ($isHrAdmin && (int) $r['employee_id'] > 0): ?>
                                         <a class="link--underlined" href="hr_employees.php?id=<?= (int) $r['employee_id'] ?>"><?= e((string) $r['name']) ?></a>
                                     <?php else: ?>
                                         <?= e((string) $r['name']) ?>

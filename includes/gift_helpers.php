@@ -15,6 +15,58 @@ function format_purchase_date(?string $dt): string
 
 const GIFT_CARD_VALIDITY_DAYS = 60;
 
+/**
+ * Base URL for WordPress uploads (trailing slash), e.g. https://allurethaispa.in/wp-content/uploads/
+ */
+function gift_wp_uploads_base_url(): string
+{
+    static $base = null;
+    if (is_string($base)) {
+        return $base;
+    }
+    $config = require __DIR__ . '/../config.php';
+    $configured = trim((string) (($config['wordpress_db']['uploads_base_url'] ?? '') ?: ''));
+    if ($configured === '') {
+        $configured = 'https://allurethaispa.in/wp-content/uploads/';
+    }
+    $base = rtrim($configured, '/') . '/';
+
+    return $base;
+}
+
+/**
+ * Resolve YITH gift design attachment ID (_ywgc_design) to a full image URL.
+ */
+function gift_design_image_url_from_attachment_id(PDO $pdo, int $attachmentId, ?string $wpPrefix = null): string
+{
+    if ($attachmentId <= 0) {
+        return '';
+    }
+    $prefix = $wpPrefix ?? wp_table_prefix();
+    try {
+        $sql = 'SELECT meta_value
+                FROM `' . str_replace('`', '``', $prefix) . 'postmeta`
+                WHERE post_id = :id
+                  AND meta_key = \'_wp_attached_file\'
+                LIMIT 1';
+        $st = $pdo->prepare($sql);
+        $st->execute(['id' => $attachmentId]);
+        $rel = trim((string) ($st->fetchColumn() ?: ''));
+        if ($rel === '') {
+            return '';
+        }
+        if (preg_match('#^https?://#i', $rel) === 1) {
+            return $rel;
+        }
+
+        return gift_wp_uploads_base_url() . ltrim(str_replace('\\', '/', $rel), '/');
+    } catch (Throwable $e) {
+        error_log('AllureOne gift design image lookup failed: ' . $e->getMessage());
+
+        return '';
+    }
+}
+
 function gift_card_expiry_date_ymd(?string $orderDate): ?string
 {
     if ($orderDate === null || trim($orderDate) === '') {

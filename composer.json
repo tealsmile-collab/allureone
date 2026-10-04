@@ -3,6 +3,7 @@
     "description": "AllureOne internal app",
     "require": {
         "php": ">=8.0",
+        "dompdf/dompdf": "^3.1",
         "minishlink/web-push": "^8.0"
     },
     "config": {

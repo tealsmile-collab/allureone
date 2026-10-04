@@ -7,9 +7,12 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'Symfony\\Polyfill\\Php80\\' => array($vendorDir . '/symfony/polyfill-php80'),
+    'Svg\\' => array($vendorDir . '/dompdf/php-svg-lib/src/Svg'),
+    'Sabberworm\\CSS\\' => array($vendorDir . '/sabberworm/php-css-parser/src'),
     'Psr\\Http\\Message\\' => array($vendorDir . '/psr/http-factory/src', $vendorDir . '/psr/http-message/src'),
     'Psr\\Http\\Client\\' => array($vendorDir . '/psr/http-client/src'),
     'Minishlink\\WebPush\\' => array($vendorDir . '/minishlink/web-push/src'),
+    'Masterminds\\' => array($vendorDir . '/masterminds/html5/src'),
     'Jose\\Component\\Signature\\Algorithm\\' => array($vendorDir . '/web-token/jwt-signature-algorithm-ecdsa'),
     'Jose\\Component\\Signature\\' => array($vendorDir . '/web-token/jwt-signature'),
     'Jose\\Component\\KeyManagement\\' => array($vendorDir . '/web-token/jwt-key-mgmt'),
@@ -18,7 +21,9 @@ return array(
     'GuzzleHttp\\Psr7\\' => array($vendorDir . '/guzzlehttp/psr7/src'),
     'GuzzleHttp\\Promise\\' => array($vendorDir . '/guzzlehttp/promises/src'),
     'GuzzleHttp\\' => array($vendorDir . '/guzzlehttp/guzzle/src'),
+    'FontLib\\' => array($vendorDir . '/dompdf/php-font-lib/src/FontLib'),
     'FG\\' => array($vendorDir . '/fgrosse/phpasn1/lib'),
+    'Dompdf\\' => array($vendorDir . '/dompdf/dompdf/src'),
     'Brick\\Math\\' => array($vendorDir . '/brick/math/src'),
     'Base64Url\\' => array($vendorDir . '/spomky-labs/base64url/src'),
 );

@@ -10,6 +10,8 @@ class ComposerStaticInit679406cde2fa7f30398b2559486a7661
         '6e3fae29631ef280660b3cdad06f25a8' => __DIR__ . '/..' . '/symfony/deprecation-contracts/function.php',
         'a4a119a56e50fbb293281d9a48007e0e' => __DIR__ . '/..' . '/symfony/polyfill-php80/bootstrap.php',
         '7b11c4dc42b3b3023073cb14e519683c' => __DIR__ . '/..' . '/ralouphie/getallheaders/src/getallheaders.php',
+        '0174385c3be07e86008907d06ee66531' => __DIR__ . '/..' . '/sabberworm/php-css-parser/src/Rule/Rule.php',
+        '98aea6e41b9cb79b379b10f37ba1f0b7' => __DIR__ . '/..' . '/sabberworm/php-css-parser/src/RuleSet/RuleContainer.php',
         '37a3dc5111fe8f707ab4c132ef1dbc62' => __DIR__ . '/..' . '/guzzlehttp/guzzle/src/functions_include.php',
     );
 
@@ -17,6 +19,8 @@ class ComposerStaticInit679406cde2fa7f30398b2559486a7661
         'S' =>
         array (
             'Symfony\\Polyfill\\Php80\\' => 23,
+            'Svg\\' => 4,
+            'Sabberworm\\CSS\\' => 15,
         ),
         'P' =>
         array (
@@ -26,6 +30,7 @@ class ComposerStaticInit679406cde2fa7f30398b2559486a7661
         'M' =>
         array (
             'Minishlink\\WebPush\\' => 19,
+            'Masterminds\\' => 12,
         ),
         'J' =>
         array (
@@ -43,7 +48,12 @@ class ComposerStaticInit679406cde2fa7f30398b2559486a7661
         ),
         'F' =>
         array (
+            'FontLib\\' => 8,
             'FG\\' => 3,
+        ),
+        'D' =>
+        array (
+            'Dompdf\\' => 7,
         ),
         'B' =>
         array (
@@ -57,6 +67,14 @@ class ComposerStaticInit679406cde2fa7f30398b2559486a7661
         array (
             0 => __DIR__ . '/..' . '/symfony/polyfill-php80',
         ),
+        'Svg\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/dompdf/php-svg-lib/src/Svg',
+        ),
+        'Sabberworm\\CSS\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/sabberworm/php-css-parser/src',
+        ),
         'Psr\\Http\\Message\\' =>
         array (
             0 => __DIR__ . '/..' . '/psr/http-factory/src',
@@ -69,6 +87,10 @@ class ComposerStaticInit679406cde2fa7f30398b2559486a7661
         'Minishlink\\WebPush\\' =>
         array (
             0 => __DIR__ . '/..' . '/minishlink/web-push/src',
+        ),
+        'Masterminds\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/masterminds/html5/src',
         ),
         'Jose\\Component\\Signature\\Algorithm\\' =>
         array (
@@ -102,9 +124,17 @@ class ComposerStaticInit679406cde2fa7f30398b2559486a7661
         array (
             0 => __DIR__ . '/..' . '/guzzlehttp/guzzle/src',
         ),
+        'FontLib\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/dompdf/php-font-lib/src/FontLib',
+        ),
         'FG\\' =>
         array (
             0 => __DIR__ . '/..' . '/fgrosse/phpasn1/lib',
+        ),
+        'Dompdf\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/dompdf/dompdf/src',
         ),
         'Brick\\Math\\' =>
         array (
@@ -119,6 +149,7 @@ class ComposerStaticInit679406cde2fa7f30398b2559486a7661
     public static $classMap = array (
         'Attribute' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/Attribute.php',
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
+        'Dompdf\\Cpdf' => __DIR__ . '/..' . '/dompdf/dompdf/lib/Cpdf.php',
         'PhpToken' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/PhpToken.php',
         'Stringable' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/Stringable.php',
         'UnhandledMatchError' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/UnhandledMatchError.php',

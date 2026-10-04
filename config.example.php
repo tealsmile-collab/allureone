@@ -16,6 +16,8 @@ return [
         'database' => 'your_wp_database',
         'charset' => 'utf8mb4',
         'prefix' => 'wp_',
+        /** Trailing slash optional. Used to build gift design image URLs from _wp_attached_file. */
+        'uploads_base_url' => 'https://allurethaispa.in/wp-content/uploads/',
     ],
     'dingg' => [
         'login_url' => 'https://api.dingg.app/api/v1/vendor/login',

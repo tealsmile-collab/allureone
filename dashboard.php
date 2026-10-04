@@ -631,6 +631,7 @@ try {
             oi.order_item_id,
             oi.order_id,
             MAX(CASE WHEN oim.meta_key = '_ywgc_gift_card_code' THEN oim.meta_value END) AS gift_card_code,
+            MAX(CASE WHEN oim.meta_key = '_ywgc_design' THEN oim.meta_value END) AS design_attachment_id,
             (
                 SELECT pm2.meta_value
                 FROM wp_postmeta pm2
@@ -740,6 +741,11 @@ try {
             if ($resolvedRecipientEmail !== '') {
                 $giftDetail['recipient_email'] = $resolvedRecipientEmail;
             }
+
+            $designAttachmentId = (int) ($giftDetail['design_attachment_id'] ?? 0);
+            $giftDetail['design_image_url'] = $designAttachmentId > 0
+                ? gift_design_image_url_from_attachment_id($pdo, $designAttachmentId, $wpPrefix)
+                : '';
         }
     } else {
         $listSql = $baseSelect . "
@@ -1699,7 +1705,13 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                     <p style="margin-top:0"><a class="btn btn--ghost" href="dashboard.php">Back</a></p>
                     <table class="data">
                         <tbody>
-                            <tr><th>Order ID</th><td><?= (int) ($giftDetail['order_id'] ?? 0) ?></td></tr>
+                            <tr>
+                                <th>Order ID</th>
+                                <td>
+                                    <?= (int) ($giftDetail['order_id'] ?? 0) ?>
+                                    <a class="link--underlined" href="gift_card_download.php?gift=<?= (int) ($giftDetail['order_item_id'] ?? 0) ?>" target="_blank" rel="noopener noreferrer" style="margin-left:0.65rem">Download PDF</a>
+                                </td>
+                            </tr>
                             <tr><th>Gift Code</th><td><?= e(extract_gift_code((string) ($giftDetail['gift_card_code'] ?? ''))) ?></td></tr>
                             <tr><th>Recipient Name</th><td><?= e((string) ($giftDetail['recipient_name'] ?? '')) ?></td></tr>
                             <tr><th>Recipient Mobile</th><td><?= e((string) ($giftDetail['recipient_mobile'] ?? '')) ?></td></tr>

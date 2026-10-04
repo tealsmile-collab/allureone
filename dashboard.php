@@ -1337,6 +1337,8 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         <a class="btn btn--ghost" href="leads.php?<?= e(http_build_query($dashLeadsListParams)) ?>">Open Leads</a>
     </div>
     <div class="card__body">
+        <div id="dash-leads-detail-view" style="display:none" aria-live="polite"></div>
+        <div id="dash-leads-list-view">
         <?php if ($dashLeadsLoadError !== ''): ?>
             <p class="alert alert--error" style="margin:1rem 1.25rem"><?= e($dashLeadsLoadError) ?></p>
         <?php else: ?>
@@ -1498,7 +1500,7 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                                     <?php if ($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN): ?>
                                         <td class="lead-list-col lead-list-col--loc" data-label="Location"><?= e((string) ($row['branch_name'] ?? '')) ?></td>
                                     <?php endif; ?>
-                                    <td class="lead-list-col lead-list-col--name" data-label="Name"><a class="link--underlined" href="leads.php?<?= e(http_build_query($leadDetailParams)) ?>"><?= e((string) ($row['lead_name'] ?? '')) ?></a></td>
+                                    <td class="lead-list-col lead-list-col--name" data-label="Name"><a class="link--underlined js-dash-lead-open" href="leads.php?<?= e(http_build_query($leadDetailParams)) ?>" data-lead-id="<?= (int) ($row['id'] ?? 0) ?>"><?= e((string) ($row['lead_name'] ?? '')) ?></a></td>
                                     <td class="lead-list-col lead-list-col--phone" data-label="Number">
                                         <?php if ($cellWa !== null): ?>
                                             <a class="link--underlined" href="<?= e($cellWa) ?>" target="_blank" rel="noopener noreferrer"><?= e($cellPhone) ?></a>
@@ -1532,6 +1534,146 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                 <?php endif; ?>
             <?php endif; ?>
         <?php endif; ?>
+        </div>
+        <script>
+        (function () {
+            var section = document.getElementById('dashboard-leads-section');
+            if (!section) return;
+            var listView = document.getElementById('dash-leads-list-view');
+            var detailView = document.getElementById('dash-leads-detail-view');
+            if (!listView || !detailView) return;
+
+            function showList() {
+                detailView.style.display = 'none';
+                detailView.innerHTML = '';
+                listView.style.display = '';
+                if (history.state && history.state.dashLead) {
+                    history.replaceState(null, '', window.location.pathname + window.location.search);
+                }
+            }
+
+            function bindDetailUi() {
+                var statusEl = document.getElementById('dash_lead_status');
+                var followupWrap = document.getElementById('dash_followup_wrap');
+                var followupEl = document.getElementById('dash_followup_datetime');
+                var amountWrap = document.getElementById('dash_amount_wrap');
+                var amountEl = document.getElementById('dash_amount');
+                var form = document.getElementById('dash-lead-detail-form');
+
+                if (statusEl && followupWrap && amountWrap) {
+                    function selectedStatusKey() {
+                        var selectedOpt = statusEl.options[statusEl.selectedIndex];
+                        return selectedOpt ? String(selectedOpt.getAttribute('data-status-key') || '').toLowerCase() : '';
+                    }
+                    function followUpTomorrow4PmIstValue() {
+                        var todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+                        var tm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(todayStr);
+                        if (!tm) return '';
+                        var y = parseInt(tm[1], 10), mo = parseInt(tm[2], 10), da = parseInt(tm[3], 10);
+                        var next = new Date(Date.UTC(y, mo - 1, da + 1));
+                        function pad2(n) { return n < 10 ? '0' + n : String(n); }
+                        return next.getUTCFullYear() + '-' + pad2(next.getUTCMonth() + 1) + '-' + pad2(next.getUTCDate()) + 'T16:00';
+                    }
+                    var prevStatusKey = selectedStatusKey();
+                    function sync(fromUserChange) {
+                        var statusKey = selectedStatusKey();
+                        if (fromUserChange && followupEl && statusKey === 'follow_up' && prevStatusKey !== 'follow_up') {
+                            followupEl.value = followUpTomorrow4PmIstValue();
+                        }
+                        followupWrap.style.display = (statusKey === 'follow_up') ? '' : 'none';
+                        var isConverted = (statusKey === 'converted');
+                        amountWrap.style.display = isConverted ? '' : 'none';
+                        if (amountEl) amountEl.disabled = !isConverted;
+                        prevStatusKey = statusKey;
+                    }
+                    statusEl.addEventListener('change', function () { sync(true); });
+                    sync(false);
+                }
+
+                if (form) {
+                    form.addEventListener('submit', function (e) {
+                        e.preventDefault();
+                        var fd = new FormData(form);
+                        fd.append('save_lead', '1');
+                        detailView.setAttribute('aria-busy', 'true');
+                        fetch(form.getAttribute('action') || 'dashboard_lead_detail.php', {
+                            method: 'POST',
+                            body: fd,
+                            credentials: 'same-origin',
+                            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                        }).then(function (r) { return r.json(); }).then(function (data) {
+                            detailView.removeAttribute('aria-busy');
+                            if (!data || typeof data.html !== 'string') {
+                                detailView.innerHTML = '<p class="alert alert--error" style="margin:1rem 1.25rem">Could not save lead.</p><p style="padding:0 1.25rem 1.25rem;margin:0"><button type="button" class="btn btn--ghost js-dash-lead-back">Back</button></p>';
+                                return;
+                            }
+                            detailView.innerHTML = data.html;
+                            bindDetailUi();
+                        }).catch(function () {
+                            detailView.removeAttribute('aria-busy');
+                            detailView.innerHTML = '<p class="alert alert--error" style="margin:1rem 1.25rem">Could not save lead.</p><p style="padding:0 1.25rem 1.25rem;margin:0"><button type="button" class="btn btn--ghost js-dash-lead-back">Back</button></p>';
+                        });
+                    });
+                }
+            }
+
+            function openLead(id, push) {
+                id = parseInt(String(id || '0'), 10);
+                if (!(id > 0)) return;
+                detailView.innerHTML = '<p class="main__meta" style="margin:1rem 1.25rem">Loading…</p>';
+                detailView.style.display = '';
+                listView.style.display = 'none';
+                detailView.setAttribute('aria-busy', 'true');
+                if (push !== false) {
+                    history.pushState({ dashLead: id }, '', '#lead-' + id);
+                }
+                fetch('dashboard_lead_detail.php?id=' + encodeURIComponent(String(id)), {
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    detailView.removeAttribute('aria-busy');
+                    if (!data || typeof data.html !== 'string') {
+                        detailView.innerHTML = '<p class="alert alert--error" style="margin:1rem 1.25rem">Could not load lead.</p><p style="padding:0 1.25rem 1.25rem;margin:0"><button type="button" class="btn btn--ghost js-dash-lead-back">Back</button></p>';
+                        return;
+                    }
+                    detailView.innerHTML = data.html;
+                    bindDetailUi();
+                    try { section.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+                }).catch(function () {
+                    detailView.removeAttribute('aria-busy');
+                    detailView.innerHTML = '<p class="alert alert--error" style="margin:1rem 1.25rem">Could not load lead.</p><p style="padding:0 1.25rem 1.25rem;margin:0"><button type="button" class="btn btn--ghost js-dash-lead-back">Back</button></p>';
+                });
+            }
+
+            section.addEventListener('click', function (e) {
+                var openLink = e.target.closest('.js-dash-lead-open');
+                if (openLink) {
+                    e.preventDefault();
+                    openLead(openLink.getAttribute('data-lead-id'), true);
+                    return;
+                }
+                var backBtn = e.target.closest('.js-dash-lead-back');
+                if (backBtn) {
+                    e.preventDefault();
+                    showList();
+                    try { section.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) {}
+                }
+            });
+
+            window.addEventListener('popstate', function () {
+                if (history.state && history.state.dashLead) {
+                    openLead(history.state.dashLead, false);
+                } else if (detailView.style.display !== 'none') {
+                    showList();
+                }
+            });
+
+            var hashMatch = /^#lead-(\d+)$/.exec(String(window.location.hash || ''));
+            if (hashMatch) {
+                openLead(hashMatch[1], false);
+            }
+        })();
+        </script>
     </div>
 </div>
 <?php endif; ?>

@@ -144,6 +144,12 @@ function gift_card_pdf_html(array $gift): string
     $code = extract_gift_code((string) ($gift['gift_card_code'] ?? ''));
     $imageUrl = trim((string) ($gift['design_image_url'] ?? ''));
     $imageDataUri = $imageUrl !== '' ? gift_image_url_to_data_uri($imageUrl) : '';
+    if ($imageDataUri === '') {
+        $imageDataUri = gift_local_file_to_data_uri(__DIR__ . '/../assets/images/gift-card-default.jpg');
+    }
+    if ($imageDataUri === '') {
+        $imageDataUri = gift_local_file_to_data_uri(__DIR__ . '/../assets/images/gift-card-default.webp');
+    }
     $logoDataUri = gift_local_file_to_data_uri(__DIR__ . '/../assets/images/allure-thai-logo.jpg');
     if ($logoDataUri === '') {
         $logoDataUri = gift_local_file_to_data_uri(__DIR__ . '/../assets/images/allure-thai-logo.png');
@@ -171,9 +177,7 @@ function gift_card_pdf_html(array $gift): string
 
     $imageHtml = $imageDataUri !== ''
         ? '<img class="design" src="' . $e($imageDataUri) . '" alt="Gift design">'
-        : ($imageUrl !== '' && extension_loaded('gd')
-            ? '<img class="design" src="' . $e($imageUrl) . '" alt="Gift design">'
-            : '<div class="design-ph">Gift design image</div>');
+        : '<div class="design-ph">Gift design image</div>';
 
     $codeBar = $code !== ''
         ? '<table class="code-bar" cellspacing="0" cellpadding="0"><tr>'
@@ -219,9 +223,9 @@ body {
 .title-cell { width: 36%; text-align: center; }
 .badge-cell { width: 30%; text-align: right; }
 .brand-logo {
-  height: 96px;
+  height: 120px;
   width: auto;
-  max-width: 420px;
+  max-width: 520px;
   display: inline-block;
   vertical-align: middle;
 }

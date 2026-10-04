@@ -55,6 +55,13 @@ function gift_design_image_url_from_attachment_id(PDO $pdo, int $attachmentId, ?
         if ($rel === '') {
             return '';
         }
+        $pathForExt = preg_match('#^https?://#i', $rel) === 1
+            ? (string) (parse_url($rel, PHP_URL_PATH) ?: $rel)
+            : $rel;
+        if (strcasecmp((string) pathinfo($pathForExt, PATHINFO_EXTENSION), 'avif') === 0) {
+            // Dompdf / common embeds do not support AVIF — use default gift image.
+            return '';
+        }
         if (preg_match('#^https?://#i', $rel) === 1) {
             return $rel;
         }

@@ -13,7 +13,7 @@ function format_purchase_date(?string $dt): string
     return date('d-M-y', $t);
 }
 
-const GIFT_CARD_VALIDITY_DAYS = 60;
+const GIFT_CARD_VALIDITY_MONTHS = 3;
 
 /**
  * Base URL for WordPress uploads (trailing slash), e.g. https://allurethaispa.in/wp-content/uploads/
@@ -81,7 +81,7 @@ function gift_card_expiry_date_ymd(?string $orderDate): ?string
     }
     try {
         $dt = new DateTime(trim($orderDate), new DateTimeZone('Asia/Kolkata'));
-        $dt->modify('+' . GIFT_CARD_VALIDITY_DAYS . ' days');
+        $dt->modify('+' . GIFT_CARD_VALIDITY_MONTHS . ' months');
 
         return $dt->format('Y-m-d');
     } catch (Throwable $e) {
@@ -90,7 +90,7 @@ function gift_card_expiry_date_ymd(?string $orderDate): ?string
             return null;
         }
 
-        return date('Y-m-d', strtotime('+' . GIFT_CARD_VALIDITY_DAYS . ' days', $t));
+        return date('Y-m-d', strtotime('+' . GIFT_CARD_VALIDITY_MONTHS . ' months', $t));
     }
 }
 

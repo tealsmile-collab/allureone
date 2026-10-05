@@ -276,11 +276,11 @@ try {
           AND p.post_status = 'wc-completed'";
         } elseif ($filterValidity === 'active') {
             $validitySql = "
-          AND DATE_ADD(DATE(p.post_date), INTERVAL " . GIFT_CARD_VALIDITY_DAYS . " DAY) >= :gift_validity_today
+          AND DATE_ADD(DATE(p.post_date), INTERVAL " . GIFT_CARD_VALIDITY_MONTHS . " MONTH) >= :gift_validity_today
           AND p.post_status <> 'wc-completed'";
         } else {
             $validitySql = "
-          AND DATE_ADD(DATE(p.post_date), INTERVAL " . GIFT_CARD_VALIDITY_DAYS . " DAY) < :gift_validity_today
+          AND DATE_ADD(DATE(p.post_date), INTERVAL " . GIFT_CARD_VALIDITY_MONTHS . " MONTH) < :gift_validity_today
           AND p.post_status <> 'wc-completed'";
         }
         $listFromWhere .= $validitySql;

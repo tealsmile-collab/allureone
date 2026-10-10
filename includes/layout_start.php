@@ -73,6 +73,9 @@ $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
             <?php if ($canAppointments): ?>
                 <a class="sidebar__link<?= ($activeNav === 'appointments') ? ' is-active' : '' ?>" href="appointment.php">Appointments</a>
             <?php endif; ?>
+            <?php if (can_access_expense($user)): ?>
+                <a class="sidebar__link<?= ($activeNav === 'expense') ? ' is-active' : '' ?>" href="expense.php">Expense</a>
+            <?php endif; ?>
             <?php if ($userRoleId === ROLE_SUPERADMIN): ?>
                 <a class="sidebar__link<?= ($activeNav === 'invoice') ? ' is-active' : '' ?>" href="invoice.php">Invoice</a>
             <?php endif; ?>

@@ -186,6 +186,11 @@ function can_access_appointments(?array $user = null): bool
     ], true);
 }
 
+function can_access_expense(?array $user = null): bool
+{
+    return is_array($user ?? current_user());
+}
+
 function csrf_token(): string
 {
     if (empty($_SESSION['_csrf'])) {

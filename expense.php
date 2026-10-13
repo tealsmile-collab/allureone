@@ -625,7 +625,23 @@ require __DIR__ . '/includes/layout_start.php';
         _csrf: csrf,
         branch_id: bid
       }, payload || {}))
-    }).then(function (r) { return r.json(); });
+    }).then(function (r) {
+      return r.text().then(function (text) {
+        var parsed = null;
+        try {
+          parsed = text ? JSON.parse(text) : null;
+        } catch (e) {
+          parsed = null;
+        }
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+        return {
+          ok: false,
+          error: 'Server error (HTTP ' + r.status + '). Please republish expense_api.php or check php_errors.log.'
+        };
+      });
+    });
   }
 
   function recalcTotals() {

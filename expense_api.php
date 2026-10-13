@@ -162,33 +162,54 @@ function expense_dingg_parse_write_response(array $resp): array
 }
 
 /**
+ * PHP 8.0-safe list check (array_is_list is 8.1+).
+ */
+function expense_is_list(array $arr): bool
+{
+    if (function_exists('array_is_list')) {
+        return array_is_list($arr);
+    }
+    if ($arr === []) {
+        return true;
+    }
+
+    return array_keys($arr) === range(0, count($arr) - 1);
+}
+
+function expense_str_len(string $s): int
+{
+    return function_exists('mb_strlen') ? (int) mb_strlen($s) : strlen($s);
+}
+
+/**
+ * @param mixed $json
  * @return list<mixed>
  */
-function expense_extract_list(mixed $json): array
+function expense_extract_list($json): array
 {
     if (!is_array($json)) {
         return [];
     }
     if (isset($json['data']) && is_array($json['data'])) {
         $data = $json['data'];
-        if ($data !== [] && array_is_list($data)) {
+        if ($data !== [] && expense_is_list($data)) {
             return $data;
         }
         foreach (['list', 'items', 'rows', 'result', 'accounts', 'types', 'modes', 'taxes', 'tax_groups'] as $key) {
-            if (isset($data[$key]) && is_array($data[$key]) && array_is_list($data[$key])) {
+            if (isset($data[$key]) && is_array($data[$key]) && expense_is_list($data[$key])) {
                 return $data[$key];
             }
         }
-        if (array_is_list($data)) {
+        if (expense_is_list($data)) {
             return $data;
         }
     }
     foreach (['list', 'items', 'rows', 'result'] as $key) {
-        if (isset($json[$key]) && is_array($json[$key]) && array_is_list($json[$key])) {
+        if (isset($json[$key]) && is_array($json[$key]) && expense_is_list($json[$key])) {
             return $json[$key];
         }
     }
-    if (array_is_list($json)) {
+    if (expense_is_list($json)) {
         return $json;
     }
 
@@ -267,34 +288,45 @@ if ($token === '') {
 }
 
 if ($action === 'meta') {
-    $typeR = expense_dingg_get('https://api.dingg.app/api/v1/vendor/expense/type', $token);
-    $accountR = expense_dingg_get('https://api.dingg.app/api/v1/vendor/account/list', $token);
-    $modeR = expense_dingg_get('https://api.dingg.app/api/v1/payment_mode', $token);
-    $taxR = expense_dingg_get('https://api.dingg.app/api/v1/vendor/tax', $token);
+    try {
+        $typeR = expense_dingg_get('https://api.dingg.app/api/v1/vendor/expense/type', $token);
+        $accountR = expense_dingg_get('https://api.dingg.app/api/v1/vendor/account/list', $token);
+        $modeR = expense_dingg_get('https://api.dingg.app/api/v1/payment_mode', $token);
+        $taxR = expense_dingg_get('https://api.dingg.app/api/v1/vendor/tax', $token);
 
-    $errors = [];
-    if (!$typeR['ok']) {
-        $errors[] = 'Expense types: ' . (string) ($typeR['error'] ?? 'failed');
-    }
-    if (!$accountR['ok']) {
-        $errors[] = 'Accounts: ' . (string) ($accountR['error'] ?? 'failed');
-    }
-    if (!$modeR['ok']) {
-        $errors[] = 'Payment methods: ' . (string) ($modeR['error'] ?? 'failed');
-    }
-    if (!$taxR['ok']) {
-        $errors[] = 'Tax groups: ' . (string) ($taxR['error'] ?? 'failed');
-    }
+        // Tax is optional in the form (None). Do not block the whole page if tax API fails.
+        $errors = [];
+        if (!$typeR['ok']) {
+            $errors[] = 'Expense types: ' . (string) ($typeR['error'] ?? 'failed');
+        }
+        if (!$accountR['ok']) {
+            $errors[] = 'Accounts: ' . (string) ($accountR['error'] ?? 'failed');
+        }
+        if (!$modeR['ok']) {
+            $errors[] = 'Payment methods: ' . (string) ($modeR['error'] ?? 'failed');
+        }
 
-    echo json_encode([
-        'ok' => $errors === [],
-        'error' => $errors === [] ? '' : implode(' ', $errors),
-        'expense_types' => expense_normalize_options(expense_extract_list($typeR['json'] ?? null), 'type'),
-        'accounts' => expense_normalize_options(expense_extract_list($accountR['json'] ?? null), 'account'),
-        'payment_modes' => expense_normalize_options(expense_extract_list($modeR['json'] ?? null), 'mode'),
-        'tax_groups' => expense_normalize_options(expense_extract_list($taxR['json'] ?? null), 'tax'),
-        'branch_id' => $branchId,
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        echo json_encode([
+            'ok' => $errors === [],
+            'error' => $errors === [] ? '' : implode(' ', $errors),
+            'expense_types' => expense_normalize_options(expense_extract_list($typeR['json'] ?? null), 'type'),
+            'accounts' => expense_normalize_options(expense_extract_list($accountR['json'] ?? null), 'account'),
+            'payment_modes' => expense_normalize_options(expense_extract_list($modeR['json'] ?? null), 'mode'),
+            'tax_groups' => ($taxR['ok'] ?? false)
+                ? expense_normalize_options(expense_extract_list($taxR['json'] ?? null), 'tax')
+                : [],
+            'branch_id' => $branchId,
+            'warnings' => (!$taxR['ok'])
+                ? ['Tax groups: ' . (string) ($taxR['error'] ?? 'failed')]
+                : [],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } catch (Throwable $e) {
+        error_log('Expense meta failed: ' . $e->getMessage());
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Could not load expense options. ' . $e->getMessage(),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
     exit;
 }
 
@@ -443,7 +475,7 @@ if ($action === 'save' || $action === 'update') {
         echo json_encode(['ok' => false, 'error' => 'Please enter given to.']);
         exit;
     }
-    if (mb_strlen($givenTo) > 50) {
+    if (expense_str_len($givenTo) > 50) {
         echo json_encode(['ok' => false, 'error' => 'Given to max 50 characters.']);
         exit;
     }
@@ -455,7 +487,7 @@ if ($action === 'save' || $action === 'update') {
         echo json_encode(['ok' => false, 'error' => 'Please enter description.']);
         exit;
     }
-    if (mb_strlen($desc) > 100) {
+    if (expense_str_len($desc) > 100) {
         echo json_encode(['ok' => false, 'error' => 'Description max 100 characters.']);
         exit;
     }

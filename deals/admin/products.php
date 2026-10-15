@@ -71,7 +71,7 @@ admin_header('Products', 'products');
       <form method="post" enctype="multipart/form-data" class="row g-2">
         <?= Security::csrfField() ?>
         <input type="hidden" name="id" value="<?= e((string) ($edit['id'] ?? '')) ?>">
-        <div class="col-12"><label class="form-label">Name</label><input name="name" class="form-control" required value="<?= e($edit['name'] ?? '') ?>"></div>
+        <div class="col-12"><label class="form-label">Name</label><input name="name" class="form-control" required maxlength="200" value="<?= e($edit['name'] ?? '') ?>"></div>
         <div class="col-12"><label class="form-label">SEO URL (slug)</label><input name="slug" class="form-control" value="<?= e($edit['slug'] ?? '') ?>"></div>
         <div class="col-12"><label class="form-label">Category</label>
           <select name="category_id" class="form-select" required>

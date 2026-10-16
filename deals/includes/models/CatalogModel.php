@@ -37,10 +37,12 @@ class CatalogModel
     {
         if ($cityId) {
             $stmt = $this->db->prepare(
-                'SELECT id, city_id, name, slug, phone, whatsapp, address
-                 FROM alluredeal_branch
-                 WHERE city_id = ? AND is_active = 1 AND is_deleted = 0
-                 ORDER BY display_order ASC, name ASC'
+                'SELECT b.id, b.city_id, b.name, b.slug, b.phone, b.whatsapp, b.address
+                 FROM alluredeal_branch b
+                 JOIN alluredeal_city c ON c.id = b.city_id
+                 WHERE b.city_id = ? AND b.is_active = 1 AND b.is_deleted = 0
+                   AND c.is_active = 1 AND c.is_deleted = 0
+                 ORDER BY b.display_order ASC, b.name ASC'
             );
             $stmt->execute([$cityId]);
             return $stmt->fetchAll();
@@ -50,6 +52,7 @@ class CatalogModel
              FROM alluredeal_branch b
              JOIN alluredeal_city c ON c.id = b.city_id
              WHERE b.is_active = 1 AND b.is_deleted = 0
+               AND c.is_active = 1 AND c.is_deleted = 0
              ORDER BY c.display_order, b.display_order'
         )->fetchAll();
     }

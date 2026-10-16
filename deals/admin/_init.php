@@ -19,6 +19,7 @@ function admin_header(string $title, string $active = 'dashboard'): void
         'dashboard' => ['Dashboard', 'index.php'],
         'products' => ['Products', 'products.php'],
         'categories' => ['Categories', 'categories.php'],
+        'locations' => ['Cities & Branches', 'locations.php'],
         'deals' => ["Today's Deals", 'deals.php'],
         'slider' => ['Hero Slider', 'slider.php'],
         'coupons' => ['Coupons', 'coupons.php'],

@@ -29,6 +29,8 @@ try {
                 'coupon' => 'alluredeal_coupon',
                 'onetime_coupon' => 'alluredeal_onetime_coupon',
                 'policy' => 'alluredeal_policy',
+                'city' => 'alluredeal_city',
+                'branch' => 'alluredeal_branch',
             ];
             if (!isset($map[$type]) || !$id) {
                 Response::error('Invalid delete request');
@@ -46,6 +48,10 @@ try {
                 }
                 activity_log('deactivate', 'deal', $id);
                 Response::success(null, 'Deal deactivated');
+            }
+            if ($type === 'city') {
+                $db->prepare('UPDATE alluredeal_branch SET is_deleted = 1, is_active = 0, updated_by = ? WHERE city_id = ? AND is_deleted = 0')
+                    ->execute([Auth::id(), $id]);
             }
             $db->prepare("UPDATE {$map[$type]} SET is_deleted = 1, is_active = 0, updated_by = ? WHERE id = ?")
                 ->execute([Auth::id(), $id]);

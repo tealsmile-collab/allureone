@@ -511,6 +511,7 @@ body.has-mobile-cart .sticky-fabs {
 .brand-light .brand-text small { opacity: .75; }
 .brand-light .brand-mark {
   background: transparent;
+  text-decoration: none;
 }
 .brand-light .brand-mark img {
   height: 38px;

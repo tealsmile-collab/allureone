@@ -132,7 +132,7 @@ $csrf = Security::csrfToken();
       <div class="row g-4">
         <div class="col-md-4">
           <div class="brand brand-light">
-            <span class="brand-mark"><img src="<?= e($logo) ?>" alt="<?= e($company) ?>"></span>
+            <a class="brand-mark" href="https://allurethaispa.in/" aria-label="<?= e($company) ?>"><img src="<?= e($logo) ?>" alt="<?= e($company) ?>"></a>
             <span class="brand-text"><strong>Allure</strong><small>Thai Spa Deals</small></span>
           </div>
           <p class="mt-3">Luxury wellness deals with a seamless shopping experience. Book your favourite therapy at your nearest Allure centre.</p>

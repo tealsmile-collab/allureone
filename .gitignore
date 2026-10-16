@@ -10,3 +10,6 @@
 
 # PHP error log (local / may contain sensitive data)
 /php_errors.log
+
+# Refreshed Meta Ads user token
+/storage/meta_ads_token.json

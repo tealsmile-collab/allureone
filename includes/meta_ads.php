@@ -2,9 +2,9 @@
 declare(strict_types=1);
 
 /**
- * @return array{graph_version:string,access_token:string,ad_account_id:string}
+ * @return array{graph_version:string,app_id:string,app_secret:string,access_token:string,ad_account_id:string}
  */
-function meta_ads_settings(): array
+function meta_ads_config(): array
 {
     $config = require __DIR__ . '/../config.php';
     $cfg = is_array($config['meta_ads'] ?? null) ? $config['meta_ads'] : [];
@@ -19,24 +19,58 @@ function meta_ads_settings(): array
 
     return [
         'graph_version' => $version,
+        'app_id' => trim((string) ($cfg['app_id'] ?? '')),
+        'app_secret' => trim((string) ($cfg['app_secret'] ?? '')),
         'access_token' => trim((string) ($cfg['access_token'] ?? '')),
         'ad_account_id' => $accountId,
     ];
 }
 
 /**
- * @return array{ok:bool,http:int,json:?array,error:string}
+ * @return array{token:string,expires_at:int}
  */
-function meta_ads_graph_get(string $path, array $query = []): array
+function meta_ads_session_token(): array
 {
-    $settings = meta_ads_settings();
-    if ($settings['access_token'] === '') {
-        return ['ok' => false, 'http' => 0, 'json' => null, 'error' => 'Meta Ads access token is not configured.'];
+    $raw = $_SESSION['meta_ads_access_token'] ?? null;
+    if (!is_array($raw)) {
+        return ['token' => '', 'expires_at' => 0];
     }
-    $query['access_token'] = $settings['access_token'];
-    $url = 'https://graph.facebook.com/' . rawurlencode($settings['graph_version']) . '/' . ltrim($path, '/');
-    $url .= '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+    $token = trim((string) ($raw['token'] ?? ''));
+    if ($token === '') {
+        return ['token' => '', 'expires_at' => 0];
+    }
 
+    return [
+        'token' => $token,
+        'expires_at' => (int) ($raw['expires_at'] ?? 0),
+    ];
+}
+
+function meta_ads_save_session_token(string $token, int $expiresAt): void
+{
+    $token = trim($token);
+    if ($token === '' || session_status() !== PHP_SESSION_ACTIVE) {
+        return;
+    }
+    $_SESSION['meta_ads_access_token'] = [
+        'token' => $token,
+        'expires_at' => $expiresAt,
+    ];
+}
+
+function meta_ads_clear_session_token(): void
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return;
+    }
+    unset($_SESSION['meta_ads_access_token']);
+}
+
+/**
+ * @return array{http:int,json:?array,error:string}
+ */
+function meta_ads_http_get(string $url): array
+{
     $body = '';
     $http = 0;
     $err = '';
@@ -71,26 +105,290 @@ function meta_ads_graph_get(string $path, array $query = []): array
         $raw = @file_get_contents($url, false, $context);
         $body = $raw !== false ? (string) $raw : '';
     }
-
     $json = json_decode($body, true);
-    if (!is_array($json)) {
+
+    return [
+        'http' => $http,
+        'json' => is_array($json) ? $json : null,
+        'error' => $err,
+    ];
+}
+
+/**
+ * @return array{ok:bool,is_valid:bool,expires_at:int,error:string}
+ */
+function meta_ads_debug_token(string $token, array $cfg): array
+{
+    $appId = (string) ($cfg['app_id'] ?? '');
+    $appSecret = (string) ($cfg['app_secret'] ?? '');
+    if ($appId === '' || $appSecret === '') {
+        return ['ok' => false, 'is_valid' => false, 'expires_at' => 0, 'error' => 'Meta app id and app secret are not configured.'];
+    }
+    $version = (string) ($cfg['graph_version'] ?? 'v21.0');
+    $url = 'https://graph.facebook.com/' . rawurlencode($version) . '/debug_token?' . http_build_query([
+        'input_token' => $token,
+        'access_token' => $appId . '|' . $appSecret,
+    ], '', '&', PHP_QUERY_RFC3986);
+    $res = meta_ads_http_get($url);
+    $json = $res['json'];
+    $data = is_array($json) && is_array($json['data'] ?? null) ? $json['data'] : null;
+    if (!is_array($data)) {
+        $msg = is_array($json) && is_array($json['error'] ?? null)
+            ? trim((string) ($json['error']['message'] ?? ''))
+            : '';
+
         return [
             'ok' => false,
-            'http' => $http,
-            'json' => null,
-            'error' => $err !== '' ? $err : ('Meta request failed (HTTP ' . $http . ').'),
+            'is_valid' => false,
+            'expires_at' => 0,
+            'error' => $msg !== '' ? $msg : 'Could not check the Meta access token.',
         ];
     }
-    if (isset($json['error']) && is_array($json['error'])) {
-        $msg = trim((string) ($json['error']['message'] ?? 'Meta request failed.'));
 
-        return ['ok' => false, 'http' => $http, 'json' => $json, 'error' => $msg !== '' ? $msg : 'Meta request failed.'];
+    return [
+        'ok' => true,
+        'is_valid' => ($data['is_valid'] ?? false) === true,
+        'expires_at' => (int) ($data['expires_at'] ?? 0),
+        'error' => trim((string) ($data['error']['message'] ?? '')),
+    ];
+}
+
+/**
+ * Ask Meta's oauth/access_token API for a new long-lived token and store it in the session.
+ *
+ * @return array{ok:bool,token:string,expires_at:int,error:string}
+ */
+function meta_ads_exchange_token(string $token, array $cfg): array
+{
+    $appId = (string) ($cfg['app_id'] ?? '');
+    $appSecret = (string) ($cfg['app_secret'] ?? '');
+    $version = (string) ($cfg['graph_version'] ?? 'v21.0');
+    $url = 'https://graph.facebook.com/' . rawurlencode($version) . '/oauth/access_token?' . http_build_query([
+        'grant_type' => 'fb_exchange_token',
+        'client_id' => $appId,
+        'client_secret' => $appSecret,
+        'fb_exchange_token' => $token,
+    ], '', '&', PHP_QUERY_RFC3986);
+    $res = meta_ads_http_get($url);
+    $json = $res['json'];
+    $newToken = is_array($json) ? trim((string) ($json['access_token'] ?? '')) : '';
+    if ($newToken === '') {
+        $msg = is_array($json) && is_array($json['error'] ?? null)
+            ? trim((string) ($json['error']['message'] ?? ''))
+            : '';
+
+        return [
+            'ok' => false,
+            'token' => '',
+            'expires_at' => 0,
+            'error' => $msg !== '' ? $msg : 'Could not generate a new Meta access token.',
+        ];
     }
-    if ($http !== 0 && ($http < 200 || $http >= 300)) {
-        return ['ok' => false, 'http' => $http, 'json' => $json, 'error' => 'Meta request failed (HTTP ' . $http . ').'];
+    $expiresIn = (int) ($json['expires_in'] ?? 0);
+    $expiresAt = $expiresIn > 0 ? time() + $expiresIn : 0;
+    meta_ads_save_session_token($newToken, $expiresAt);
+
+    return ['ok' => true, 'token' => $newToken, 'expires_at' => $expiresAt, 'error' => ''];
+}
+
+function meta_ads_token_needs_refresh(array $debug): bool
+{
+    if (!($debug['is_valid'] ?? false)) {
+        return true;
+    }
+    $expiresAt = (int) ($debug['expires_at'] ?? 0);
+    if ($expiresAt === 0) {
+        return false;
     }
 
-    return ['ok' => true, 'http' => $http, 'json' => $json, 'error' => ''];
+    return $expiresAt <= time() + (7 * 24 * 60 * 60);
+}
+
+/**
+ * Reuse the session token when Meta says it is valid. Otherwise call the token API and save the new one.
+ *
+ * @return array{token:string,error:string}
+ */
+function meta_ads_ensure_access_token(bool $forceRefresh = false): array
+{
+    static $resolved = null;
+    if ($resolved !== null && !$forceRefresh) {
+        return $resolved;
+    }
+
+    $cfg = meta_ads_config();
+    $session = meta_ads_session_token();
+    if (!$forceRefresh && $session['token'] !== '' && $cfg['app_id'] !== '' && $cfg['app_secret'] !== '') {
+        $debug = meta_ads_debug_token($session['token'], $cfg);
+        if ($debug['ok'] && !meta_ads_token_needs_refresh($debug)) {
+            $resolved = ['token' => $session['token'], 'error' => ''];
+
+            return $resolved;
+        }
+    }
+
+    $seeds = [];
+    if ($cfg['access_token'] !== '') {
+        $seeds[] = $cfg['access_token'];
+    }
+    if ($session['token'] !== '' && !in_array($session['token'], $seeds, true)) {
+        $seeds[] = $session['token'];
+    }
+    if ($seeds === []) {
+        meta_ads_clear_session_token();
+        $resolved = ['token' => '', 'error' => 'Meta Ads access token is not configured.'];
+
+        return $resolved;
+    }
+    if ($cfg['app_id'] === '' || $cfg['app_secret'] === '') {
+        meta_ads_save_session_token($seeds[0], 0);
+        $resolved = ['token' => $seeds[0], 'error' => ''];
+
+        return $resolved;
+    }
+
+    $lastError = '';
+    foreach ($seeds as $token) {
+        $debug = meta_ads_debug_token($token, $cfg);
+        if (!$debug['ok']) {
+            $lastError = $debug['error'];
+            continue;
+        }
+        if (!$forceRefresh && !meta_ads_token_needs_refresh($debug)) {
+            meta_ads_save_session_token($token, (int) $debug['expires_at']);
+            $resolved = ['token' => $token, 'error' => ''];
+
+            return $resolved;
+        }
+        $exchanged = meta_ads_exchange_token($token, $cfg);
+        if ($exchanged['ok']) {
+            $resolved = ['token' => $exchanged['token'], 'error' => ''];
+
+            return $resolved;
+        }
+        if ($debug['is_valid'] && !$forceRefresh) {
+            meta_ads_save_session_token($token, (int) $debug['expires_at']);
+            $resolved = ['token' => $token, 'error' => ''];
+
+            return $resolved;
+        }
+        $lastError = $exchanged['error'] !== '' ? $exchanged['error'] : $debug['error'];
+    }
+
+    meta_ads_clear_session_token();
+    $resolved = [
+        'token' => '',
+        'error' => $lastError !== '' ? $lastError : 'Could not generate a Meta access token.',
+    ];
+
+    return $resolved;
+}
+
+function meta_ads_runtime_token(?string $token = null): ?string
+{
+    static $value = null;
+    if ($token !== null) {
+        $value = $token;
+    }
+
+    return $value;
+}
+
+/**
+ * @return array{graph_version:string,access_token:string,ad_account_id:string,token_error:string}
+ */
+function meta_ads_settings(): array
+{
+    $cfg = meta_ads_config();
+    $runtime = meta_ads_runtime_token();
+    if (is_string($runtime) && $runtime !== '') {
+        return [
+            'graph_version' => $cfg['graph_version'],
+            'access_token' => $runtime,
+            'ad_account_id' => $cfg['ad_account_id'],
+            'token_error' => '',
+        ];
+    }
+    $token = meta_ads_ensure_access_token(false);
+    if ($token['token'] !== '') {
+        meta_ads_runtime_token($token['token']);
+    }
+
+    return [
+        'graph_version' => $cfg['graph_version'],
+        'access_token' => $token['token'],
+        'ad_account_id' => $cfg['ad_account_id'],
+        'token_error' => $token['error'],
+    ];
+}
+
+/**
+ * @return array{ok:bool,http:int,json:?array,error:string}
+ */
+function meta_ads_graph_get(string $path, array $query = []): array
+{
+    $settings = meta_ads_settings();
+    if ($settings['access_token'] === '') {
+        $tokenError = trim((string) ($settings['token_error'] ?? ''));
+
+        return ['ok' => false, 'http' => 0, 'json' => null, 'error' => $tokenError !== '' ? $tokenError : 'Meta Ads access token is not configured.'];
+    }
+
+    $send = static function (string $token) use ($path, $query, $settings): array {
+        $query['access_token'] = $token;
+        $url = 'https://graph.facebook.com/' . rawurlencode($settings['graph_version']) . '/' . ltrim($path, '/');
+        $url .= '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+        $res = meta_ads_http_get($url);
+        $http = (int) ($res['http'] ?? 0);
+        $json = $res['json'];
+        $err = (string) ($res['error'] ?? '');
+        if (!is_array($json)) {
+            return [
+                'ok' => false,
+                'http' => $http,
+                'json' => null,
+                'error' => $err !== '' ? $err : ('Meta request failed (HTTP ' . $http . ').'),
+            ];
+        }
+        if (isset($json['error']) && is_array($json['error'])) {
+            $msg = trim((string) ($json['error']['message'] ?? 'Meta request failed.'));
+            $code = (int) ($json['error']['code'] ?? 0);
+
+            return [
+                'ok' => false,
+                'http' => $http,
+                'json' => $json,
+                'error' => $msg !== '' ? $msg : 'Meta request failed.',
+                'token_expired' => $code === 190,
+            ];
+        }
+        if ($http !== 0 && ($http < 200 || $http >= 300)) {
+            return ['ok' => false, 'http' => $http, 'json' => $json, 'error' => 'Meta request failed (HTTP ' . $http . ').'];
+        }
+
+        return ['ok' => true, 'http' => $http, 'json' => $json, 'error' => ''];
+    };
+
+    $first = $send($settings['access_token']);
+    if (($first['ok'] ?? false) || empty($first['token_expired'])) {
+        unset($first['token_expired']);
+
+        return $first;
+    }
+
+    $cfg = meta_ads_config();
+    $exchanged = meta_ads_exchange_token($settings['access_token'], $cfg);
+    if (!$exchanged['ok'] || $exchanged['token'] === '' || $exchanged['token'] === $settings['access_token']) {
+        unset($first['token_expired']);
+
+        return $first;
+    }
+    meta_ads_runtime_token($exchanged['token']);
+
+    $retry = $send($exchanged['token']);
+    unset($retry['token_expired']);
+
+    return $retry;
 }
 
 function meta_ads_format_money($minor, string $currency): string
@@ -274,9 +572,11 @@ function meta_ads_load(string $period = 'last_14'): array
     $period = meta_ads_normalize_period($period);
     $settings = meta_ads_settings();
     if ($settings['access_token'] === '') {
+        $tokenError = trim((string) ($settings['token_error'] ?? ''));
+
         return [
             'ok' => false,
-            'error' => 'Set meta_ads.access_token in config.php to a Marketing API token with ads_read.',
+            'error' => $tokenError !== '' ? $tokenError : 'Set meta_ads.access_token in config.php to a Marketing API token with ads_read.',
             'accounts' => [],
             'ads' => [],
         ];

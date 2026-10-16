@@ -84,7 +84,9 @@ return [
     ],
     'meta_ads' => [
         'graph_version' => 'v21.0',
-        /** Marketing API user or system-user token with ads_read. */
+        'app_id' => '',
+        'app_secret' => '',
+        /** Marketing API user or system-user token with ads_read. Exchanged for a new long-lived token when invalid. */
         'access_token' => '',
         /** Optional act_123456789. Empty loads all ad accounts the token can access. */
         'ad_account_id' => '',

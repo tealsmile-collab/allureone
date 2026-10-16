@@ -415,6 +415,21 @@ function meta_ads_format_major($amount, string $currency): string
 }
 
 /**
+ * Prepaid wallets report available funds in funding_source_details.display_string.
+ * The balance field is the amount owed, which is 0 when the account is prepaid.
+ */
+function meta_ads_prepaid_balance_label(string $display, string $currency): ?string
+{
+    $display = trim($display);
+    if ($display === '' || !preg_match('/available balance\s*\((?:[^\d)]*)([0-9][0-9,]*(?:\.[0-9]+)?)[^)]*\)/iu', $display, $match)) {
+        return null;
+    }
+    $amount = (float) str_replace(',', '', $match[1]);
+
+    return meta_ads_format_major($amount, $currency);
+}
+
+/**
  * @return array<string, string>
  */
 function meta_ads_period_options(): array
@@ -613,12 +628,14 @@ function meta_ads_load(string $period = 'last_14'): array
         }
         $currency = strtoupper(trim((string) ($row['currency'] ?? 'INR')));
         $funding = is_array($row['funding_source_details'] ?? null) ? $row['funding_source_details'] : [];
+        $fundingDisplay = trim((string) ($funding['display_string'] ?? ''));
+        $prepaidBalance = meta_ads_prepaid_balance_label($fundingDisplay, $currency);
         $accounts[] = [
             'id' => $id,
             'name' => trim((string) ($row['name'] ?? $id)),
             'currency' => $currency,
-            'balance_label' => meta_ads_format_money($row['balance'] ?? null, $currency),
-            'funding' => trim((string) ($funding['display_string'] ?? '')),
+            'balance_label' => $prepaidBalance ?? meta_ads_format_money($row['balance'] ?? null, $currency),
+            'funding' => $prepaidBalance !== null ? '' : $fundingDisplay,
         ];
 
         $nextPath = $id . '/ads';

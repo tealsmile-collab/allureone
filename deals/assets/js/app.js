@@ -281,8 +281,9 @@
       const desktop = s.desktop_image || s.mobile_image || '';
       const mobile = s.mobile_image || s.desktop_image || '';
       const alt = escapeHtml(s.heading || 'Allure offer');
+      const newTab = href.charAt(0) !== '#';
       $wrap.append(`<div class="swiper-slide">
-        <a class="hero-slide-link" href="${escapeHtml(href)}" aria-label="${alt}">
+        <a class="hero-slide-link" href="${escapeHtml(href)}"${newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} aria-label="${alt}">
           <img class="hero-slide-img d-none d-md-block" src="${escapeHtml(desktop)}" alt="${alt}" loading="eager">
           <img class="hero-slide-img d-md-none" src="${escapeHtml(mobile)}" alt="${alt}" loading="eager">
         </a>

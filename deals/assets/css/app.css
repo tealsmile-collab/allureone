@@ -506,6 +506,7 @@ body.has-mobile-cart .sticky-fabs {
 .site-footer h4 { font-family: var(--font-display); font-size: 1.4rem; }
 .footer-links { list-style: none; padding: 0; margin: 0; }
 .footer-links a { color: var(--peach); display: inline-block; padding: .2rem 0; }
+.site-footer .footer-phone { color: inherit; text-decoration: none; }
 .footer-bottom { border-top: 1px solid rgba(244, 229, 217, 0.2); margin-top: 2rem; padding-top: 1rem; font-size: .85rem; opacity: .85; }
 .brand-light .brand-text strong, .brand-light .brand-text small { color: var(--pearl); }
 .brand-light .brand-text small { opacity: .75; }

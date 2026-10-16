@@ -17,6 +17,8 @@ $siteName = config('site_name');
 $company = config('company_name');
 $logo = logo_url();
 $csrf = Security::csrfToken();
+$supportPhone = trim((string) config('support_phone'));
+$supportTel = preg_replace('/[^\d+]/', '', $supportPhone) ?? '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -149,7 +151,7 @@ $csrf = Security::csrfToken();
         </div>
         <div class="col-md-4">
           <h4>Contact</h4>
-          <p><i class="fa-solid fa-phone"></i> <?= e((string) config('support_phone')) ?></p>
+          <p><i class="fa-solid fa-phone"></i> <?php if ($supportTel !== ''): ?><a class="footer-phone" href="tel:<?= e($supportTel) ?>"><?= e($supportPhone) ?></a><?php else: ?><?= e($supportPhone) ?><?php endif; ?></p>
           <p><i class="fa-solid fa-envelope"></i> <?= e((string) config('support_email')) ?></p>
         </div>
       </div>

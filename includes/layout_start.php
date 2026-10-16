@@ -15,6 +15,7 @@ $canAppointments = can_access_appointments($user);
 $canSaleRecord = can_access_sale_record($user);
 $canMetaConfig = can_access_meta_config($user);
 $canGoogleAdsView = can_access_google_ads_view($user);
+$canMetaAds = can_access_meta_ads($user);
 $canCrmSegments = can_access_crm_segments($user);
 $canHr = can_access_hr($user);
 $canHrAttendance = can_access_hr_attendance($user);
@@ -94,6 +95,9 @@ $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
             <?php endif; ?>
             <?php if ($canGoogleAdsView): ?>
                 <a class="sidebar__link<?= ($activeNav === 'google_ads_view') ? ' is-active' : '' ?>" href="google-ads-view.php">Google Ads View</a>
+            <?php endif; ?>
+            <?php if ($canMetaAds): ?>
+                <a class="sidebar__link<?= ($activeNav === 'meta_ads') ? ' is-active' : '' ?>" href="Meta.php">Meta Ads</a>
             <?php endif; ?>
             <?php if (!$isFranchiseOfficerRole && !$isAppointmentStaffRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'gift_codes') ? ' is-active' : '' ?>" href="gift_codes.php">Gift Card Sale</a>

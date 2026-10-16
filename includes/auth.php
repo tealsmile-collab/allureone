@@ -107,6 +107,30 @@ function require_google_ads_view_access(): void
     }
 }
 
+function can_access_meta_ads(?array $user = null): bool
+{
+    $u = $user ?? current_user();
+    if (!is_array($u)) {
+        return false;
+    }
+    $roleId = (int) ($u['role_id'] ?? 0);
+    if ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) {
+        return true;
+    }
+
+    return !empty($u['meta_ads']);
+}
+
+function require_meta_ads_access(): void
+{
+    require_login();
+    if (!can_access_meta_ads()) {
+        http_response_code(403);
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Forbidden</title></head><body><p>Access denied. Meta Ads permission required.</p><p><a href="' . htmlspecialchars(allureone_home_path_for_user(), ENT_QUOTES, 'UTF-8') . '">Home</a></p></body></html>';
+        exit;
+    }
+}
+
 function can_access_crm_segments(?array $user = null): bool
 {
     $u = $user ?? current_user();
@@ -220,6 +244,7 @@ function current_user(): ?array
         'record_sale' => !empty($_SESSION['record_sale']),
         'meta_config' => !empty($_SESSION['meta_config']),
         'google_ads_view' => !empty($_SESSION['google_ads_view']),
+        'meta_ads' => !empty($_SESSION['meta_ads']),
         'crm_segments' => !empty($_SESSION['crm_segments']),
         'invoice_cancellation_disabled' => !empty($_SESSION['invoice_cancellation_disabled']),
     ];
@@ -307,6 +332,8 @@ function login_user(array $row): void
     $_SESSION['meta_config'] = ((int) $metaConfig === 1);
     $googleAdsView = $row['google_ads_view'] ?? $row['GoogleAdsView'] ?? 0;
     $_SESSION['google_ads_view'] = ((int) $googleAdsView === 1);
+    $metaAds = $row['meta_ads'] ?? $row['MetaAds'] ?? 0;
+    $_SESSION['meta_ads'] = ((int) $metaAds === 1);
     $crmSegments = $row['crm_segments'] ?? $row['CrmSegments'] ?? 0;
     $_SESSION['crm_segments'] = ((int) $crmSegments === 1);
 }

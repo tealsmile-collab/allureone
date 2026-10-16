@@ -35,6 +35,10 @@ function allureone_ensure_user_permission_columns(PDO $pdo): void
         if (!$cols) {
             $pdo->exec('ALTER TABLE allureone_users ADD COLUMN CrmSegments TINYINT(1) NOT NULL DEFAULT 0 AFTER GoogleAdsView');
         }
+        $cols = $pdo->query("SHOW COLUMNS FROM allureone_users LIKE 'MetaAds'")->fetch();
+        if (!$cols) {
+            $pdo->exec('ALTER TABLE allureone_users ADD COLUMN MetaAds TINYINT(1) NOT NULL DEFAULT 0 AFTER CrmSegments');
+        }
         $cols = $pdo->query("SHOW COLUMNS FROM allureone_branch LIKE 'MonthlyTarget'")->fetch();
         if (!$cols) {
             $pdo->exec('ALTER TABLE allureone_branch ADD COLUMN MonthlyTarget DECIMAL(20,2) NULL AFTER enableSaleRecord');

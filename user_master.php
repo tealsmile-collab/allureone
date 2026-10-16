@@ -37,7 +37,7 @@ $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $editRow = null;
 if ($editId > 0) {
     $es = $pdo->prepare(
-        'SELECT id, loginname, FullName, MobileNo, EmailId, BranchId, RoleId, isactive, RecordSale, MetaConfig, GoogleAdsView, CrmSegments FROM allureone_users WHERE id = :id LIMIT 1'
+        'SELECT id, loginname, FullName, MobileNo, EmailId, BranchId, RoleId, isactive, RecordSale, MetaConfig, GoogleAdsView, MetaAds, CrmSegments FROM allureone_users WHERE id = :id LIMIT 1'
     );
     $es->execute(['id' => $editId]);
     $editRow = $es->fetch();
@@ -54,6 +54,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $messageType = 'error';
     } else {
         $action = isset($_POST['_action']) ? (string) $_POST['_action'] : 'create';
+        if ($action === 'toggle_meta_ads') {
+            $toggleUserId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+            $metaAdsFlag = isset($_POST['meta_ads']) ? 1 : 0;
+            if ($toggleUserId > 0) {
+                try {
+                    $tog = $pdo->prepare('UPDATE allureone_users SET MetaAds = :flag WHERE id = :id');
+                    $tog->execute(['flag' => $metaAdsFlag, 'id' => $toggleUserId]);
+                } catch (PDOException $e) {
+                    error_log('AllureOne user MetaAds toggle failed: ' . $e->getMessage());
+                }
+            }
+            $back = ['msg' => 'user_updated'];
+            $backQ = trim((string) ($_POST['q'] ?? ''));
+            $backPage = (int) ($_POST['page'] ?? 1);
+            if ($backQ !== '') {
+                $back['q'] = $backQ;
+            }
+            if ($backPage > 1) {
+                $back['page'] = $backPage;
+            }
+            header('Location: user_master.php?' . http_build_query($back));
+            exit;
+        }
         $loginname = isset($_POST['loginname']) ? trim((string) $_POST['loginname']) : '';
         $password = isset($_POST['password']) ? (string) $_POST['password'] : '';
         $fullName = isset($_POST['full_name']) ? trim((string) $_POST['full_name']) : '';
@@ -69,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $recordSale = isset($_POST['record_sale']) ? 1 : 0;
             $metaConfig = isset($_POST['meta_config']) ? 1 : 0;
             $googleAdsView = isset($_POST['google_ads_view']) ? 1 : 0;
+            $metaAds = isset($_POST['meta_ads']) ? 1 : 0;
             $crmSegments = isset($_POST['crm_segments']) ? 1 : 0;
             if ($userId < 1) {
                 $message = 'Invalid user.';
@@ -129,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         $hash = password_hash($password, PASSWORD_DEFAULT);
                                         $upd = $pdo->prepare(
                                             'UPDATE allureone_users SET loginname = :l, password = :p, FullName = :f,
-                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a, RecordSale = :rs, MetaConfig = :mc, GoogleAdsView = :gav, CrmSegments = :cs WHERE id = :id'
+                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a, RecordSale = :rs, MetaConfig = :mc, GoogleAdsView = :gav, MetaAds = :ma, CrmSegments = :cs WHERE id = :id'
                                         );
                                         $upd->execute([
                                             'l' => $loginname,
@@ -143,13 +167,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             'rs' => $recordSale,
                                             'mc' => $metaConfig,
                                             'gav' => $googleAdsView,
+                                            'ma' => $metaAds,
                                             'cs' => $crmSegments,
                                             'id' => $userId,
                                         ]);
                                     } else {
                                         $upd = $pdo->prepare(
                                             'UPDATE allureone_users SET loginname = :l, FullName = :f,
-                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a, RecordSale = :rs, MetaConfig = :mc, GoogleAdsView = :gav, CrmSegments = :cs WHERE id = :id'
+                                             MobileNo = :m, EmailId = :e, BranchId = :b, RoleId = :r, isactive = :a, RecordSale = :rs, MetaConfig = :mc, GoogleAdsView = :gav, MetaAds = :ma, CrmSegments = :cs WHERE id = :id'
                                         );
                                         $upd->execute([
                                             'l' => $loginname,
@@ -162,6 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             'rs' => $recordSale,
                                             'mc' => $metaConfig,
                                             'gav' => $googleAdsView,
+                                            'ma' => $metaAds,
                                             'cs' => $crmSegments,
                                             'id' => $userId,
                                         ]);
@@ -201,6 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $recordSale = isset($_POST['record_sale']) ? 1 : 0;
             $metaConfig = isset($_POST['meta_config']) ? 1 : 0;
             $googleAdsView = isset($_POST['google_ads_view']) ? 1 : 0;
+            $metaAds = isset($_POST['meta_ads']) ? 1 : 0;
             $crmSegments = isset($_POST['crm_segments']) ? 1 : 0;
             $branchForDb = null;
             if ($branchId > 0) {
@@ -225,8 +252,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $hash = password_hash($passwordForHash, PASSWORD_DEFAULT);
                     try {
                         $ins = $pdo->prepare(
-                            'INSERT INTO allureone_users (loginname, password, FullName, MobileNo, EmailId, BranchId, RoleId, isactive, RecordSale, MetaConfig, GoogleAdsView, CrmSegments)
-                             VALUES (:l, :p, :f, :m, :e, :b, :r, 1, :rs, :mc, :gav, :cs)'
+                            'INSERT INTO allureone_users (loginname, password, FullName, MobileNo, EmailId, BranchId, RoleId, isactive, RecordSale, MetaConfig, GoogleAdsView, MetaAds, CrmSegments)
+                             VALUES (:l, :p, :f, :m, :e, :b, :r, 1, :rs, :mc, :gav, :ma, :cs)'
                         );
                         $ins->execute([
                             'l' => $loginname,
@@ -239,6 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'rs' => $recordSale,
                             'mc' => $metaConfig,
                             'gav' => $googleAdsView,
+                            'ma' => $metaAds,
                             'cs' => $crmSegments,
                         ]);
                         header('Location: user_master.php?msg=user_created');
@@ -291,7 +319,7 @@ if ($listPage > $listTotalPages) {
 $listOffset = ($listPage - 1) * $listPerPage;
 
 $listStmt = $pdo->prepare(
-    'SELECT u.id, u.loginname, u.FullName, u.MobileNo, u.EmailId, u.BranchId, u.RoleId, u.isactive, u.RecordSale, u.MetaConfig, u.GoogleAdsView, u.CrmSegments,
+    'SELECT u.id, u.loginname, u.FullName, u.MobileNo, u.EmailId, u.BranchId, u.RoleId, u.isactive, u.RecordSale, u.MetaConfig, u.GoogleAdsView, u.MetaAds, u.CrmSegments,
             b.business_name, b.locality, r.RoleName
      FROM allureone_users u
      LEFT JOIN allureone_branch b ON b.id = u.BranchId
@@ -408,6 +436,12 @@ require __DIR__ . '/includes/layout_start.php';
             </div>
             <div class="form__row form__row--check">
                 <label class="check-label">
+                    <input type="checkbox" name="meta_ads" value="1"<?= ((int) ($editRow['MetaAds'] ?? 0) === 1) ? ' checked' : '' ?>>
+                    Meta Ads
+                </label>
+            </div>
+            <div class="form__row form__row--check">
+                <label class="check-label">
                     <input type="checkbox" name="crm_segments" value="1"<?= ((int) ($editRow['CrmSegments'] ?? 0) === 1) ? ' checked' : '' ?>>
                     CRM Segments
                 </label>
@@ -512,6 +546,12 @@ $newUserOpen = (!$editId && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST[
             </div>
             <div class="form__row form__row--check">
                 <label class="check-label">
+                    <input type="checkbox" name="meta_ads" value="1"<?= (!$editId && isset($_POST['meta_ads']) && ($_POST['_action'] ?? '') === 'create') ? ' checked' : '' ?>>
+                    Meta Ads
+                </label>
+            </div>
+            <div class="form__row form__row--check">
+                <label class="check-label">
                     <input type="checkbox" name="crm_segments" value="1"<?= (!$editId && isset($_POST['crm_segments']) && ($_POST['_action'] ?? '') === 'create') ? ' checked' : '' ?>>
                     CRM Segments
                 </label>
@@ -550,6 +590,7 @@ $newUserOpen = (!$editId && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST[
                             <th>Role</th>
                             <th>Active</th>
                             <th>Record Sale</th>
+                            <th>Meta Ads</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -569,6 +610,20 @@ $newUserOpen = (!$editId && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST[
                                 <td><?= e((string) $u['RoleName']) ?></td>
                                 <td><?= ((int) $u['isactive'] === 1) ? 'Yes' : 'No' ?></td>
                                 <td><?= ((int) ($u['RecordSale'] ?? 0) === 1) ? 'Yes' : 'No' ?></td>
+                                <td>
+                                    <form method="post" action="user_master.php" style="margin:0">
+                                        <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                                        <input type="hidden" name="_action" value="toggle_meta_ads">
+                                        <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
+                                        <?php if ($searchName !== ''): ?>
+                                            <input type="hidden" name="q" value="<?= e($searchName) ?>">
+                                        <?php endif; ?>
+                                        <?php if ($listPage > 1): ?>
+                                            <input type="hidden" name="page" value="<?= (int) $listPage ?>">
+                                        <?php endif; ?>
+                                        <input type="checkbox" name="meta_ads" value="1" title="Meta Ads access" aria-label="Meta Ads access for <?= e((string) $u['loginname']) ?>"<?= ((int) ($u['MetaAds'] ?? 0) === 1) ? ' checked' : '' ?> onchange="this.form.submit()">
+                                    </form>
+                                </td>
                                 <td class="table-actions"><a href="user_master.php?<?= e(http_build_query(array_merge($listQueryBase, ['edit' => (int) $u['id']]))) ?>">Edit</a></td>
                             </tr>
                         <?php endforeach; ?>

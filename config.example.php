@@ -82,4 +82,11 @@ return [
         /** Set true when server CA bundle is configured (php.ini curl.cainfo / openssl.cafile). */
         'ssl_verify' => true,
     ],
+    'meta_ads' => [
+        'graph_version' => 'v21.0',
+        /** Marketing API user or system-user token with ads_read. */
+        'access_token' => '',
+        /** Optional act_123456789. Empty loads all ad accounts the token can access. */
+        'ad_account_id' => '',
+    ],
 ];

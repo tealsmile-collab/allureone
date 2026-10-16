@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS allureone_users (
   RecordSale TINYINT(1) NOT NULL DEFAULT 0,
   MetaConfig TINYINT(1) NOT NULL DEFAULT 0,
   GoogleAdsView TINYINT(1) NOT NULL DEFAULT 0,
+  MetaAds TINYINT(1) NOT NULL DEFAULT 0,
   CrmSegments TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   UNIQUE KEY uq_allureone_login (loginname),
@@ -441,6 +442,9 @@ try {
     }
     if (!isset($userColSet['CrmSegments'])) {
         $pdo->exec('ALTER TABLE allureone_users ADD COLUMN CrmSegments TINYINT(1) NOT NULL DEFAULT 0 AFTER GoogleAdsView');
+    }
+    if (!isset($userColSet['MetaAds'])) {
+        $pdo->exec('ALTER TABLE allureone_users ADD COLUMN MetaAds TINYINT(1) NOT NULL DEFAULT 0 AFTER CrmSegments');
     }
 
     $saleRecordTable = (int) $pdo->query(

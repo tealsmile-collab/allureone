@@ -318,5 +318,9 @@ $supportTel = preg_replace('/[^\d+]/', '', $supportPhone) ?? '';
   <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script src="<?= e(asset_url('assets/js/app.js')) ?>"></script>
+  <?php
+  require_once __DIR__ . '/includes/amplitude.php';
+  deals_render_amplitude();
+  ?>
 </body>
 </html>

@@ -148,5 +148,9 @@ $pageTitle = $title . ' | ' . $siteName;
         }
       });
   </script>
+  <?php
+  require_once __DIR__ . '/includes/amplitude.php';
+  deals_render_amplitude();
+  ?>
 </body>
 </html>

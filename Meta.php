@@ -102,14 +102,44 @@ require __DIR__ . '/includes/layout_start.php';
 }
 .meta-range__menu label:hover { background: #f4f8fc; }
 .card.meta-ads-card { overflow: visible; }
+.meta-campaign {
   font-weight: 700;
   vertical-align: top;
   background: #f8fbff;
 }
+.meta-cols {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin-left: auto;
+}
+.meta-cols label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #12263a;
+  cursor: pointer;
+}
+.meta-ads-table:not(.is-show-impressions) .meta-col-impressions,
+.meta-ads-table:not(.is-show-reach) .meta-col-reach,
+.meta-ads-table:not(.is-show-created) .meta-col-created {
+  display: none;
+}
 </style>
 
 <div class="card">
-    <div class="card__head">Available funds</div>
+    <div class="card__head meta-ads-head">
+        <span>Available funds</span>
+        <div class="meta-cols">
+            <label><input type="checkbox" data-meta-col="impressions"> Impressions</label>
+            <label><input type="checkbox" data-meta-col="reach"> Reach</label>
+            <label><input type="checkbox" data-meta-col="created"> Created</label>
+        </div>
+    </div>
     <div class="card__body" style="padding:0.65rem 1.25rem">
         <?php if (!($loaded['ok'] ?? false) && $accounts === []): ?>
             <p class="alert alert--error" style="margin:0"><?= e((string) ($loaded['error'] ?? 'Could not load Meta Ads.')) ?></p>
@@ -141,7 +171,7 @@ require __DIR__ . '/includes/layout_start.php';
 
 <div class="card meta-ads-card" style="margin-top:1rem">
     <div class="card__head meta-ads-head">
-        <span>Active ads<?= $ads !== [] ? ' (' . count($ads) . ')' : '' ?></span>
+        <span><?= $selectedPeriod === 'maximum' ? 'Ads' : 'Active ads' ?><?= $ads !== [] ? ' (' . count($ads) . ')' : '' ?></span>
         <div class="meta-range">
             <button type="button" class="meta-range__btn" id="metaRangeBtn" aria-expanded="false" aria-controls="metaRangeMenu">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -165,10 +195,10 @@ require __DIR__ . '/includes/layout_start.php';
         <?php if ($accounts === []): ?>
             <p class="empty">Active ads appear after Meta Ads is connected.</p>
         <?php elseif ($ads === []): ?>
-            <p class="empty">No active ads.</p>
+            <p class="empty"><?= $selectedPeriod === 'maximum' ? 'No ads.' : 'No active ads.' ?></p>
         <?php else: ?>
             <div class="table-wrap">
-                <table class="data">
+                <table class="data meta-ads-table" id="metaAdsTable">
                     <thead>
                         <tr>
                             <?php if (count($accounts) > 1): ?>
@@ -180,10 +210,13 @@ require __DIR__ . '/includes/layout_start.php';
                             <th>Leads</th>
                             <th>Budget</th>
                             <th>Amount spent</th>
-                            <th>Impressions</th>
-                            <th>Reach</th>
+                            <?php if ($selectedPeriod === 'maximum'): ?>
+                                <th>Total amount</th>
+                            <?php endif; ?>
+                            <th class="meta-col-impressions">Impressions</th>
+                            <th class="meta-col-reach">Reach</th>
                             <th>Status</th>
-                            <th>Created</th>
+                            <th class="meta-col-created">Created</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -199,6 +232,15 @@ require __DIR__ . '/includes/layout_start.php';
                         }
                         foreach ($adGroups as $groupAds):
                             $groupCount = count($groupAds);
+                            $campaignSpend = 0.0;
+                            $campaignCurrency = 'INR';
+                            foreach ($groupAds as $groupAd) {
+                                $campaignSpend += (float) ($groupAd['spend_amount'] ?? 0);
+                                if (trim((string) ($groupAd['currency'] ?? '')) !== '') {
+                                    $campaignCurrency = (string) $groupAd['currency'];
+                                }
+                            }
+                            $campaignTotal = meta_ads_format_major($campaignSpend, $campaignCurrency);
                             foreach ($groupAds as $index => $ad):
                         ?>
                             <tr>
@@ -218,10 +260,13 @@ require __DIR__ . '/includes/layout_start.php';
                                 <td><?= (int) ($ad['leads'] ?? 0) ?></td>
                                 <td><?= e((string) ($ad['budget'] ?? '—')) ?></td>
                                 <td><?= e((string) ($ad['spend'] ?? '—')) ?></td>
-                                <td><?= e((string) ($ad['impressions'] ?? '0')) ?></td>
-                                <td><?= e((string) ($ad['reach'] ?? '0')) ?></td>
+                                <?php if ($selectedPeriod === 'maximum' && $index === 0): ?>
+                                    <td class="meta-campaign" rowspan="<?= $groupCount ?>"><?= e($campaignTotal) ?></td>
+                                <?php endif; ?>
+                                <td class="meta-col-impressions"><?= e((string) ($ad['impressions'] ?? '0')) ?></td>
+                                <td class="meta-col-reach"><?= e((string) ($ad['reach'] ?? '0')) ?></td>
                                 <td><?= e((string) ($ad['status'] ?? '')) ?></td>
-                                <td><?= e((string) ($ad['created'] ?? '')) ?></td>
+                                <td class="meta-col-created"><?= e((string) ($ad['created'] ?? '')) ?></td>
                             </tr>
                         <?php
                             endforeach;
@@ -253,6 +298,20 @@ require __DIR__ . '/includes/layout_start.php';
     if (ev.target instanceof Node && (btn.contains(ev.target) || menu.contains(ev.target))) return;
     menu.hidden = true;
     btn.setAttribute('aria-expanded', 'false');
+  });
+})();
+(function () {
+  var table = document.getElementById('metaAdsTable');
+  document.querySelectorAll('[data-meta-col]').forEach(function (input) {
+    var key = input.getAttribute('data-meta-col');
+    var storageKey = 'metaAdsCol_' + key;
+    var on = sessionStorage.getItem(storageKey) === '1';
+    input.checked = on;
+    if (table) table.classList.toggle('is-show-' + key, on);
+    input.addEventListener('change', function () {
+      sessionStorage.setItem(storageKey, input.checked ? '1' : '0');
+      if (table) table.classList.toggle('is-show-' + key, input.checked);
+    });
   });
 })();
 </script>

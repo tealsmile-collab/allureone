@@ -642,13 +642,17 @@ function meta_ads_load(string $period = 'last_14'): array
             'funding' => $prepaidBalance !== null ? '' : $fundingDisplay,
         ];
 
+        $includeOff = $period === 'maximum';
         $nextPath = $id . '/ads';
         $query = [
             'fields' => 'id,name,effective_status,created_time,campaign{name,daily_budget,lifetime_budget},adset{name,daily_budget,lifetime_budget},' . meta_ads_insights_field($period),
-            'effective_status' => '["ACTIVE"]',
+            'effective_status' => $includeOff
+                ? '["ACTIVE","PAUSED","ADSET_PAUSED","CAMPAIGN_PAUSED","ARCHIVED"]'
+                : '["ACTIVE"]',
             'limit' => '100',
         ];
-        for ($page = 0; $page < 8 && $nextPath !== ''; $page++) {
+        $pageLimit = $includeOff ? 20 : 8;
+        for ($page = 0; $page < $pageLimit && $nextPath !== ''; $page++) {
             $adsRes = meta_ads_graph_get($nextPath, $query);
             if (!$adsRes['ok'] || !is_array($adsRes['json'])) {
                 $errors[] = ($row['name'] ?? $id) . ': ' . $adsRes['error'];
@@ -668,6 +672,7 @@ function meta_ads_load(string $period = 'last_14'): array
                 $insightWrap = is_array($ad['insights'] ?? null) ? $ad['insights'] : [];
                 $insightRows = is_array($insightWrap['data'] ?? null) ? $insightWrap['data'] : [];
                 $insight = is_array($insightRows[0] ?? null) ? $insightRows[0] : [];
+                $spendAmount = (float) ($insight['spend'] ?? 0);
                 $ads[] = [
                     'account' => trim((string) ($row['name'] ?? $id)),
                     'id' => trim((string) ($ad['id'] ?? '')),
@@ -678,7 +683,9 @@ function meta_ads_load(string $period = 'last_14'): array
                     'created' => meta_ads_format_time(isset($ad['created_time']) ? (string) $ad['created_time'] : ''),
                     'leads' => meta_ads_lead_count($insight),
                     'budget' => $budget !== '' ? $budget : '—',
-                    'spend' => meta_ads_format_major($insight['spend'] ?? '0', $currency),
+                    'spend_amount' => $spendAmount,
+                    'currency' => $currency,
+                    'spend' => meta_ads_format_major($spendAmount, $currency),
                     'impressions' => number_format((float) ($insight['impressions'] ?? 0), 0, '.', ','),
                     'reach' => number_format((float) ($insight['reach'] ?? 0), 0, '.', ','),
                 ];

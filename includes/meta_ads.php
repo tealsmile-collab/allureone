@@ -446,6 +446,7 @@ function meta_ads_period_options(): array
         'last_week' => 'Last week',
         'this_month' => 'This month',
         'last_month' => 'Last month',
+        'maximum' => 'Maximum',
     ];
 }
 
@@ -490,6 +491,9 @@ function meta_ads_period_bounds(string $period): array
         $since = new DateTime($today->format('Y-m-01'), $tz);
         $since->modify('-1 month');
         $until = new DateTime($since->format('Y-m-t'), $tz);
+    } elseif ($period === 'maximum') {
+        // Insights are available for 37 months. Start one day inside that limit and include today.
+        $since = (clone $today)->modify('-37 months +1 day');
     }
 
     return ['since' => $since, 'until' => $until];

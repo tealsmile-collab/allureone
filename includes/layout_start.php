@@ -125,6 +125,7 @@ $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
                 <a class="sidebar__link<?= ($activeNav === 'hr_employees') ? ' is-active' : '' ?>" href="hr_employees.php">Employee List</a>
                 <?php endif; ?>
             <?php endif; ?>
+            <a class="sidebar__link<?= ($activeNav === 'sop') ? ' is-active' : '' ?>" href="sop.php">SOP</a>
             <a class="sidebar__link" href="logout.php">Logout</a>
             <?php if ($user && trim((string) ($user['full_name'] ?? '')) !== ''): ?>
                 <p class="sidebar__user-line"><?= e((string) $user['full_name']) ?> · <?= e((string) ($user['loginname'] ?? '')) ?></p>

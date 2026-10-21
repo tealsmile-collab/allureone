@@ -1,0 +1,262 @@
+[
+    {
+        "id":  "1",
+        "title":  "1. Introduction",
+        "pages":  3,
+        "sections":  [
+                         {
+                             "n":  "1.1",
+                             "title":  "About Allure Spa \u0026 Wellness",
+                             "page":  1
+                         },
+                         {
+                             "n":  "1.2",
+                             "title":  "Purpose of SOP",
+                             "page":  1
+                         },
+                         {
+                             "n":  "1.3",
+                             "title":  "Scope \u0026 Applicability",
+                             "page":  2
+                         },
+                         {
+                             "n":  "1.4",
+                             "title":  "Brand Values \u0026 Professional Ethics",
+                             "page":  2
+                         }
+                     ]
+    },
+    {
+        "id":  "2",
+        "title":  "2. Organizational Structure",
+        "pages":  3,
+        "sections":  [
+                         {
+                             "n":  "2.1",
+                             "title":  "Hierarchy Overview",
+                             "page":  1
+                         },
+                         {
+                             "n":  "2.2",
+                             "title":  "Roles \u0026 Responsibilities Overview",
+                             "page":  1
+                         }
+                     ]
+    },
+    {
+        "id":  "3",
+        "title":  "3. Branch Operations",
+        "pages":  8,
+        "sections":  [
+                         {
+                             "n":  "3.1",
+                             "title":  "Daily Operations",
+                             "page":  1
+                         },
+                         {
+                             "n":  "3.2",
+                             "title":  "Opening \u0026 Closing Procedures",
+                             "page":  3
+                         },
+                         {
+                             "n":  "3.3",
+                             "title":  "Inventory \u0026 Supplies Management",
+                             "page":  4
+                         },
+                         {
+                             "n":  "3.4",
+                             "title":  "Safety \u0026 Hygiene Standards",
+                             "page":  5
+                         }
+                     ]
+    },
+    {
+        "id":  "4",
+        "title":  "4. Staff Roles \u0026 Responsibilities",
+        "pages":  7,
+        "sections":  [
+                         {
+                             "n":  "4.1",
+                             "title":  "Branch Manager",
+                             "page":  1
+                         },
+                         {
+                             "n":  "4.2",
+                             "title":  "Assistant Manager",
+                             "page":  2
+                         },
+                         {
+                             "n":  "4.3",
+                             "title":  "Sales/Business Development Manager",
+                             "page":  1
+                         },
+                         {
+                             "n":  "4.4",
+                             "title":  "Therapists / Beauty Specialists",
+                             "page":  5
+                         },
+                         {
+                             "n":  "4.5",
+                             "title":  "Housekeeping Staff",
+                             "page":  2
+                         },
+                         {
+                             "n":  "4.6",
+                             "title":  "Client Data Protection \u0026 Marketing Consent Policy",
+                             "page":  6
+                         }
+                     ]
+    },
+    {
+        "id":  "5",
+        "title":  "5. Client Handling \u0026 Service Protocols",
+        "pages":  11,
+        "sections":  [
+                         {
+                             "n":  "5.1",
+                             "title":  "Appointment Management",
+                             "page":  1
+                         },
+                         {
+                             "n":  "5.2",
+                             "title":  "Client Consultation \u0026 Service Execution",
+                             "page":  1
+                         },
+                         {
+                             "n":  "5.3",
+                             "title":  "Professional Conduct \u0026 Ethics",
+                             "page":  5
+                         },
+                         {
+                             "n":  "5.4",
+                             "title":  "Feedback \u0026 Complaint Handling",
+                             "page":  8
+                         }
+                     ]
+    },
+    {
+        "id":  "6",
+        "title":  "6. Spa \u0026 Beauty Service Protocols",
+        "pages":  10,
+        "sections":  [
+                         {
+                             "n":  "6.1",
+                             "title":  "Full Body Massage Services",
+                             "page":  1
+                         },
+                         {
+                             "n":  "6.2",
+                             "title":  "Facial \u0026 Skincare Services",
+                             "page":  1
+                         },
+                         {
+                             "n":  "6.3",
+                             "title":  "Specialty Treatments (if applicable)",
+                             "page":  1
+                         },
+                         {
+                             "n":  "6.4",
+                             "title":  "Hygiene \u0026 Sanitation of Treatment Areas",
+                             "page":  1
+                         }
+                     ]
+    },
+    {
+        "id":  "7",
+        "title":  "7. Staff Conduct \u0026 Professional Standards",
+        "pages":  13,
+        "sections":  [
+                         {
+                             "n":  "7.1",
+                             "title":  "Code of Conduct",
+                             "page":  2
+                         },
+                         {
+                             "n":  "7.2",
+                             "title":  "Dress Code \u0026 Grooming Standards",
+                             "page":  1
+                         },
+                         {
+                             "n":  "7.3",
+                             "title":  "Confidentiality \u0026 Client Privacy",
+                             "page":  1
+                         },
+                         {
+                             "n":  "7.4",
+                             "title":  "Training \u0026 Skill Development",
+                             "page":  1
+                         }
+                     ]
+    },
+    {
+        "id":  "8",
+        "title":  "8. Administrative \u0026 Reporting Procedures",
+        "pages":  0,
+        "sections":  [
+                         {
+                             "n":  "8.1",
+                             "title":  "Daily Reporting",
+                             "page":  1
+                         },
+                         {
+                             "n":  "8.2",
+                             "title":  "Inventory Reporting",
+                             "page":  1
+                         },
+                         {
+                             "n":  "8.3",
+                             "title":  "Incident \u0026 Safety Reporting",
+                             "page":  1
+                         },
+                         {
+                             "n":  "8.4",
+                             "title":  "Branch Performance Metrics",
+                             "page":  1
+                         }
+                     ]
+    },
+    {
+        "id":  "9",
+        "title":  "9. Emergency Protocols",
+        "pages":  0,
+        "sections":  [
+                         {
+                             "n":  "9.1",
+                             "title":  "Fire Safety \u0026 Evacuation",
+                             "page":  1
+                         },
+                         {
+                             "n":  "9.2",
+                             "title":  "Medical Emergencies",
+                             "page":  1
+                         },
+                         {
+                             "n":  "9.3",
+                             "title":  "Handling Accidents",
+                             "page":  1
+                         }
+                     ]
+    },
+    {
+        "id":  "10",
+        "title":  "10. Review \u0026 Continuous Improvement",
+        "pages":  0,
+        "sections":  [
+                         {
+                             "n":  "10.1",
+                             "title":  "SOP Updates \u0026 Revision",
+                             "page":  1
+                         },
+                         {
+                             "n":  "10.2",
+                             "title":  "Internal Audits",
+                             "page":  1
+                         },
+                         {
+                             "n":  "10.3",
+                             "title":  "Feedback Mechanism",
+                             "page":  1
+                         }
+                     ]
+    }
+]

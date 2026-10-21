@@ -80,7 +80,7 @@ require __DIR__ . '/includes/layout_start.php';
   top: calc(100% + 6px);
   z-index: 30;
   width: 15.5rem;
-  max-height: 22rem;
+  max-height: min(28rem, calc(100vh - 8rem));
   overflow: auto;
   padding: 0.45rem 0;
   border: 1px solid #d7e1ec;
@@ -101,7 +101,7 @@ require __DIR__ . '/includes/layout_start.php';
   cursor: pointer;
 }
 .meta-range__menu label:hover { background: #f4f8fc; }
-.meta-campaign {
+.card.meta-ads-card { overflow: visible; }
   font-weight: 700;
   vertical-align: top;
   background: #f8fbff;
@@ -139,7 +139,7 @@ require __DIR__ . '/includes/layout_start.php';
     </div>
 </div>
 
-<div class="card" style="margin-top:1rem">
+<div class="card meta-ads-card" style="margin-top:1rem">
     <div class="card__head meta-ads-head">
         <span>Active ads<?= $ads !== [] ? ' (' . count($ads) . ')' : '' ?></span>
         <div class="meta-range">
@@ -244,6 +244,9 @@ require __DIR__ . '/includes/layout_start.php';
     var open = menu.hidden;
     menu.hidden = !open;
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) return;
+    var space = window.innerHeight - btn.getBoundingClientRect().bottom - 16;
+    menu.style.maxHeight = Math.max(180, space) + 'px';
   });
   document.addEventListener('click', function (ev) {
     if (menu.hidden) return;

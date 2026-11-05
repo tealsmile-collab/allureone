@@ -302,8 +302,8 @@ function dingg_http_streams_request(string $method, string $url, array $headers,
         'timeout' => 45,
         'ignore_errors' => true,
     ];
-    if ($method === 'POST') {
-        $httpOpts['content'] = $jsonBody ?? '';
+    if ($jsonBody !== null && $method !== 'GET') {
+        $httpOpts['content'] = $jsonBody;
     }
     $ctx = stream_context_create([
         'http' => $httpOpts,

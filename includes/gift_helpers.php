@@ -525,6 +525,204 @@ function gift_import_gift_code_to_dingg(
     return ['ok' => true, 'error' => ''];
 }
 
+function gift_dingg_members_gift_card_url(int $page, int $limit = 10): string
+{
+    if ($page < 1) {
+        $page = 1;
+    }
+    if ($limit < 1) {
+        $limit = 10;
+    }
+
+    return 'https://api.dingg.app/api/v1/vendor/members?' . http_build_query(
+        [
+            'type' => 'gift-card',
+            'limit' => $limit,
+            'page' => $page,
+        ],
+        '',
+        '&',
+        PHP_QUERY_RFC3986
+    );
+}
+
+/**
+ * @param array<string, mixed> $row
+ */
+function gift_dingg_card_was_used(array $row): bool
+{
+    if (!empty($row['is_purchase'])) {
+        return true;
+    }
+    $billId = $row['bill_id'] ?? null;
+    if ($billId !== null && $billId !== '' && (int) $billId > 0) {
+        return true;
+    }
+    $redeemed = $row['redeemed'] ?? null;
+    if ($redeemed !== null && $redeemed !== '' && is_numeric($redeemed) && (float) $redeemed > 0) {
+        return true;
+    }
+    $balance = $row['balance'] ?? null;
+    $giftValue = $row['gift_value'] ?? null;
+    if ($balance !== null && $balance !== '' && is_numeric($balance) && is_numeric($giftValue) && (float) $balance + 0.009 < (float) $giftValue) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @return array{ok:bool, id:int, used:bool, error:string}
+ */
+function gift_find_dingg_gift_card_by_code(string $sessionKey, string $giftCode): array
+{
+    $codeNorm = strtoupper(trim($giftCode));
+    if ($sessionKey === '' || $codeNorm === '') {
+        return ['ok' => false, 'id' => 0, 'used' => false, 'error' => 'Invalid session or gift code.'];
+    }
+
+    $page = 1;
+    $limit = 10;
+    $maxPages = 40;
+    while ($page <= $maxPages) {
+        $url = gift_dingg_members_gift_card_url($page, $limit);
+        $resp = dingg_http_request_authenticated('GET', $url, $sessionKey, null);
+        $http = (int) ($resp['http'] ?? 0);
+        $body = (string) ($resp['body'] ?? '');
+        if ($http < 200 || $http >= 300 || $body === '' || dingg_response_looks_unauthorized($http, $body)) {
+            return ['ok' => false, 'id' => 0, 'used' => false, 'error' => 'Could not load gift cards from Dingg.'];
+        }
+        $json = json_decode($body, true);
+        $list = is_array($json) && isset($json['list']) && is_array($json['list']) ? $json['list'] : [];
+        foreach ($list as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $rowCode = strtoupper(trim((string) ($row['code'] ?? '')));
+            if ($rowCode === '' || $rowCode !== $codeNorm) {
+                continue;
+            }
+            $id = (int) ($row['id'] ?? 0);
+            if ($id <= 0) {
+                return ['ok' => false, 'id' => 0, 'used' => false, 'error' => 'Dingg gift card id is missing.'];
+            }
+
+            return [
+                'ok' => true,
+                'id' => $id,
+                'used' => gift_dingg_card_was_used($row),
+                'error' => '',
+            ];
+        }
+
+        $total = 0;
+        if (is_array($json) && isset($json['stats']) && is_array($json['stats'])) {
+            $total = (int) ($json['stats']['totalMember'] ?? 0);
+        }
+        if ($list === [] || count($list) < $limit || ($total > 0 && ($page * $limit) >= $total)) {
+            break;
+        }
+        $page++;
+    }
+
+    return ['ok' => true, 'id' => 0, 'used' => false, 'error' => ''];
+}
+
+/**
+ * @param list<int> $ids
+ * @return array{ok:bool, error:string}
+ */
+function gift_delete_dingg_gift_codes(string $sessionKey, array $ids): array
+{
+    $clean = [];
+    foreach ($ids as $id) {
+        $id = (int) $id;
+        if ($id > 0) {
+            $clean[] = $id;
+        }
+    }
+    if ($sessionKey === '' || $clean === []) {
+        return ['ok' => false, 'error' => 'Invalid gift card delete request.'];
+    }
+    $payload = json_encode(['ids' => $clean], JSON_UNESCAPED_SLASHES);
+    if ($payload === false) {
+        return ['ok' => false, 'error' => 'Could not build gift card delete payload.'];
+    }
+    $resp = dingg_http_request_authenticated(
+        'DELETE',
+        'https://api.dingg.app/api/v1/vendor/gift-card/delete-gift-codes',
+        $sessionKey,
+        $payload
+    );
+    $http = (int) ($resp['http'] ?? 0);
+    $body = (string) ($resp['body'] ?? '');
+    if ($http < 200 || $http >= 300 || dingg_response_looks_unauthorized($http, $body)) {
+        return ['ok' => false, 'error' => 'Could not delete the gift card from Dingg.'];
+    }
+
+    return ['ok' => true, 'error' => ''];
+}
+
+/**
+ * Restores order status and gift-card balance. Does not change billing location.
+ *
+ * @return array{ok:bool, error:string}
+ */
+function gift_restore_woocommerce_after_dingg_undo(int $orderId): array
+{
+    if ($orderId <= 0) {
+        return ['ok' => false, 'error' => 'Gift order not found.'];
+    }
+    try {
+        $pdo = wp_db();
+        $wpPrefix = wp_table_prefix();
+        $statusSql = "UPDATE {$wpPrefix}posts
+            SET post_status = 'wc-processing'
+            WHERE ID = :order_id
+              AND post_status = 'wc-completed'";
+        $statusStmt = $pdo->prepare($statusSql);
+        $statusStmt->execute(['order_id' => $orderId]);
+
+        $balanceSql = "SELECT bal.meta_id, amt.meta_value AS amount_total
+            FROM {$wpPrefix}postmeta link_row
+            INNER JOIN {$wpPrefix}postmeta bal
+                ON bal.post_id = link_row.post_id
+               AND bal.meta_key = '_ywgc_balance_total'
+            LEFT JOIN {$wpPrefix}postmeta amt
+                ON amt.post_id = link_row.post_id
+               AND amt.meta_key = '_ywgc_amount_total'
+            WHERE link_row.meta_key = '_ywgc_order_id'
+              AND link_row.meta_value = :order_id_meta";
+        $balanceStmt = $pdo->prepare($balanceSql);
+        $balanceStmt->execute(['order_id_meta' => (string) $orderId]);
+        $updateBal = $pdo->prepare(
+            "UPDATE {$wpPrefix}postmeta SET meta_value = :amount WHERE meta_id = :meta_id AND meta_key = '_ywgc_balance_total'"
+        );
+        $restored = 0;
+        foreach ($balanceStmt->fetchAll(PDO::FETCH_ASSOC) as $balRow) {
+            $amountTotal = trim((string) ($balRow['amount_total'] ?? ''));
+            $metaId = (int) ($balRow['meta_id'] ?? 0);
+            if ($metaId <= 0 || $amountTotal === '' || !is_numeric($amountTotal)) {
+                continue;
+            }
+            $updateBal->execute([
+                'amount' => $amountTotal,
+                'meta_id' => $metaId,
+            ]);
+            $restored++;
+        }
+        if ($restored < 1) {
+            return ['ok' => false, 'error' => 'Gift code was removed from Dingg, but the WooCommerce balance could not be restored.'];
+        }
+
+        return ['ok' => true, 'error' => ''];
+    } catch (PDOException $e) {
+        error_log('AllureOne gift undo WooCommerce restore failed: ' . $e->getMessage());
+
+        return ['ok' => false, 'error' => 'Gift code was removed from Dingg, but the WooCommerce order could not be restored.'];
+    }
+}
+
 /**
  * @return array{gift_code:string, amount:float}|null
  */

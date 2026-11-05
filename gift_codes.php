@@ -10,6 +10,7 @@ $user = current_user();
 $userRoleId = (int) ($user['role_id'] ?? 0);
 $userBranchId = (int) ($user['branch_id'] ?? 0);
 $canGiftMonthlySummaryAll = in_array($userRoleId, [ROLE_SUPERADMIN, ROLE_ADMIN, ROLE_ACCOUNTS], true);
+$canUndoDinggMovement = in_array($userRoleId, [ROLE_SUPERADMIN, ROLE_ADMIN], true);
 $canGiftMonthlySummaryManager = ($userRoleId === ROLE_MANAGER);
 $showGiftMonthlySummary = $canGiftMonthlySummaryAll || $canGiftMonthlySummaryManager;
 $summaryNowIst = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
@@ -191,6 +192,100 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_redeemed'])) {
                 $markRedeemedFlash = ['type' => 'error', 'text' => 'Could not mark gift as Redeemed.'];
             }
                 }
+            }
+        }
+    }
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['undo_dingg_movement'])) {
+    if (!$canUndoDinggMovement) {
+        $markRedeemedFlash = ['type' => 'error', 'text' => 'Access denied.'];
+    } elseif (!csrf_validate($_POST['_csrf'] ?? null)) {
+        $markRedeemedFlash = ['type' => 'error', 'text' => 'Invalid session. Please refresh and try again.'];
+    } else {
+        $undoItemId = isset($_POST['mark_item_id']) ? (int) $_POST['mark_item_id'] : 0;
+        if ($undoItemId <= 0) {
+            $markRedeemedFlash = ['type' => 'error', 'text' => 'Invalid gift selected.'];
+        } else {
+            try {
+                $pdoUndo = wp_db();
+                $wpPrefixUndo = wp_table_prefix();
+                $undoLookupSql = "SELECT oi.order_id,
+                        REPLACE(p.post_status, 'wc-', '') AS order_status,
+                        (
+                            SELECT pm.meta_value
+                            FROM wp_postmeta pm
+                            WHERE pm.post_id = oi.order_id
+                              AND pm.meta_key IN ('billing_location', '_billing_location')
+                            ORDER BY CASE pm.meta_key WHEN 'billing_location' THEN 0 ELSE 1 END
+                            LIMIT 1
+                        ) AS location,
+                        (
+                            SELECT oim.meta_value
+                            FROM wp_woocommerce_order_itemmeta oim
+                            WHERE oim.order_item_id = oi.order_item_id
+                              AND oim.meta_key = '_ywgc_gift_card_code'
+                            LIMIT 1
+                        ) AS gift_card_code
+                    FROM wp_woocommerce_order_items oi
+                    JOIN wp_posts p ON p.ID = oi.order_id
+                    WHERE oi.order_item_id = :item_id
+                      AND oi.order_item_type = 'line_item'
+                    LIMIT 1";
+                $undoLookupSql = str_replace('wp_', $wpPrefixUndo, $undoLookupSql);
+                $undoLookup = $pdoUndo->prepare($undoLookupSql);
+                $undoLookup->execute(['item_id' => $undoItemId]);
+                $undoRow = $undoLookup->fetch(PDO::FETCH_ASSOC);
+                $undoOrderId = is_array($undoRow) ? (int) ($undoRow['order_id'] ?? 0) : 0;
+                $undoStatus = is_array($undoRow) ? strtolower(trim((string) ($undoRow['order_status'] ?? ''))) : '';
+                $undoLocation = is_array($undoRow) ? trim((string) ($undoRow['location'] ?? '')) : '';
+                $undoCode = is_array($undoRow) ? extract_gift_code((string) ($undoRow['gift_card_code'] ?? '')) : '';
+                if ($undoOrderId <= 0 || $undoCode === '') {
+                    $markRedeemedFlash = ['type' => 'error', 'text' => 'Gift order not found.'];
+                } elseif ($undoStatus !== 'completed') {
+                    $markRedeemedFlash = ['type' => 'error', 'text' => 'This gift code has not been moved to Dingg.'];
+                } else {
+                    $undoBranchId = gift_branch_id_from_locality($undoLocation);
+                    $undoSession = $undoBranchId > 0 ? gift_branch_session_key($undoBranchId) : '';
+                    if ($undoSession === '') {
+                        $markRedeemedFlash = ['type' => 'error', 'text' => 'Dingg session key is not configured for this gift location.'];
+                    } else {
+                        $foundCard = gift_find_dingg_gift_card_by_code($undoSession, $undoCode);
+                        if (!($foundCard['ok'] ?? false)) {
+                            $markRedeemedFlash = ['type' => 'error', 'text' => (string) ($foundCard['error'] ?? 'Could not load gift cards from Dingg.')];
+                        } elseif ((int) ($foundCard['id'] ?? 0) <= 0) {
+                            $reopenSql = "UPDATE {$wpPrefixUndo}posts
+                                SET post_status = 'wc-processing'
+                                WHERE ID = :order_id
+                                  AND post_status = 'wc-completed'";
+                            $reopenStmt = $pdoUndo->prepare($reopenSql);
+                            $reopenStmt->execute(['order_id' => $undoOrderId]);
+                            $markRedeemedFlash = ['type' => 'ok', 'text' => 'Gift code was not found in Dingg. Order status set to processing.'];
+                            $selectedItemId = $undoItemId;
+                        } elseif ($foundCard['used'] ?? false) {
+                            $markRedeemedFlash = ['type' => 'error', 'text' => 'This gift card has already been used in Dingg and was not removed.'];
+                        } else {
+                            $deleted = gift_delete_dingg_gift_codes($undoSession, [(int) $foundCard['id']]);
+                            if (!($deleted['ok'] ?? false)) {
+                                $markRedeemedFlash = ['type' => 'error', 'text' => (string) ($deleted['error'] ?? 'Could not delete the gift card from Dingg.')];
+                            } else {
+                                $restored = gift_restore_woocommerce_after_dingg_undo($undoOrderId);
+                                if (!($restored['ok'] ?? false)) {
+                                    $markRedeemedFlash = ['type' => 'error', 'text' => (string) ($restored['error'] ?? 'Gift code was removed from Dingg, but the WooCommerce order could not be restored.')];
+                                } else {
+                                    $markRedeemedFlash = ['type' => 'ok', 'text' => 'Dingg movement undone. The gift code was removed from Dingg.'];
+                                }
+                                $selectedItemId = $undoItemId;
+                            }
+                        }
+                    }
+                }
+                if ($markRedeemedFlash !== null && $selectedItemId <= 0) {
+                    $selectedItemId = $undoItemId;
+                }
+            } catch (PDOException $e) {
+                error_log('AllureOne gift_codes undo Dingg movement failed: ' . $e->getMessage());
+                $markRedeemedFlash = ['type' => 'error', 'text' => 'Could not undo the Dingg movement.'];
+                $selectedItemId = $undoItemId;
             }
         }
     }
@@ -657,7 +752,14 @@ require __DIR__ . '/includes/layout_start.php';
                             <form id="mark_redeemed_form" method="post" action="<?= e($giftDetailHref((int) ($giftDetail['order_item_id'] ?? 0))) ?>" style="margin:0">
                                 <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                                 <input type="hidden" name="mark_item_id" value="<?= (int) ($giftDetail['order_item_id'] ?? 0) ?>">
-                                <button type="submit" class="btn btn--primary" name="mark_redeemed" value="1" onclick="return confirm('Mark this gift code as Redeemed?');">Mark Redeemed</button>
+                                <button type="submit" class="btn btn--primary" name="mark_redeemed" value="1" onclick="return confirm('Move this gift code to Dingg?');">Move to Dingg</button>
+                            </form>
+                        <?php endif; ?>
+                        <?php if ($detailOrderStatus === 'completed' && $canUndoDinggMovement): ?>
+                            <form method="post" action="<?= e($giftDetailHref((int) ($giftDetail['order_item_id'] ?? 0))) ?>" style="margin:0">
+                                <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="mark_item_id" value="<?= (int) ($giftDetail['order_item_id'] ?? 0) ?>">
+                                <button type="submit" class="btn btn--ghost" name="undo_dingg_movement" value="1" onclick="return confirm('Undo Dingg movement and delete this gift card from Dingg?');">Undo Dingg Movement</button>
                             </form>
                         <?php endif; ?>
                         <a class="btn btn--ghost" href="<?= e($giftListBackHref) ?>">Back</a>
@@ -778,7 +880,7 @@ require __DIR__ . '/includes/layout_start.php';
     <div class="gift-dingg-redeemed-modal__backdrop js-gift-dingg-redeemed-close" role="presentation"></div>
     <div class="gift-dingg-redeemed-modal__panel" role="dialog" aria-modal="true" aria-labelledby="gift-dingg-redeemed-modal-title">
         <div class="gift-dingg-redeemed-modal__head">
-            <strong id="gift-dingg-redeemed-modal-title">Mark Redeemed</strong>
+            <strong id="gift-dingg-redeemed-modal-title">Move to Dingg</strong>
             <button type="button" class="btn btn--ghost js-gift-dingg-redeemed-close" style="padding:0.3rem 0.65rem">Close</button>
         </div>
         <div class="gift-dingg-redeemed-modal__body">

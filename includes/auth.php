@@ -324,6 +324,7 @@ function login_user(array $row): void
     $_SESSION['full_name'] = (string) $full;
     $branch = $row['branch_id'] ?? $row['BranchId'] ?? null;
     $_SESSION['branch_id'] = $branch !== null && $branch !== '' ? (int) $branch : null;
+    unset($_SESSION['work_branch_id']);
     $role = $row['role_id'] ?? $row['RoleId'] ?? 0;
     $_SESSION['role_id'] = (int) $role;
     $recordSale = $row['record_sale'] ?? $row['RecordSale'] ?? 0;

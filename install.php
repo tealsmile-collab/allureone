@@ -104,6 +104,15 @@ CREATE TABLE IF NOT EXISTS allureone_users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL
     ,
+    'user_branch' => <<<SQL
+CREATE TABLE IF NOT EXISTS allureone_user_branch (
+  user_id INT NOT NULL,
+  branch_id INT NOT NULL,
+  PRIMARY KEY (user_id, branch_id),
+  KEY idx_user_branch_branch (branch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL
+    ,
     'salerecord' => <<<SQL
 CREATE TABLE IF NOT EXISTS allureone_salerecord (
   id INT NOT NULL AUTO_INCREMENT,

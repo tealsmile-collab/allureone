@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/includes/work_branch.php';
 require_superadmin();
 
 $pdo = db();
@@ -45,6 +46,16 @@ if ($editId > 0) {
         $editId = 0;
         $message = 'User not found.';
         $messageType = 'error';
+    }
+}
+$editAccessBranchIds = [];
+if (is_array($editRow)) {
+    foreach (work_branch_stored_ids((int) ($editRow['id'] ?? 0)) as $storedBranchId) {
+        $editAccessBranchIds[(int) $storedBranchId] = true;
+    }
+    $editDefaultBranchId = (int) ($editRow['BranchId'] ?? 0);
+    if ($editDefaultBranchId > 0) {
+        $editAccessBranchIds[$editDefaultBranchId] = true;
     }
 }
 
@@ -192,6 +203,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             'id' => $userId,
                                         ]);
                                     }
+                                    work_branch_save(
+                                        $userId,
+                                        $branchForDb === null ? 0 : (int) $branchForDb,
+                                        (isset($_POST['extra_branch_ids']) && is_array($_POST['extra_branch_ids'])) ? $_POST['extra_branch_ids'] : []
+                                    );
                                     header('Location: user_master.php?msg=user_updated');
                                     exit;
                                 } catch (PDOException $e) {
@@ -269,6 +285,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'ma' => $metaAds,
                             'cs' => $crmSegments,
                         ]);
+                        work_branch_save(
+                            (int) $pdo->lastInsertId(),
+                            $branchForDb === null ? 0 : (int) $branchForDb,
+                            (isset($_POST['extra_branch_ids']) && is_array($_POST['extra_branch_ids'])) ? $_POST['extra_branch_ids'] : []
+                        );
                         header('Location: user_master.php?msg=user_created');
                         exit;
                     } catch (PDOException $e) {
@@ -400,6 +421,18 @@ require __DIR__ . '/includes/layout_start.php';
                 </select>
             </div>
             <div class="form__row">
+                <span class="hint">Leads, CRM, and Expense locations</span>
+                <div class="user-branch-access">
+                    <?php foreach ($branchesActive as $b): ?>
+                        <?php $accessBranchId = (int) $b['id']; ?>
+                        <label class="check-label">
+                            <input type="checkbox" name="extra_branch_ids[]" value="<?= $accessBranchId ?>"<?= isset($editAccessBranchIds[$accessBranchId]) ? ' checked' : '' ?>>
+                            <?= e((string) $b['business_name']) ?><?= ($b['locality'] ?? '') !== '' ? ' - ' . e((string) $b['locality']) : '' ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <div class="form__row">
                 <label for="edit_role_id">Role</label>
                 <select id="edit_role_id" name="role_id" required>
                     <?php foreach ($rolesAll as $r): ?>
@@ -513,6 +546,32 @@ $newUserOpen = (!$editId && ($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST[
                         </option>
                     <?php endforeach; ?>
                 </select>
+            </div>
+            <div class="form__row">
+                <span class="hint">Leads, CRM, and Expense locations</span>
+                <div class="user-branch-access">
+                    <?php
+                    $createAccessBranchIds = [];
+                    if (!$editId && (($_POST['_action'] ?? '') === 'create') && isset($_POST['extra_branch_ids']) && is_array($_POST['extra_branch_ids'])) {
+                        foreach ($_POST['extra_branch_ids'] as $postedAccessBranchId) {
+                            $createAccessBranchIds[(int) $postedAccessBranchId] = true;
+                        }
+                    }
+                    if (!$editId && (($_POST['_action'] ?? '') === 'create') && isset($_POST['branch_id'])) {
+                        $createDefaultBranchId = (int) $_POST['branch_id'];
+                        if ($createDefaultBranchId > 0) {
+                            $createAccessBranchIds[$createDefaultBranchId] = true;
+                        }
+                    }
+                    ?>
+                    <?php foreach ($branchesActive as $b): ?>
+                        <?php $accessBranchId = (int) $b['id']; ?>
+                        <label class="check-label">
+                            <input type="checkbox" name="extra_branch_ids[]" value="<?= $accessBranchId ?>"<?= isset($createAccessBranchIds[$accessBranchId]) ? ' checked' : '' ?>>
+                            <?= e((string) $b['business_name']) ?><?= ($b['locality'] ?? '') !== '' ? ' - ' . e((string) $b['locality']) : '' ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
             </div>
             <div class="form__row">
                 <label for="role_id">Role</label>

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/includes/work_branch.php';
 require_login();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -30,35 +31,16 @@ if (!csrf_validate($csrf)) {
 
 $action = trim((string) ($input['action'] ?? ''));
 $roleId = (int) ($user['role_id'] ?? 0);
-$canSelectBranch = in_array($roleId, [ROLE_SUPERADMIN, ROLE_ADMIN], true);
-$canViewExpenses = $canSelectBranch;
+$canViewExpenses = in_array($roleId, [ROLE_SUPERADMIN, ROLE_ADMIN], true);
 
-$branchId = (int) ($user['branch_id'] ?? 0);
-if ($canSelectBranch) {
-    $requestedBranchId = (int) ($input['branch_id'] ?? 0);
-    if ($requestedBranchId > 0) {
-        try {
-            $branchCheck = db()->prepare(
-                'SELECT id
-                 FROM allureone_branch
-                 WHERE id = :id AND isActive = 1
-                 LIMIT 1'
-            );
-            $branchCheck->execute(['id' => $requestedBranchId]);
-            $branchId = (int) ($branchCheck->fetchColumn() ?: 0);
-        } catch (Throwable $e) {
-            error_log('Expense branch validation failed: ' . $e->getMessage());
-            $branchId = 0;
-        }
-    } else {
-        $branchId = 0;
-    }
-}
-
+$branchId = (int) ($input['branch_id'] ?? 0);
 if ($branchId <= 0) {
+    $branchId = work_branch_current_id($user);
+}
+if (!work_branch_user_can($user, $branchId)) {
     echo json_encode([
         'ok' => false,
-        'error' => $canSelectBranch ? 'Please select a valid branch.' : 'No branch linked to your account.',
+        'error' => $branchId <= 0 ? 'Choose a location at the top right.' : 'You do not have access to this location.',
     ]);
     exit;
 }

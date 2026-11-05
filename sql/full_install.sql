@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS allureone_users (
   CONSTRAINT fk_allureone_user_role FOREIGN KEY (RoleId) REFERENCES allureone_roles (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS allureone_user_branch (
+  user_id INT NOT NULL,
+  branch_id INT NOT NULL,
+  PRIMARY KEY (user_id, branch_id),
+  KEY idx_user_branch_branch (branch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS allureone_salerecord (
   id INT NOT NULL AUTO_INCREMENT,
   BranchId INT NOT NULL,

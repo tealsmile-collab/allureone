@@ -20,6 +20,7 @@ if ($exportExcel && $roleId !== ROLE_SUPERADMIN) {
 }
 
 require_once __DIR__ . '/includes/leads_helpers.php';
+require_once __DIR__ . '/includes/work_branch.php';
 
 
 $rows = [];
@@ -41,6 +42,15 @@ $loadError = '';
 $flash = ['type' => '', 'text' => ''];
 $branchId = isset($user['branch_id']) && (int) $user['branch_id'] > 0 ? (int) $user['branch_id'] : null;
 $isBranchScopedRole = $roleId === 3;
+$workBranchId = work_branch_current_id($user);
+$workBranchPrompt = $workBranchId <= 0 && count(work_branch_options($user)) > 1;
+if ($workBranchId > 0) {
+    $branchId = $workBranchId;
+    $isBranchScopedRole = true;
+} elseif ($workBranchPrompt) {
+    $branchId = null;
+    $isBranchScopedRole = true;
+}
 /** Executive roles: dashboard-style branch summary only; no lead list/detail card or conversion summary card. */
 $hideLeadsListAndConversionCards = false;
 $detailId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
@@ -181,6 +191,9 @@ if ($fBranchSel === '') {
 }
 if ($fBranchSel !== 'all' && !isset($branchFilterOptions[$fBranchSel])) {
     $fBranchSel = 'all';
+}
+if ($workBranchId > 0) {
+    $fBranchSel = (string) $workBranchId;
 }
 $listFilterParams = ['f_status' => $fStatusSel];
 if ($statusIsFollowUpForFilter) {
@@ -744,6 +757,9 @@ $pageTitle = 'Leads';
 $activeNav = 'leads';
 require __DIR__ . '/includes/layout_start.php';
 ?>
+<?php if ($workBranchPrompt): ?>
+    <div class="alert alert--error" role="status" style="margin-bottom:1rem">Choose a location at the top right.</div>
+<?php endif; ?>
 
 <?php if ($loadError !== '' && $hideLeadsListAndConversionCards): ?>
     <div class="card" style="margin-bottom:1.15rem">
@@ -1031,16 +1047,8 @@ require __DIR__ . '/includes/layout_start.php';
                         <input type="hidden" name="summary_source" value="<?= e($summarySourceSel) ?>">
                     <?php endif; ?>
                 <?php endif; ?>
-                <?php if (($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN) && $branchFilterOptions !== []): ?>
-                <div class="form__row">
-                    <label for="f_branch">Branch</label>
-                    <select id="f_branch" name="f_branch">
-                        <option value="all"<?= $fBranchSel === 'all' ? ' selected' : '' ?>>All</option>
-                        <?php foreach ($branchFilterOptions as $branchFilterId => $branchFilterLabel): ?>
-                            <option value="<?= e((string) $branchFilterId) ?>"<?= $fBranchSel === (string) $branchFilterId ? ' selected' : '' ?>><?= e($branchFilterLabel) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                <?php if ($workBranchId > 0): ?>
+                    <input type="hidden" name="f_branch" value="<?= (int) $workBranchId ?>">
                 <?php endif; ?>
                 <div class="form__row">
                     <label for="f_status">Status</label>

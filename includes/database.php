@@ -43,6 +43,14 @@ function allureone_ensure_user_permission_columns(PDO $pdo): void
         if (!$cols) {
             $pdo->exec('ALTER TABLE allureone_branch ADD COLUMN MonthlyTarget DECIMAL(20,2) NULL AFTER enableSaleRecord');
         }
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS allureone_user_branch (
+              user_id INT NOT NULL,
+              branch_id INT NOT NULL,
+              PRIMARY KEY (user_id, branch_id),
+              KEY idx_user_branch_branch (branch_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
     } catch (Throwable $e) {
         error_log('AllureOne: could not ensure user permission columns: ' . $e->getMessage());
     }

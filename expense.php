@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/includes/work_branch.php';
 require_login();
 
 $user = current_user();
@@ -11,37 +12,10 @@ if (!can_access_expense($user)) {
 }
 
 $roleId = (int) ($user['role_id'] ?? 0);
-$canSelectBranch = in_array($roleId, [ROLE_SUPERADMIN, ROLE_ADMIN], true);
-$canViewExpenses = $canSelectBranch;
-$expenseBranches = [];
-$selectedBranchId = $canSelectBranch ? 0 : (int) ($user['branch_id'] ?? 0);
-if ($canSelectBranch) {
-    try {
-        $branchStmt = db()->query(
-            'SELECT id, business_name, locality
-             FROM allureone_branch
-             WHERE isActive = 1
-             ORDER BY business_name ASC, locality ASC'
-        );
-        while ($branch = $branchStmt->fetch(PDO::FETCH_ASSOC)) {
-            $branchId = (int) ($branch['id'] ?? 0);
-            if ($branchId <= 0) {
-                continue;
-            }
-            $name = trim((string) ($branch['business_name'] ?? ''));
-            $locality = trim((string) ($branch['locality'] ?? ''));
-            $expenseBranches[] = [
-                'id' => $branchId,
-                'label' => $name !== '' && $locality !== ''
-                    ? $name . ' — ' . $locality
-                    : ($name !== '' ? $name : ($locality !== '' ? $locality : 'Branch ' . $branchId)),
-            ];
-        }
-    } catch (Throwable $e) {
-        error_log('Expense branch list failed: ' . $e->getMessage());
-        $expenseBranches = [];
-    }
-}
+$canSelectBranch = false;
+$canViewExpenses = in_array($roleId, [ROLE_SUPERADMIN, ROLE_ADMIN], true);
+$selectedBranchId = work_branch_current_id($user);
+$expenseNeedsLocation = $selectedBranchId <= 0 && count(work_branch_options($user)) > 1;
 
 $todayIst = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
 $pageTitle = 'Expense';
@@ -322,32 +296,25 @@ require __DIR__ . '/includes/layout_start.php';
      data-can-select-branch="<?= $canSelectBranch ? '1' : '0' ?>"
      data-can-view="<?= $canViewExpenses ? '1' : '0' ?>"
      data-branch-id="<?= (int) $selectedBranchId ?>"
+     data-needs-location="<?= $expenseNeedsLocation ? '1' : '0' ?>"
      data-today="<?= e($todayIst) ?>">
     <div class="exp__head">
         <h1 class="exp__title">Expense</h1>
         <?php if ($canViewExpenses): ?>
-            <div class="exp__tabs" role="tablist" id="expTabs"<?= $canSelectBranch ? ' hidden' : '' ?>>
-                <button type="button" class="exp__tab" data-tab="add" id="expTabAdd">Add Expense</button>
-                <button type="button" class="exp__tab is-active" data-tab="view" id="expTabView">View Expenses</button>
+            <div class="exp__tabs" role="tablist" id="expTabs"<?= ($canSelectBranch || $selectedBranchId <= 0) ? ' hidden' : '' ?>>
+                <button type="button" class="exp__tab is-active" data-tab="add" id="expTabAdd">Add Expense</button>
+                <button type="button" class="exp__tab" data-tab="view" id="expTabView">View Expenses</button>
             </div>
         <?php endif; ?>
     </div>
 
-    <?php if ($canSelectBranch): ?>
-        <div class="exp__branch-wrap">
-            <label class="exp__label" for="expBranch">Branch</label>
-            <select id="expBranch" class="exp__control">
-                <option value="">Select branch</option>
-                <?php foreach ($expenseBranches as $b): ?>
-                    <option value="<?= (int) $b['id'] ?>"><?= e((string) $b['label']) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
+    <?php if ($expenseNeedsLocation): ?>
+        <p class="alert alert--error" role="status">Choose a location at the top right.</p>
     <?php endif; ?>
 
     <p class="exp__status" id="expStatus" aria-live="polite"></p>
 
-    <div class="exp__panel" id="expPanelAdd" data-panel="add"<?= $canSelectBranch ? ' hidden' : '' ?>>
+    <div class="exp__panel" id="expPanelAdd" data-panel="add"<?= ($canSelectBranch || $selectedBranchId <= 0) ? ' hidden' : '' ?>>
         <form id="expForm" novalidate>
             <input type="hidden" id="expEditId" value="">
             <div class="exp__field">
@@ -1042,7 +1009,7 @@ require __DIR__ . '/includes/layout_start.php';
   setFormEnabled(false);
   if (!canSelectBranch) {
     if (branchId > 0) loadMeta();
-    else setStatus('No branch linked to your account.', true);
+    else setStatus(root.getAttribute('data-needs-location') === '1' ? 'Choose a location at the top right.' : 'No branch linked to your account.', true);
   } else {
     setStatus('Select a branch to continue.');
   }

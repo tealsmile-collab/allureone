@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/includes/work_branch.php';
 require_login();
 require_not_accounts_role();
 require_not_franchise_officer_role();
@@ -442,6 +443,19 @@ if ($isAdminRole) {
     }
 }
 
+$workBranchId = work_branch_current_id($user);
+$workBranchPrompt = $workBranchId <= 0 && count(work_branch_options($user)) > 1;
+if ($workBranchId > 0) {
+    $userBranchId = $workBranchId;
+    $fBranchSel = $workBranchId;
+    if (!isset($branchOptions[$workBranchId])) {
+        $branchOptions[$workBranchId] = work_branch_options($user)[$workBranchId] ?? ('Branch ' . $workBranchId);
+    }
+} elseif ($workBranchPrompt) {
+    $userBranchId = null;
+    $fBranchSel = 0;
+}
+
 $segmentBranchId = null;
 if ($isAdminRole) {
     if ($fBranchSel > 0) {
@@ -513,15 +527,18 @@ if (isset($_GET['crm_summary']) && (string) $_GET['crm_summary'] === '1') {
     header('Content-Type: application/json; charset=utf-8');
     $summaryBranchId = 0;
     if ($isAdminRole) {
-        $summaryBranchId = isset($_GET['f_branch']) ? (int) $_GET['f_branch'] : 0;
-        if ($summaryBranchId > 0 && !isset($branchOptions[$summaryBranchId])) {
-            echo json_encode(['ok' => false, 'error' => 'Invalid branch selected.']);
+        $summaryBranchId = work_branch_current_id($user);
+        if ($summaryBranchId <= 0 || !isset($branchOptions[$summaryBranchId])) {
+            echo json_encode(['ok' => false, 'error' => 'Choose a location at the top right.']);
             exit;
         }
     } else {
         $summaryBranchId = $userBranchId ?? 0;
         if ($summaryBranchId <= 0) {
-            echo json_encode(['ok' => false, 'error' => 'Branch is not assigned to your account.']);
+            echo json_encode([
+                'ok' => false,
+                'error' => $workBranchPrompt ? 'Choose a location at the top right.' : 'Branch is not assigned to your account.',
+            ]);
             exit;
         }
     }
@@ -989,6 +1006,9 @@ $pageTitle = 'CRM';
 $activeNav = 'crm';
 require __DIR__ . '/includes/layout_start.php';
 ?>
+<?php if ($workBranchPrompt): ?>
+    <div class="alert alert--error" role="status" style="margin-bottom:1rem">Choose a location at the top right.</div>
+<?php endif; ?>
 
 <?php
 $nameNextDir = ($sortBy === 'name' && $sortDir === 'desc') ? 'asc' : 'desc';
@@ -1182,15 +1202,7 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
         <?php else: ?>
             <?php if ($isAdminRole): ?>
                 <form method="get" action="crm.php" class="leads-filters">
-                    <div class="form__row">
-                        <label for="f_branch">Branch</label>
-                        <select id="f_branch" name="f_branch">
-                            <option value="0">Select branch</option>
-                            <?php foreach ($branchOptions as $bId => $bLabel): ?>
-                                <option value="<?= (int) $bId ?>"<?= $fBranchSel === (int) $bId ? ' selected' : '' ?>><?= e($bLabel) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                    <input type="hidden" id="f_branch" name="f_branch" value="<?= (int) $fBranchSel ?>">
                     <div class="form__row">
                         <label for="f_status">Status</label>
                         <select id="f_status" name="f_status">
@@ -1309,10 +1321,10 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                 <?php endif; ?>
                 </script>
             <?php endif; ?>
-            <?php if ($isAdminRole && !$showRequested): ?>
-                <p class="empty">Select a branch and click Show to load CRM clients.</p>
-            <?php elseif ($isAdminRole && $showRequested && $fBranchSel <= 0): ?>
-                <p class="empty">Please select a branch and click Show.</p>
+            <?php if ($isAdminRole && $fBranchSel <= 0): ?>
+                <p class="empty">Choose a location at the top right.</p>
+            <?php elseif ($isAdminRole && !$showRequested): ?>
+                <p class="empty">Click Show to load CRM clients.</p>
             <?php elseif ($rows === []): ?>
                 <p class="empty">No CRM clients found.</p>
             <?php else: ?>

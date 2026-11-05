@@ -3,6 +3,7 @@ declare(strict_types=1);
 /** @var string $pageTitle */
 /** @var string $activeNav */
 require_once __DIR__ . '/app_client.php';
+require_once __DIR__ . '/work_branch.php';
 $config = require __DIR__ . '/../config.php';
 $appName = $config['app']['name'];
 $user = current_user();
@@ -137,6 +138,39 @@ $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
             <button class="menu-toggle" type="button" id="menuToggle" aria-expanded="true" aria-controls="appSidebar" aria-label="Toggle menu" title="Toggle menu">
                 <span class="menu-toggle__icon" aria-hidden="true"></span>
             </button>
+            <?php
+            $workBranchNav = in_array($activeNav, ['leads', 'crm', 'expense'], true);
+            $workBranchChoices = $workBranchNav ? work_branch_options($user) : [];
+            $workBranchSelected = ($workBranchNav && count($workBranchChoices) > 1) ? work_branch_current_id($user) : 0;
+            $workBranchReturn = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+            if (!in_array($workBranchReturn, ['leads.php', 'crm.php', 'expense.php'], true)) {
+                $workBranchReturn = $activeNav . '.php';
+            }
+            ?>
+            <?php if ($workBranchNav && count($workBranchChoices) > 1): ?>
+                <form class="work-branch" method="post" action="work_branch.php">
+                    <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="return" value="<?= e($workBranchReturn) ?>">
+                    <div class="work-branch__control">
+                        <span class="work-branch__pin" aria-hidden="true">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                                <circle cx="12" cy="10" r="2.25" fill="currentColor"/>
+                            </svg>
+                        </span>
+                        <label class="work-branch__kicker" for="workBranchSelect">Location</label>
+                        <select class="work-branch__select" id="workBranchSelect" name="work_branch_id" onchange="this.form.submit()">
+                            <?php if ($workBranchSelected <= 0): ?>
+                                <option value="">Select location</option>
+                            <?php endif; ?>
+                            <?php foreach ($workBranchChoices as $workBranchId => $workBranchLabel): ?>
+                                <option value="<?= (int) $workBranchId ?>"<?= (int) $workBranchId === $workBranchSelected ? ' selected' : '' ?>><?= e($workBranchLabel) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <noscript><button class="btn btn--ghost" type="submit">Apply</button></noscript>
+                </form>
+            <?php endif; ?>
             <a href="<?= e($homeHref) ?>" class="main__header-logo-link" aria-label="<?= e($appName) ?> home">
                 <img src="assets/images/allure-logo-small.png" alt="<?= e($appName) ?>" class="main__header-logo" loading="eager" decoding="async">
             </a>

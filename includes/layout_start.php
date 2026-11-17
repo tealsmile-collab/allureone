@@ -141,13 +141,16 @@ $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
             <?php
             $workBranchNav = in_array($activeNav, ['leads', 'crm', 'expense'], true);
             $workBranchChoices = $workBranchNav ? work_branch_options($user) : [];
-            $workBranchSelected = ($workBranchNav && count($workBranchChoices) > 1) ? work_branch_current_id($user) : 0;
+            $workBranchAllowsAll = $workBranchNav && work_branch_allows_all($user);
+            $workBranchSelected = ($workBranchNav && (count($workBranchChoices) > 1 || $workBranchAllowsAll))
+                ? work_branch_current_id($user)
+                : 0;
             $workBranchReturn = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
             if (!in_array($workBranchReturn, ['leads.php', 'crm.php', 'expense.php'], true)) {
                 $workBranchReturn = $activeNav . '.php';
             }
             ?>
-            <?php if ($workBranchNav && count($workBranchChoices) > 1): ?>
+            <?php if ($workBranchNav && (count($workBranchChoices) > 1 || $workBranchAllowsAll)): ?>
                 <form class="work-branch" method="post" action="work_branch.php">
                     <input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="return" value="<?= e($workBranchReturn) ?>">
@@ -160,7 +163,9 @@ $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
                         </span>
                         <label class="work-branch__kicker" for="workBranchSelect">Location</label>
                         <select class="work-branch__select" id="workBranchSelect" name="work_branch_id" onchange="this.form.submit()">
-                            <?php if ($workBranchSelected <= 0): ?>
+                            <?php if ($workBranchAllowsAll): ?>
+                                <option value="0"<?= $workBranchSelected <= 0 ? ' selected' : '' ?>>All Location</option>
+                            <?php elseif ($workBranchSelected <= 0): ?>
                                 <option value="">Select location</option>
                             <?php endif; ?>
                             <?php foreach ($workBranchChoices as $workBranchId => $workBranchLabel): ?>

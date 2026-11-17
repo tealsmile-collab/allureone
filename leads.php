@@ -43,7 +43,8 @@ $flash = ['type' => '', 'text' => ''];
 $branchId = isset($user['branch_id']) && (int) $user['branch_id'] > 0 ? (int) $user['branch_id'] : null;
 $isBranchScopedRole = $roleId === 3;
 $workBranchId = work_branch_current_id($user);
-$workBranchPrompt = $workBranchId <= 0 && count(work_branch_options($user)) > 1;
+$workBranchAllowsAll = work_branch_allows_all($user);
+$workBranchPrompt = $workBranchId <= 0 && !$workBranchAllowsAll && count(work_branch_options($user)) > 1;
 if ($workBranchId > 0) {
     $branchId = $workBranchId;
     $isBranchScopedRole = true;

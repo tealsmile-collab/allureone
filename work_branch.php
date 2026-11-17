@@ -20,7 +20,9 @@ $branchId = (int) ($_POST['work_branch_id'] ?? 0);
 $user = current_user();
 if ($branchId > 0 && work_branch_user_can($user, $branchId)) {
     $_SESSION['work_branch_id'] = $branchId;
-} else {
+} elseif ($branchId <= 0 && work_branch_allows_all($user)) {
+    $_SESSION['work_branch_id'] = 0;
+} elseif ($branchId <= 0) {
     $_SESSION['work_branch_id'] = 0;
 }
 

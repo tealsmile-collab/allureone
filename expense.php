@@ -15,7 +15,9 @@ $roleId = (int) ($user['role_id'] ?? 0);
 $canSelectBranch = false;
 $canViewExpenses = in_array($roleId, [ROLE_SUPERADMIN, ROLE_ADMIN], true);
 $selectedBranchId = work_branch_current_id($user);
-$expenseNeedsLocation = $selectedBranchId <= 0 && count(work_branch_options($user)) > 1;
+$expenseNeedsLocation = $selectedBranchId <= 0 && (
+    work_branch_allows_all($user) || count(work_branch_options($user)) > 1
+);
 
 $todayIst = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
 $pageTitle = 'Expense';

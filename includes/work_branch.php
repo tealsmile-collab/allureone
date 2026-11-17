@@ -88,6 +88,19 @@ function work_branch_label(int $branchId, string $businessName, string $locality
     return 'Branch ' . $branchId;
 }
 
+function work_branch_allows_all(?array $user = null): bool
+{
+    if ($user === null) {
+        $user = current_user();
+    }
+    if (!is_array($user)) {
+        return false;
+    }
+    $roleId = (int) ($user['role_id'] ?? 0);
+
+    return $roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN;
+}
+
 function work_branch_user_can(?array $user, int $branchId): bool
 {
     if ($branchId <= 0) {
@@ -104,9 +117,16 @@ function work_branch_current_id(?array $user = null): int
         $user = current_user();
     }
     $options = work_branch_options($user);
-    $sessionId = isset($_SESSION['work_branch_id']) ? (int) $_SESSION['work_branch_id'] : 0;
+    $allowsAll = work_branch_allows_all($user);
+    $sessionIsSet = array_key_exists('work_branch_id', $_SESSION);
+    $sessionId = $sessionIsSet ? (int) $_SESSION['work_branch_id'] : 0;
     if ($sessionId > 0 && isset($options[$sessionId])) {
         return $sessionId;
+    }
+    if ($allowsAll) {
+        $_SESSION['work_branch_id'] = 0;
+
+        return 0;
     }
     $defaultId = is_array($user) ? (int) ($user['branch_id'] ?? 0) : 0;
     if ($defaultId > 0 && isset($options[$defaultId])) {

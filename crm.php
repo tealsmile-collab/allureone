@@ -444,13 +444,16 @@ if ($isAdminRole) {
 }
 
 $workBranchId = work_branch_current_id($user);
-$workBranchPrompt = $workBranchId <= 0 && count(work_branch_options($user)) > 1;
+$workBranchAllowsAll = work_branch_allows_all($user);
+$workBranchPrompt = $workBranchId <= 0 && !$workBranchAllowsAll && count(work_branch_options($user)) > 1;
 if ($workBranchId > 0) {
     $userBranchId = $workBranchId;
     $fBranchSel = $workBranchId;
     if (!isset($branchOptions[$workBranchId])) {
         $branchOptions[$workBranchId] = work_branch_options($user)[$workBranchId] ?? ('Branch ' . $workBranchId);
     }
+} elseif ($workBranchAllowsAll) {
+    $fBranchSel = 0;
 } elseif ($workBranchPrompt) {
     $userBranchId = null;
     $fBranchSel = 0;
@@ -528,8 +531,8 @@ if (isset($_GET['crm_summary']) && (string) $_GET['crm_summary'] === '1') {
     $summaryBranchId = 0;
     if ($isAdminRole) {
         $summaryBranchId = work_branch_current_id($user);
-        if ($summaryBranchId <= 0 || !isset($branchOptions[$summaryBranchId])) {
-            echo json_encode(['ok' => false, 'error' => 'Choose a location at the top right.']);
+        if ($summaryBranchId > 0 && !isset($branchOptions[$summaryBranchId])) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid branch selected.']);
             exit;
         }
     } else {
@@ -937,9 +940,8 @@ try {
             } elseif ($fBranchSel > 0) {
                 $where .= ' AND c.branch_id = :branch_id';
                 $params['branch_id'] = $fBranchSel;
-            } else {
-                $allowListFetch = false;
             }
+            // All Location: no branch filter.
         } else {
             if ($userBranchId === null) {
                 $where .= ' AND 0=1';
@@ -1321,7 +1323,7 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                 <?php endif; ?>
                 </script>
             <?php endif; ?>
-            <?php if ($isAdminRole && $fBranchSel <= 0): ?>
+            <?php if ($isAdminRole && $fBranchSel <= 0 && $workBranchPrompt): ?>
                 <p class="empty">Choose a location at the top right.</p>
             <?php elseif ($isAdminRole && !$showRequested): ?>
                 <p class="empty">Click Show to load CRM clients.</p>

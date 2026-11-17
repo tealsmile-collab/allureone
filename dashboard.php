@@ -2240,6 +2240,45 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
         }
     }
 
+    function totalSaleSortValue(row) {
+        if (!row || row.total_sale === null || row.total_sale === undefined || row.total_sale === '') {
+            return null;
+        }
+        var n = Number(row.total_sale);
+        return isFinite(n) ? n : null;
+    }
+
+    function sortDailySaleRowsByTotalDesc(rows) {
+        return (rows || []).slice().sort(function (a, b) {
+            var aVal = totalSaleSortValue(a);
+            var bVal = totalSaleSortValue(b);
+            if (aVal === null && bVal === null) {
+                return String((a && a.branch_name) || '').localeCompare(String((b && b.branch_name) || ''));
+            }
+            if (aVal === null) {
+                return 1;
+            }
+            if (bVal === null) {
+                return -1;
+            }
+            if (bVal !== aVal) {
+                return bVal - aVal;
+            }
+            return String((a && a.branch_name) || '').localeCompare(String((b && b.branch_name) || ''));
+        });
+    }
+
+    function renderDailySaleRows(rows) {
+        if (!bodyEl) {
+            return;
+        }
+        bodyEl.innerHTML = '';
+        var sorted = sortDailySaleRowsByTotalDesc(rows);
+        for (var i = 0; i < sorted.length; i++) {
+            appendRow(sorted[i] || {});
+        }
+    }
+
     function fetchJson(url) {
         return fetch(url, { credentials: 'same-origin' }).then(function (r) {
             return r.text().then(function (text) {
@@ -2299,8 +2338,10 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                 }
 
                 var i = 0;
+                var loadedRows = [];
                 function next() {
                     if (i >= branches.length) {
+                        renderDailySaleRows(loadedRows);
                         setStatus('', false);
                         loadedDate = fetchDate;
                         if (bodyEl) {
@@ -2314,7 +2355,7 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                     setStatus('Loading ' + esc(String(idx)) + ' of ' + esc(String(branches.length)) + ': ' + esc(String(b.branch_name || '')), true);
                     var url = apiUrl + '?action=fetch&branch_id=' + encodeURIComponent(String(b.branch_id || '')) + '&date=' + encodeURIComponent(fetchDate);
                     return fetchJson(url).then(function (res) {
-                        appendRow(res.row || {
+                        loadedRows.push(res.row || {
                             branch_id: b.branch_id || 0,
                             branch_name: b.branch_name || '',
                             total_sale: null,
@@ -2323,7 +2364,7 @@ $cancellationReviewOpen = count($pendingCancellationRows) > 0
                         });
                         return next();
                     }).catch(function () {
-                        appendRow({
+                        loadedRows.push({
                             branch_id: b.branch_id || 0,
                             branch_name: b.branch_name || '',
                             total_sale: null,

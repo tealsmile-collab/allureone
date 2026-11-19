@@ -1351,15 +1351,15 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                 }
                 </style>
                 <div class="table-wrap">
-                    <table class="data">
+                    <table class="data data--crm">
                         <thead>
                             <tr>
-                                <th><a class="link--underlined" href="<?= e($nameSortUrl) ?>">Name<?= e($nameArrow) ?></a></th>
-                                <th>Number</th>
-                                <th><a class="link--underlined" href="<?= e($visitSortUrl) ?>">Last Visit<?= e($visitArrow) ?></a></th>
-                                <th>Status</th>
-                                <th>Remark</th>
-                                <th>Update Date</th>
+                                <th class="crm-list-col crm-list-col--name"><a class="link--underlined" href="<?= e($nameSortUrl) ?>">Name<?= e($nameArrow) ?></a></th>
+                                <th class="crm-list-col crm-list-col--phone">Number</th>
+                                <th class="crm-list-col crm-list-col--visit"><a class="link--underlined" href="<?= e($visitSortUrl) ?>">Last Visit<?= e($visitArrow) ?></a></th>
+                                <th class="crm-list-col crm-list-col--status">Status</th>
+                                <th class="crm-list-col crm-list-col--remark">Remark</th>
+                                <th class="crm-list-col crm-list-col--updated">Update Date</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1372,14 +1372,25 @@ $showTotalRecordsLabel = !$isAdminRole || ($showRequested && $fBranchSel > 0);
                                 $remarkRaw = trim((string) ($r['remarks'] ?? ''));
                                 $remarkDisplay = crm_truncate_list_remark($remarkRaw);
                                 $remarkTitle = $remarkRaw !== '' && $remarkDisplay !== $remarkRaw ? $remarkRaw : '';
+                                $listMobile = (string) ($r['mobile'] ?? '');
+                                $listWa = crm_whatsapp_wa_me_url($listMobile);
                             ?>
                                 <tr>
-                                    <td><a class="link--underlined js-crm-client-link" href="crm.php?<?= e(http_build_query(array_merge($listFilterParams, ['id' => (int) ($r['id'] ?? 0)]))) ?>"><?= e((string) ($r['fname'] ?? '')) ?></a></td>
-                                    <td><?= e((string) ($r['mobile'] ?? '')) ?></td>
-                                    <td><?= e(crm_format_last_visit((string) ($r['last_visit'] ?? ''))) ?></td>
-                                    <td><?= e($slabel) ?></td>
-                                    <td<?= $remarkTitle !== '' ? ' title="' . e($remarkTitle) . '"' : '' ?>><?= e($remarkDisplay) ?></td>
-                                    <td><?= e($updateDateDisplay) ?></td>
+                                    <td class="crm-list-col crm-list-col--name"><a class="link--underlined js-crm-client-link" href="crm.php?<?= e(http_build_query(array_merge($listFilterParams, ['id' => (int) ($r['id'] ?? 0)]))) ?>"><?= e((string) ($r['fname'] ?? '')) ?></a></td>
+                                    <td class="crm-list-col crm-list-col--phone">
+                                        <?php if ($listWa !== ''): ?>
+                                            <a class="link--underlined crm-list-wa-link" href="<?= e($listWa) ?>" target="_blank" rel="noopener noreferrer"><?= e($listMobile) ?></a>
+                                            <span class="crm-list-phone-plain"><?= e($listMobile) ?></span>
+                                        <?php elseif ($listMobile !== ''): ?>
+                                            <?= e($listMobile) ?>
+                                        <?php else: ?>
+                                            —
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="crm-list-col crm-list-col--visit"><?= e(crm_format_last_visit((string) ($r['last_visit'] ?? ''))) ?></td>
+                                    <td class="crm-list-col crm-list-col--status"><?= e($slabel) ?></td>
+                                    <td class="crm-list-col crm-list-col--remark"<?= $remarkTitle !== '' ? ' title="' . e($remarkTitle) . '"' : '' ?>><?= e($remarkDisplay) ?></td>
+                                    <td class="crm-list-col crm-list-col--updated"><?= e($updateDateDisplay) ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

@@ -877,6 +877,14 @@ table.data--meta-leads .lead-list-wa-mobile {
   display: none;
 }
 
+/* CRM list (desktop/tablet): plain number; WhatsApp link is mobile-only */
+table.data--crm .crm-list-wa-link {
+  display: none;
+}
+table.data--crm .crm-list-phone-plain {
+  display: inline;
+}
+
 /* Leads list page: filters + summary (desktop) */
 .leads-summary {
   padding: 1rem 1.25rem 0.5rem;
@@ -1066,6 +1074,20 @@ form.leads-filters > .btn {
   }
   table.data--dashboard-gift-codes th:nth-child(3),
   table.data--dashboard-gift-codes td:nth-child(3) {
+    display: none;
+  }
+
+  /* CRM list: WhatsApp number link; hide Remark and Update Date */
+  table.data--crm .crm-list-wa-link {
+    display: inline;
+  }
+  table.data--crm .crm-list-phone-plain {
+    display: none;
+  }
+  table.data--crm th.crm-list-col--remark,
+  table.data--crm td.crm-list-col--remark,
+  table.data--crm th.crm-list-col--updated,
+  table.data--crm td.crm-list-col--updated {
     display: none;
   }
 

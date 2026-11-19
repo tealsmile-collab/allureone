@@ -869,8 +869,11 @@ table.data td.table-actions {
   max-width: none;
 }
 
-/* Leads list (desktop/tablet): hide mobile-only short date */
+/* Leads list (desktop/tablet): hide mobile-only short date and WhatsApp-by-name */
 table.data--meta-leads .lead-list-date--short {
+  display: none;
+}
+table.data--meta-leads .lead-list-wa-mobile {
   display: none;
 }
 
@@ -1121,6 +1124,10 @@ form.leads-filters > .btn {
     overflow-wrap: anywhere;
     line-height: 1.4;
     display: inline;
+  }
+  table.data--meta-leads .lead-list-wa-mobile {
+    display: inline;
+    white-space: pre;
   }
   table.data--meta-leads td.lead-list-col--loc {
     text-transform: capitalize;

@@ -1201,7 +1201,7 @@ require __DIR__ . '/includes/layout_start.php';
                                     <?php if ($roleId === ROLE_SUPERADMIN || $roleId === ROLE_ADMIN): ?>
                                         <td class="lead-list-col lead-list-col--loc" data-label="Location"><?= e((string) ($row['branch_name'] ?? '')) ?></td>
                                     <?php endif; ?>
-                                    <td class="lead-list-col lead-list-col--name" data-label="Name"><a class="link--underlined" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['id' => (int) ($row['id'] ?? 0)]))) ?>"><?= e((string) ($row['lead_name'] ?? '')) ?></a></td>
+                                    <td class="lead-list-col lead-list-col--name" data-label="Name"><a class="link--underlined" href="leads.php?<?= e(http_build_query(array_merge($listFilterParams, ['id' => (int) ($row['id'] ?? 0)]))) ?>"><?= e((string) ($row['lead_name'] ?? '')) ?></a><?php if ($cellWa !== null): ?><span class="lead-list-wa-mobile">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a class="link--underlined" href="<?= e($cellWa) ?>" target="_blank" rel="noopener noreferrer">WhatsApp</a></span><?php endif; ?></td>
                                     <td class="lead-list-col lead-list-col--phone" data-label="Number">
                                         <?php if ($cellWa !== null): ?>
                                             <a class="link--underlined" href="<?= e($cellWa) ?>" target="_blank" rel="noopener noreferrer"><?= e($cellPhone) ?></a>

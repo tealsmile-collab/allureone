@@ -63,19 +63,17 @@ $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
             <?php if ($canSaleRecord && $userRoleId !== ROLE_SUPERADMIN && $userRoleId !== ROLE_ADMIN): ?>
                 <a class="sidebar__link<?= ($activeNav === 'sale_record') ? ' is-active' : '' ?>" href="sale_record.php">Sale Record</a>
             <?php endif; ?>
+            <?php $isAdminMenuRole = ($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN); ?>
             <?php if (!$isAccountsRole && !$isFranchiseOfficerRole && !$isAppointmentStaffRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'dashboard') ? ' is-active' : '' ?>" href="dashboard.php">Dashboard</a>
-                <?php if ($canSaleRecord && ($userRoleId === ROLE_SUPERADMIN || $userRoleId === ROLE_ADMIN)): ?>
-                    <a class="sidebar__link<?= ($activeNav === 'sale_record') ? ' is-active' : '' ?>" href="sale_record.php">Sale Record</a>
-                <?php endif; ?>
                 <?php if ($isInvoiceCancellationEnabled): ?>
                     <a class="sidebar__link<?= ($activeNav === 'invoice_cancellation') ? ' is-active' : '' ?>" href="invoice_cancellation.php">Invoice Cancellation</a>
                 <?php endif; ?>
             <?php endif; ?>
-            <?php if ($canAppointments): ?>
+            <?php if ($canAppointments && !$isAdminMenuRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'appointments') ? ' is-active' : '' ?>" href="appointment.php">Appointments</a>
             <?php endif; ?>
-            <?php if (can_access_expense($user)): ?>
+            <?php if (can_access_expense($user) && !$isAdminMenuRole): ?>
                 <a class="sidebar__link<?= ($activeNav === 'expense') ? ' is-active' : '' ?>" href="expense.php">Expense</a>
             <?php endif; ?>
             <?php if ($userRoleId === ROLE_SUPERADMIN): ?>
@@ -127,6 +125,17 @@ $appCssVer = is_file($appCssPath) ? (string) filemtime($appCssPath) : '1';
                 <?php endif; ?>
             <?php endif; ?>
             <a class="sidebar__link<?= ($activeNav === 'sop') ? ' is-active' : '' ?>" href="sop.php">SOP</a>
+            <?php if ($isAdminMenuRole): ?>
+                <?php if ($canAppointments): ?>
+                    <a class="sidebar__link<?= ($activeNav === 'appointments') ? ' is-active' : '' ?>" href="appointment.php">Appointments</a>
+                <?php endif; ?>
+                <?php if (can_access_expense($user)): ?>
+                    <a class="sidebar__link<?= ($activeNav === 'expense') ? ' is-active' : '' ?>" href="expense.php">Expense</a>
+                <?php endif; ?>
+                <?php if ($canSaleRecord): ?>
+                    <a class="sidebar__link<?= ($activeNav === 'sale_record') ? ' is-active' : '' ?>" href="sale_record.php">Sale Record</a>
+                <?php endif; ?>
+            <?php endif; ?>
             <a class="sidebar__link" href="logout.php">Logout</a>
             <?php if ($user && trim((string) ($user['full_name'] ?? '')) !== ''): ?>
                 <p class="sidebar__user-line"><?= e((string) $user['full_name']) ?> · <?= e((string) ($user['loginname'] ?? '')) ?></p>

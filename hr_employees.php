@@ -40,7 +40,11 @@ $monthEnd = '';
 $localEmployee = null;
 $branchOptions = allurehr_active_branch_options();
 $roleOptions = allurehr_role_options();
-$filterBranchId = max(0, (int) ($_GET['branch'] ?? 0));
+$branchFilterRaw = isset($_GET['branch']) ? trim((string) $_GET['branch']) : '';
+$filterUnmapped = ($branchFilterRaw === 'unmapped');
+$filterBranchId = (!$filterUnmapped && preg_match('/^\d+$/', $branchFilterRaw) === 1)
+    ? max(0, (int) $branchFilterRaw)
+    : 0;
 $filterName = isset($_GET['name']) ? trim((string) $_GET['name']) : '';
 if (function_exists('mb_substr')) {
     $filterName = mb_substr($filterName, 0, 100);
@@ -133,13 +137,13 @@ if ($employeeId > 0) {
         }
     }
 } else {
-    $list = allurehr_list_local_employees($page, $perPage, $filterBranchId, $filterName);
+    $list = allurehr_list_local_employees($page, $perPage, $filterBranchId, $filterName, $filterUnmapped);
     $employees = $list['rows'];
     $totalPages = max(1, (int) ($list['total_pages'] ?? 1));
     $totalElements = (int) ($list['total'] ?? count($employees));
     if ($page > $totalPages) {
         $page = $totalPages;
-        $list = allurehr_list_local_employees($page, $perPage, $filterBranchId, $filterName);
+        $list = allurehr_list_local_employees($page, $perPage, $filterBranchId, $filterName, $filterUnmapped);
         $employees = $list['rows'];
         $totalPages = max(1, (int) ($list['total_pages'] ?? 1));
         $totalElements = (int) ($list['total'] ?? count($employees));
@@ -170,7 +174,9 @@ function hr_format_display_date(string $ymd): string
 
 $empName = is_array($employee) ? greythr_employee_display_name($employee) : '';
 $hrListQuery = [];
-if ($filterBranchId > 0) {
+if ($filterUnmapped) {
+    $hrListQuery['branch'] = 'unmapped';
+} elseif ($filterBranchId > 0) {
     $hrListQuery['branch'] = $filterBranchId;
 }
 if ($filterName !== '') {
@@ -246,7 +252,9 @@ $monthNames = [
                 <?php if ($page > 1): ?>
                     <input type="hidden" name="page" value="<?= (int) $page ?>">
                 <?php endif; ?>
-                <?php if ($filterBranchId > 0): ?>
+                <?php if ($filterUnmapped): ?>
+                    <input type="hidden" name="branch" value="unmapped">
+                <?php elseif ($filterBranchId > 0): ?>
                     <input type="hidden" name="branch" value="<?= (int) $filterBranchId ?>">
                 <?php endif; ?>
                 <div class="form__row form__row--month">
@@ -418,8 +426,9 @@ $monthNames = [
                     <label for="hr_list_branch">Branch</label>
                     <select id="hr_list_branch" name="branch">
                         <option value="">All branches</option>
+                        <option value="unmapped"<?= $filterUnmapped ? ' selected' : '' ?>>Unmapped</option>
                         <?php foreach ($branchOptions as $b): ?>
-                            <option value="<?= (int) $b['id'] ?>"<?= $filterBranchId === (int) $b['id'] ? ' selected' : '' ?>><?= e($b['label']) ?></option>
+                            <option value="<?= (int) $b['id'] ?>"<?= !$filterUnmapped && $filterBranchId === (int) $b['id'] ? ' selected' : '' ?>><?= e($b['label']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>

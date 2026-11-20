@@ -745,7 +745,7 @@ function allurehr_active_branch_options(): array
  *
  * @return array{rows: list<array{employeeId:int,name:string,employeeNo:string,mobile:string,locality:string}>, total:int, total_pages:int}
  */
-function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 0, string $nameSearch = ''): array
+function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 0, string $nameSearch = '', bool $unmappedOnly = false): array
 {
     allurehr_ensure_employee_table();
     $page = max(1, $page);
@@ -756,7 +756,9 @@ function allurehr_list_local_employees(int $page, int $perPage, int $branchId = 
         $pdo = db();
         $whereParts = [];
         $params = [];
-        if ($branchId > 0) {
+        if ($unmappedOnly) {
+            $whereParts[] = '(e.BranchID IS NULL OR e.BranchID = 0)';
+        } elseif ($branchId > 0) {
             $whereParts[] = 'e.BranchID = :branch';
             $params['branch'] = $branchId;
         }

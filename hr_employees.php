@@ -125,7 +125,11 @@ if ($employeeId > 0) {
         if (!($musterRes['ok'] ?? false)) {
             $error = (string) ($musterRes['error'] ?? 'Could not load attendance muster.');
         } else {
-            $musterRows = greythr_muster_table_rows($musterRes['records']);
+            $swipeRes = greythr_employee_swipes($employeeId, $monthStart, $monthEnd, true);
+            $swipeList = ($swipeRes['ok'] ?? false) && is_array($swipeRes['list'] ?? null)
+                ? $swipeRes['list']
+                : [];
+            $musterRows = greythr_muster_table_rows($musterRes['records'], $swipeList);
         }
     }
 } else {

@@ -386,54 +386,84 @@ function greythr_format_clock(?string $raw): string
 
 /**
  * Normalize muster records into date / in / out rows.
- * In/Out: shift.startTime / shift.endTime (per product requirement),
- * with firstInTime / lastOutTime preferred when present (actual punches).
+ * Prefer actual swipe punches when provided; else muster firstInTime / lastOutTime.
+ * Do not fall back to shift schedule times (those are not punches).
  *
  * @param list<array<string,mixed>> $records
+ * @param list<array<string,mixed>> $swipes
  * @return list<array{date:string,in_time:string,out_time:string}>
  */
-function greythr_muster_table_rows(array $records): array
+function greythr_muster_table_rows(array $records, array $swipes = []): array
 {
+    $swipesByDate = [];
+    foreach ($swipes as $swipe) {
+        if (!is_array($swipe)) {
+            continue;
+        }
+        $swipeDate = trim((string) ($swipe['attendanceDate'] ?? ''));
+        if ($swipeDate === '' && preg_match('/^\d{4}-\d{2}-\d{2}/', (string) ($swipe['punchDateTime'] ?? ''), $dm) === 1) {
+            $swipeDate = $dm[0];
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $swipeDate, $dm) === 1) {
+            $swipeDate = $dm[0];
+        }
+        if ($swipeDate === '') {
+            continue;
+        }
+        if (!isset($swipesByDate[$swipeDate])) {
+            $swipesByDate[$swipeDate] = [];
+        }
+        $swipesByDate[$swipeDate][] = $swipe;
+    }
+
     $rows = [];
+    $seenDates = [];
     foreach ($records as $rec) {
         $summary = is_array($rec['summary'] ?? null) ? $rec['summary'] : $rec;
         $date = trim((string) ($summary['attendanceDate'] ?? ''));
         if ($date === '' && preg_match('/^\d{4}-\d{2}-\d{2}/', (string) ($rec['attendanceDate'] ?? ''), $dm) === 1) {
             $date = $dm[0];
         }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $date, $dm) === 1) {
+            $date = $dm[0];
+        }
         if ($date === '') {
             continue;
         }
-        $shift = is_array($summary['shift'] ?? null) ? $summary['shift'] : [];
-        $firstIn = trim((string) ($summary['firstInTime'] ?? ''));
-        $lastOut = trim((string) ($summary['lastOutTime'] ?? ''));
-        $shiftIn = trim((string) ($shift['startTime'] ?? ''));
-        $shiftOut = trim((string) ($shift['endTime'] ?? ''));
+        $seenDates[$date] = true;
 
-        // Prefer actual punches; otherwise use shift start/end as In/Out.
-        $inRaw = $firstIn !== '' ? $firstIn : $shiftIn;
-        $outRaw = $lastOut !== '' ? $lastOut : $shiftOut;
-        // If no punch and we only have schedule, show — for absent-looking days.
-        $session = strtoupper(trim((string) ($summary['session1Label'] ?? ($summary['session1hLabel'] ?? ''))));
-        $absent = ($firstIn === '' && $lastOut === '') && ($session === 'A' || trim((string) ($summary['absentReason'] ?? '')) !== '');
-        if ($absent) {
-            $inDisp = '—';
-            $outDisp = '—';
+        $inDisp = '—';
+        $outDisp = '—';
+        if (isset($swipesByDate[$date]) && $swipesByDate[$date] !== []) {
+            $clocks = greythr_swipes_in_out($swipesByDate[$date]);
+            $inDisp = trim((string) ($clocks['in_time'] ?? '')) !== '' ? (string) $clocks['in_time'] : '—';
+            $outDisp = trim((string) ($clocks['out_time'] ?? '')) !== '' ? (string) $clocks['out_time'] : '—';
         } else {
-            $inDisp = greythr_format_clock($inRaw);
-            $outDisp = greythr_format_clock($outRaw);
-            if ($inDisp === '') {
-                $inDisp = '—';
-            }
-            if ($outDisp === '') {
-                $outDisp = '—';
-            }
+            $firstIn = trim((string) ($summary['firstInTime'] ?? ''));
+            $lastOut = trim((string) ($summary['lastOutTime'] ?? ''));
+            $inClock = greythr_format_clock($firstIn);
+            $outClock = greythr_format_clock($lastOut);
+            $inDisp = $inClock !== '' ? $inClock : '—';
+            $outDisp = $outClock !== '' ? $outClock : '—';
         }
 
         $rows[] = [
             'date' => $date,
             'in_time' => $inDisp,
             'out_time' => $outDisp,
+        ];
+    }
+
+    // Include swipe-only days missing from muster.
+    foreach ($swipesByDate as $date => $daySwipes) {
+        if (isset($seenDates[$date])) {
+            continue;
+        }
+        $clocks = greythr_swipes_in_out($daySwipes);
+        $rows[] = [
+            'date' => $date,
+            'in_time' => trim((string) ($clocks['in_time'] ?? '')) !== '' ? (string) $clocks['in_time'] : '—',
+            'out_time' => trim((string) ($clocks['out_time'] ?? '')) !== '' ? (string) $clocks['out_time'] : '—',
         ];
     }
 
@@ -829,6 +859,8 @@ function greythr_swipes_in_out(array $swipes): array
 {
     $inRaw = '';
     $outRaw = '';
+    $hasIndicator = false;
+    $allPunches = [];
     foreach ($swipes as $swipe) {
         if (!is_array($swipe)) {
             continue;
@@ -837,7 +869,11 @@ function greythr_swipes_in_out(array $swipes): array
         if ($punch === '') {
             continue;
         }
+        $allPunches[] = $punch;
         $indicator = strtoupper(trim((string) ($swipe['inOutIndicator'] ?? '')));
+        if ($indicator === 'IN' || $indicator === 'OUT') {
+            $hasIndicator = true;
+        }
         if ($indicator === 'IN') {
             if ($inRaw === '' || strcmp($punch, $inRaw) < 0) {
                 $inRaw = $punch;
@@ -846,10 +882,13 @@ function greythr_swipes_in_out(array $swipes): array
             if ($outRaw === '' || strcmp($punch, $outRaw) > 0) {
                 $outRaw = $punch;
             }
-        } elseif ($indicator === '' && $inRaw === '') {
-            // Fallback: first punch as IN when indicator missing.
-            $inRaw = $punch;
         }
+    }
+    // Many biometric punches arrive with a null in/out flag: earliest = IN, latest = OUT.
+    if (!$hasIndicator && $allPunches !== []) {
+        sort($allPunches, SORT_STRING);
+        $inRaw = $allPunches[0];
+        $outRaw = count($allPunches) > 1 ? $allPunches[count($allPunches) - 1] : '';
     }
     $inDisp = greythr_format_clock($inRaw);
     $outDisp = greythr_format_clock($outRaw);

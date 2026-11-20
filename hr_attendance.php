@@ -20,7 +20,6 @@ $date = isset($_GET['date']) ? trim((string) $_GET['date']) : $today;
 if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
     $date = $today;
 }
-$isToday = ($date === $today);
 // Load greytHR only after Apply/form submit (date in query) or pagination.
 // Note: pressing Enter in the date field may omit the Apply button's `apply` param.
 $loadData = isset($_GET['date']) || isset($_GET['apply']) || isset($_GET['page']);
@@ -63,10 +62,12 @@ function hr_attendance_normalize(array $insightRows, array $nameMap): array
 }
 
 /**
+ * Load In/Out from greytHR swipes for a date (today or past).
+ *
  * @param list<array{employeeId:int,name:string,locality?:string}> $employees
  * @return list<array{employee_id:int,name:string,locality:string,in_time:string,out_time:string,present:bool}>
  */
-function hr_attendance_load_today_swipes(array $employees, string $date, bool $withLocalityLabel): array
+function hr_attendance_load_swipes_for_date(array $employees, string $date, bool $withLocalityLabel): array
 {
     $empIds = [];
     $metaById = [];
@@ -117,15 +118,15 @@ function hr_attendance_load_today_swipes(array $employees, string $date, bool $w
     return $normalized;
 }
 
-if ($loadData && $isToday) {
-    // Today: swipes API (parallel). Admin/superadmin = all branches; others = own branch.
+if ($loadData) {
+    // Use swipes for today and past dates. Insights often omits biometric punches.
     @set_time_limit(180);
     if ($isHrAdmin) {
         $branchEmployees = allurehr_employees_all_with_locality();
         if ($branchEmployees === []) {
             $error = 'No employees with BranchID found. Sync employees and assign branches in Employee List first.';
         } else {
-            $normalized = hr_attendance_load_today_swipes($branchEmployees, $date, true);
+            $normalized = hr_attendance_load_swipes_for_date($branchEmployees, $date, true);
             if ($presentOnly) {
                 $normalized = array_values(array_filter(
                     $normalized,
@@ -155,13 +156,13 @@ if ($loadData && $isToday) {
             $rows = array_slice($normalized, $offset, $perPage);
         }
     } elseif ($userBranchId <= 0) {
-        $error = 'Your user account has no branch assigned. Set Branch in User Master to load today’s attendance.';
+        $error = 'Your user account has no branch assigned. Set Branch in User Master to load attendance.';
     } else {
         $branchEmployees = allurehr_employees_by_branch($userBranchId);
         if ($branchEmployees === []) {
             $error = 'No employees found for your branch in Employee List. Sync employees and assign BranchID first.';
         } else {
-            $normalized = hr_attendance_load_today_swipes($branchEmployees, $date, false);
+            $normalized = hr_attendance_load_swipes_for_date($branchEmployees, $date, false);
             if ($presentOnly) {
                 $normalized = array_values(array_filter(
                     $normalized,
@@ -184,70 +185,6 @@ if ($loadData && $isToday) {
             }
             $offset = ($page - 1) * $perPage;
             $rows = array_slice($normalized, $offset, $perPage);
-        }
-    }
-} elseif ($loadData) {
-    // Past dates: existing insights API.
-    $empAll = greythr_fetch_all_employees();
-    $nameMap = is_array($empAll['map'] ?? null) ? $empAll['map'] : [];
-    if (!($empAll['ok'] ?? false) || $nameMap === []) {
-        $error = (string) ($empAll['error'] ?? 'Could not load employees for name lookup.');
-    } elseif ($presentOnly) {
-        $allRaw = [];
-        $apiUiPage = 1;
-        $attTotalPages = 1;
-        $guard = 0;
-        while ($guard < 40) {
-            $guard++;
-            $res = greythr_attendance_insights($date, $date, $apiUiPage, 50);
-            if (!($res['ok'] ?? false)) {
-                $error = (string) ($res['error'] ?? 'Could not load attendance.');
-                break;
-            }
-            foreach ($res['rows'] as $r) {
-                $allRaw[] = $r;
-            }
-            $pagesMeta = $res['pages'];
-            $attTotalPages = is_array($pagesMeta) ? max(1, (int) ($pagesMeta['totalPages'] ?? 1)) : 1;
-            if ($apiUiPage >= $attTotalPages) {
-                break;
-            }
-            $apiUiPage++;
-        }
-        if ($error === null) {
-            $normalized = array_values(array_filter(
-                hr_attendance_normalize($allRaw, $nameMap),
-                static fn (array $r): bool => !empty($r['present'])
-            ));
-            $totalElements = count($normalized);
-            $totalPages = max(1, (int) ceil($totalElements / $perPage));
-            if ($page > $totalPages) {
-                $page = $totalPages;
-            }
-            $offset = ($page - 1) * $perPage;
-            $rows = array_slice($normalized, $offset, $perPage);
-        }
-    } else {
-        $res = greythr_attendance_insights($date, $date, $page, $perPage);
-        if (!($res['ok'] ?? false)) {
-            $error = (string) ($res['error'] ?? 'Could not load attendance.');
-        } else {
-            $pagesMeta = $res['pages'];
-            if (is_array($pagesMeta)) {
-                $totalPages = max(1, (int) ($pagesMeta['totalPages'] ?? 1));
-                $totalElements = (int) ($pagesMeta['totalElements'] ?? count($res['rows']));
-            }
-            if ($page > $totalPages) {
-                $page = $totalPages;
-                $res = greythr_attendance_insights($date, $date, $page, $perPage);
-            }
-            if ($res['ok'] ?? false) {
-                $rows = hr_attendance_normalize($res['rows'], $nameMap);
-                if (is_array($res['pages'] ?? null)) {
-                    $totalPages = max(1, (int) ($res['pages']['totalPages'] ?? 1));
-                    $totalElements = (int) ($res['pages']['totalElements'] ?? count($rows));
-                }
-            }
         }
     }
 }
